@@ -3,7 +3,8 @@ import 'package:flutter/material.dart';
 import '../services/auth_service.dart';
 import '../supabase_client.dart';
 import '../resident_profile_screen.dart';
-import '../reservations_screen.dart';
+import 'booking_screen.dart';
+import 'my_reservations_screen.dart';
 
 class HomeScreen extends StatelessWidget {
   const HomeScreen({super.key});
@@ -64,13 +65,26 @@ class HomeScreen extends StatelessWidget {
             ),
             const SizedBox(height: 12),
             _HomeCard(
-              icon: Icons.directions_car_outlined,
+              icon: Icons.event_available_outlined,
               title: '차량 예약',
-              subtitle: '단지 공용차를 예약합니다.',
+              subtitle: '차량 선택 · 날짜/시간 · 예약하기',
               onTap: () {
                 Navigator.of(context).push(
                   MaterialPageRoute(
-                    builder: (_) => const ReservationsScreen(),
+                    builder: (_) => const BookingScreen(),
+                  ),
+                );
+              },
+            ),
+            const SizedBox(height: 12),
+            _HomeCard(
+              icon: Icons.directions_car_outlined,
+              title: '내 예약',
+              subtitle: '예약 확인 · 대여 시작 · 반납',
+              onTap: () {
+                Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (_) => const MyReservationsScreen(),
                   ),
                 );
               },

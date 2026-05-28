@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "623216691538",
+    "project_id": "danji-26a2f",
+    "storage_bucket": "danji-26a2f.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:623216691538:android:facea39c11109aaa24d28b",
+        "android_client_info": {
+          "package_name": "com.example.danjicar_app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDtO1XXfdyNV44US-XmqREZLaahzdjQq5o"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

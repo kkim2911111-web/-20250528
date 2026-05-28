@@ -1,0 +1,8 @@
+[functions.payment-prepare]
+verify_jwt = true
+
+[functions.payment-confirm]
+verify_jwt = true
+
+[functions.payment-cancel]
+verify_jwt = true

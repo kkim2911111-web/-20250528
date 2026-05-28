@@ -1,43 +1,63 @@
 import 'package:flutter/material.dart';
 
-import 'supabase_client.dart';
+import 'screens/reservation_screen.dart';
+import 'widgets/danji_app_bar.dart';
+import 'widgets/vehicle_list_view.dart';
 
 class ReservationsScreen extends StatelessWidget {
   const ReservationsScreen({super.key});
 
+  static const _bg = Color(0xFF071826);
+  static const _textPrimary = Color(0xFFEAF2FF);
+  static const _textSecondary = Color(0xFF9AB3C9);
+
   @override
   Widget build(BuildContext context) {
-    final email = supabase.auth.currentUser?.email ?? '(unknown)';
-
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('예약'),
-        actions: [
-          IconButton(
-            tooltip: '로그아웃',
-            onPressed: () async => supabase.auth.signOut(),
-            icon: const Icon(Icons.logout),
+      backgroundColor: _bg,
+      appBar: const DanjiAppBar(title: '차량 예약'),
+      body: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(20, 16, 20, 8),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  '우리 단지 공용차',
+                  style: TextStyle(
+                    color: _textPrimary,
+                    fontSize: 20,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  '예약할 차량을 선택하세요.',
+                  style: TextStyle(color: _textSecondary.withValues(alpha: 0.9)),
+                ),
+              ],
+            ),
+          ),
+          Expanded(
+            child: VehicleListView(
+              onVehicleTap: (vehicle) {
+                if (!vehicle.isAvailable) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('현재 예약할 수 없는 차량입니다.')),
+                  );
+                  return;
+                }
+                Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (_) => ReservationScreen(vehicle: vehicle),
+                  ),
+                );
+              },
+            ),
           ),
         ],
-      ),
-      body: Padding(
-        padding: const EdgeInsets.all(16),
-        child: ListView(
-          children: [
-            Text('로그인: $email'),
-            const SizedBox(height: 12),
-            const Card(
-              child: ListTile(
-                leading: Icon(Icons.check_circle_outline),
-                title: Text('예약 화면 진입 성공'),
-                subtitle: Text(
-                  '승인된 입주민만 이 화면에 도달합니다. '
-                  '차량 목록/예약 생성 UI는 다음 단계에서 확장할 수 있습니다.',
-                ),
-              ),
-            ),
-          ],
-        ),
       ),
     );
   }

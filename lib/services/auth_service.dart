@@ -15,8 +15,8 @@ class AuthService {
     );
   }
 
-  /// 회원가입 후 세션이 없으면 즉시 로그인 시도 (이메일 인증 OFF 설정용)
-  Future<void> signUpWithEmail({
+  /// 회원가입. true면 로그인 완료, false면 이메일 확인 후 인증 필요.
+  Future<bool> signUpWithEmail({
     required String email,
     required String password,
   }) async {
@@ -27,19 +27,17 @@ class AuthService {
       password: password,
     );
 
-    if (response.session != null) return;
+    if (response.session != null) return true;
 
     try {
       await supabase.auth.signInWithPassword(
         email: trimmedEmail,
         password: password,
       );
+      return true;
     } on AuthException catch (e) {
       if (e.message.toLowerCase().contains('email not confirmed')) {
-        throw const AuthException(
-          'Supabase에서 이메일 인증이 켜져 있습니다. '
-          'Dashboard > Authentication > Email > Confirm email 을 OFF 로 바꿔주세요.',
-        );
+        return false;
       }
       rethrow;
     }
@@ -57,7 +55,7 @@ String friendlyAuthError(Object e) {
       return '이메일 또는 비밀번호가 올바르지 않습니다.';
     }
     if (msg.contains('email not confirmed')) {
-      return '이메일 인증이 필요합니다. Supabase에서 Confirm email을 OFF로 설정하세요.';
+      return '이메일 확인 후 로그인해주세요.';
     }
     if (msg.contains('user already registered')) {
       return '이미 가입된 이메일입니다.';
@@ -69,3 +67,6 @@ String friendlyAuthError(Object e) {
   }
   return e.toString();
 }
+
+const emailSignUpConfirmationMessage =
+    '이메일가입은 이메일 확인후 인증을 진행해주세요';

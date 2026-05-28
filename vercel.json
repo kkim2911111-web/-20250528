@@ -1,0 +1,11 @@
+{
+  "buildCommand": "flutter build web --release --dart-define=TOSS_CLIENT_KEY=$TOSS_CLIENT_KEY --dart-define=FIREBASE_API_KEY=$FIREBASE_API_KEY --dart-define=FIREBASE_APP_ID=$FIREBASE_APP_ID",
+  "outputDirectory": "build/web",
+  "installCommand": "npm install && flutter pub get",
+  "framework": null,
+  "rewrites": [
+    { "source": "/api/(.*)", "destination": "/api/$1" },
+    { "source": "/payment/(.*)", "destination": "/index.html" },
+    { "source": "/((?!api/).*)", "destination": "/index.html" }
+  ]
+}

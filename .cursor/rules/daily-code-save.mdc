@@ -1,0 +1,27 @@
+---
+description: 날짜별 코드 저장 및 Git 커밋 규칙
+alwaysApply: true
+---
+
+# 날짜별 코드 저장
+
+작업이 끝나면 아래를 따른다.
+
+## 1. 작업일지 (changelog)
+- `docs/changelog/YYYY-MM-DD.md` 파일을 만들거나 해당 날짜 섹션에 추가한다.
+- 포함 내용: 추가/수정 기능, 주요 파일 경로, Supabase SQL·배포 메모.
+
+## 2. Git 커밋 (사용자가 요청했을 때)
+- 커밋 메시지 형식: `[YYYY-MM-DD] 한 줄 요약`
+- 커밋 대상: `lib/`, `web/`, `supabase/`, `api/`, `pubspec.yaml`, `vercel.json`, `.env.example`, `docs/changelog/`
+- **제외**: `.dart_tool/`, `build/`, `.env`, `*firebase-adminsdk*.json`, `.idea/`, `*.log`
+
+## 3. GitHub push
+- 사용자가 push를 요청했을 때만 `git push origin main` 실행.
+- push 전 `git status`로 민감 파일·빌드 산출물이 포함되지 않았는지 확인.
+
+## 4. 저장 상태 보고
+- "저장됐는지" 질문 시 구분해서 답한다.
+  - **로컬 파일**: 디스크에 저장됨
+  - **Git commit**: 커밋 여부
+  - **GitHub**: push 여부

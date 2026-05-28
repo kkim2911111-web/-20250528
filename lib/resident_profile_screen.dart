@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'supabase_client.dart';
+import 'widgets/danji_app_bar.dart';
 
 class ResidentProfile {
   final String userId;
@@ -46,17 +47,19 @@ class ResidentRepository {
   }
 
   Stream<ResidentProfile?> watchMyProfile() async* {
-    final initial = await fetchMyProfile();
-    yield initial;
-
     final user = supabase.auth.currentUser;
-    if (user == null) return;
+    if (user == null) {
+      yield null;
+      return;
+    }
 
-    yield* supabase
-        .from('residents')
-        .stream(primaryKey: const ['user_id'])
-        .eq('user_id', user.id)
-        .map((rows) => rows.isEmpty ? null : ResidentProfile.fromMap(rows.first));
+    yield await fetchMyProfile();
+
+    // Realtime 미설정 DB에서도 승인 상태를 감지 (3초마다 갱신)
+    await for (final _ in Stream.periodic(const Duration(seconds: 3))) {
+      if (supabase.auth.currentUser?.id != user.id) break;
+      yield await fetchMyProfile();
+    }
   }
 
   Future<void> upsertMyProfile({
@@ -258,10 +261,9 @@ class _ResidentProfileScreenState extends State<ResidentProfileScreen> {
     final approved = _profile?.approved == true;
 
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('입주민 인증'),
-        automaticallyImplyLeading: false,
-        actions: [
+      appBar: DanjiAppBar(
+        title: '입주민 인증',
+        extraActions: [
           IconButton(
             tooltip: '로그아웃',
             onPressed: () async => supabase.auth.signOut(),

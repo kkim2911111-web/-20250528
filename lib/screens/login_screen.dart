@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../services/auth_service.dart';
 import '../supabase_client.dart';
+import '../widgets/danji_app_bar.dart';
 
 class LoginScreen extends StatelessWidget {
   const LoginScreen({super.key});
@@ -293,12 +294,7 @@ class _EmailLoginScreenState extends State<EmailLoginScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: _bg,
-      appBar: AppBar(
-        backgroundColor: _bg,
-        foregroundColor: _textPrimary,
-        elevation: 0,
-        title: const Text('이메일 로그인'),
-      ),
+      appBar: const DanjiAppBar(title: '이메일 로그인'),
       body: SafeArea(
         child: Padding(
           padding: const EdgeInsets.all(20),
@@ -449,9 +445,19 @@ class _SignUpScreenState extends State<SignUpScreen> {
     });
 
     try {
-      await _auth.signUpWithEmail(email: email, password: password);
+      final signedIn =
+          await _auth.signUpWithEmail(email: email, password: password);
 
       if (!mounted) return;
+
+      if (!signedIn) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text(emailSignUpConfirmationMessage)),
+        );
+        Navigator.of(context).pop();
+        return;
+      }
+
       // 가입 직후 세션 생성 → AuthGate가 HomeScreen으로 전환
       Navigator.of(context).popUntil((route) => route.isFirst);
     } catch (e) {
@@ -465,12 +471,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: _bg,
-      appBar: AppBar(
-        backgroundColor: _bg,
-        foregroundColor: _textPrimary,
-        elevation: 0,
-        title: const Text('회원가입'),
-      ),
+      appBar: const DanjiAppBar(title: '회원가입'),
       body: SafeArea(
         child: Padding(
           padding: const EdgeInsets.all(20),

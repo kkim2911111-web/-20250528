@@ -5,7 +5,8 @@
     "display": "standalone",
     "background_color": "#0175C2",
     "theme_color": "#0175C2",
-    "description": "A new Flutter project.",
+    "gcm_sender_id": "62581668986",
+    "description": "단지카 - 아파트 공용차 예약",
     "orientation": "portrait-primary",
     "prefer_related_applications": false,
     "icons": [
