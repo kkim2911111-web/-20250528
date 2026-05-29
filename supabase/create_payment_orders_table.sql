@@ -13,8 +13,9 @@ create table if not exists public.payment_orders (
   end_time timestamptz not null,
   total_price integer not null check (total_price > 0),
   status text not null default 'pending'
-    check (status in ('pending', 'paid', 'failed', 'cancelled')),
+    check (status in ('pending', 'paid', 'confirmed', 'failed', 'cancelled')),
   payment_key text,
+  has_payment_key boolean not null default false,
   reservation_id uuid,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()

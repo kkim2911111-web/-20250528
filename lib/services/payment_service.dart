@@ -3,6 +3,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../config/payment_config.dart';
 import '../models/payment_confirm_result.dart';
+import '../models/reservation.dart';
 import '../models/vehicle.dart';
 import '../supabase_client.dart';
 import 'reservation_service.dart';
@@ -25,6 +26,9 @@ class PreparePaymentResult {
 class PaymentService {
   final _toss = TossPaymentsLauncher();
   final _reservationService = ReservationService();
+
+  /// 동일 orderId 중복 승인 요청 방지 (페이지 재진입·initState 이중 실행 대비)
+  static final _confirmInflight = <String, Future<PaymentConfirmResult>>{};
 
   String _friendlyError(Object error) {
     if (error is PostgrestException) {
@@ -63,10 +67,17 @@ class PaymentService {
     if (error is FunctionException) {
       final details = error.details;
       if (details is Map && details['error'] != null) {
-        return details['error'].toString();
+        return _mapCancelError(details['error'].toString());
       }
-      if (details is String && details.isNotEmpty) return details;
-      return error.reasonPhrase ?? '결제 승인 API 오류 (Edge Function 배포 확인)';
+      if (details is String && details.isNotEmpty) {
+        final lower = details.toLowerCase();
+        if (lower.contains('toss_secret_key')) {
+          return 'TOSS_SECRET_KEY 시크릿이 Edge Function에 연결되지 않았습니다.\n'
+              'Supabase 대시보드 → Edge Functions → Secrets 확인';
+        }
+        return _mapCancelError(details);
+      }
+      return error.reasonPhrase ?? '결제 API 오류 (Edge Function 배포 확인)';
     }
     if (error is StateError) return error.message;
     final text = error.toString();
@@ -87,8 +98,19 @@ class PaymentService {
       );
 
       final data = response.data;
-      if (data is Map<String, dynamic>) return data;
-      if (data is Map) return Map<String, dynamic>.from(data);
+      if (data is Map<String, dynamic>) {
+        if (data['error'] != null) {
+          throw Exception(_mapCancelError(data['error'].toString()));
+        }
+        return data;
+      }
+      if (data is Map) {
+        final map = Map<String, dynamic>.from(data);
+        if (map['error'] != null) {
+          throw Exception(_mapCancelError(map['error'].toString()));
+        }
+        return map;
+      }
 
       throw Exception('결제 API 응답 형식 오류');
     } on FunctionException catch (e) {
@@ -174,38 +196,186 @@ class PaymentService {
     await openTossPayment(prepared: prepared, method: method);
   }
 
-  /// 결제 성공 콜백 — 토스 승인(Edge Function) 후 reservations 저장
+  /// API 호출 전 — DB에 이미 저장된 결제/예약인지 조회 (네트워크 승인 생략용)
+  Future<PaymentConfirmResult?> tryResolveExistingPayment({
+    required String orderId,
+    String? paymentKey,
+  }) async {
+    final existing =
+        await _reservationService.findReservationByOrderId(orderId);
+    if (existing != null) {
+      return PaymentConfirmResult.fromMap(existing);
+    }
+
+    final paymentOrder =
+        await _reservationService.findPaymentOrderByOrderId(orderId);
+    if (!_reservationService.isPaymentOrderConfirmed(paymentOrder)) {
+      return null;
+    }
+
+    final linkedId = paymentOrder?['reservation_id']?.toString() ?? '';
+    if (linkedId.isEmpty) return null;
+
+    return PaymentConfirmResult(
+      reservationId: linkedId,
+      orderId: orderId,
+      paymentKey: paymentKey ?? paymentOrder?['payment_key']?.toString() ?? '',
+      alreadyPaid: true,
+    );
+  }
+
+  /// 결제 성공 콜백 — 토스 승인 후 reservations 저장
   Future<PaymentConfirmResult> onPaymentSuccess({
     required String paymentKey,
     required String orderId,
     required int amount,
+  }) {
+    final existingFuture = _confirmInflight[orderId];
+    if (existingFuture != null) {
+      debugPrint(
+        '[payment/success] reuse in-flight confirm for orderId=$orderId',
+      );
+      return existingFuture;
+    }
+
+    final future = _onPaymentSuccessOnce(
+      paymentKey: paymentKey,
+      orderId: orderId,
+      amount: amount,
+    );
+    _confirmInflight[orderId] = future;
+    return future.whenComplete(() => _confirmInflight.remove(orderId));
+  }
+
+  Future<PaymentConfirmResult> _onPaymentSuccessOnce({
+    required String paymentKey,
+    required String orderId,
+    required int amount,
   }) async {
-    try {
-      return await _confirmViaEdgeFunction(
+    final existing = await _reservationService.findReservationByOrderId(orderId);
+    if (existing != null) {
+      debugPrint(
+        '[payment/success] reservation already exists for orderId=$orderId',
+      );
+      return _finalizePaymentResult(
+        PaymentConfirmResult.fromMap(existing),
         paymentKey: paymentKey,
         orderId: orderId,
-        amount: amount,
       );
-    } on FunctionException catch (_) {
-      // Edge Function 미배포 시 RPC로 reservations 저장 (로컬/테스트 fallback)
-      return _finalizeViaRpc(
-        paymentKey: paymentKey,
-        orderId: orderId,
-        amount: amount,
+    }
+
+    final paymentOrder =
+        await _reservationService.findPaymentOrderByOrderId(orderId);
+    if (_reservationService.isPaymentOrderConfirmed(paymentOrder)) {
+      debugPrint(
+        '[payment/success] payment order already confirmed — skip Toss API: '
+        'orderId=$orderId, status=${paymentOrder?['status']}',
       );
-    } catch (e) {
-      final message = _friendlyError(e);
-      if (message.contains('Edge Function') ||
-          message.contains('payment-confirm') ||
-          message.contains('Failed to fetch')) {
-        return _finalizeViaRpc(
+      final linkedId = paymentOrder?['reservation_id']?.toString() ?? '';
+      if (linkedId.isNotEmpty) {
+        return _finalizePaymentResult(
+          PaymentConfirmResult(
+            reservationId: linkedId,
+            orderId: orderId,
+            paymentKey: paymentKey,
+            alreadyPaid: true,
+          ),
+          paymentKey: paymentKey,
+          orderId: orderId,
+        );
+      }
+      return _finalizePaymentResult(
+        await _finalizeViaRpc(
           paymentKey: paymentKey,
           orderId: orderId,
           amount: amount,
+        ),
+        paymentKey: paymentKey,
+        orderId: orderId,
+      );
+    }
+
+    Object? lastError;
+
+    // Edge Function — 토스 승인 API(POST /v1/payments/confirm) 호출
+    PaymentConfirmResult? edgeResult;
+    try {
+      debugPrint('[payment/success] calling Edge Function payment-confirm...');
+      edgeResult = await _confirmViaEdgeFunction(
+        paymentKey: paymentKey,
+        orderId: orderId,
+        amount: amount,
+      );
+    } on FunctionException catch (e) {
+      debugPrint('[payment/success] Edge Function error: $e');
+      lastError = e;
+    } catch (e) {
+      debugPrint('[payment/success] Edge Function error: $e');
+      lastError = e;
+    }
+
+    if (edgeResult != null && edgeResult.reservationId.isNotEmpty) {
+      return _finalizePaymentResult(
+        edgeResult,
+        paymentKey: paymentKey,
+        orderId: orderId,
+      );
+    }
+
+    // RPC fallback (Edge 실패 또는 TOSS_SECRET_KEY 미설정)
+    try {
+      debugPrint('[payment/success] Edge failed — trying RPC finalize...');
+      final rpcResult = await _finalizeViaRpc(
+        paymentKey: paymentKey,
+        orderId: orderId,
+        amount: amount,
+      );
+      if (rpcResult.reservationId.isNotEmpty) {
+        return _finalizePaymentResult(
+          rpcResult,
+          paymentKey: paymentKey,
+          orderId: orderId,
         );
       }
-      throw Exception(message);
+    } catch (e) {
+      debugPrint('[payment/success] RPC finalize error: $e');
+      lastError ??= e;
     }
+
+    final recovered = await _reservationService.findReservationByOrderId(orderId);
+    if (recovered != null) {
+      return _finalizePaymentResult(
+        PaymentConfirmResult.fromMap(recovered),
+        paymentKey: paymentKey,
+        orderId: orderId,
+      );
+    }
+
+    if (lastError != null) {
+      throw Exception(_friendlyError(lastError));
+    }
+    throw Exception(
+      '결제는 완료되었으나 예약 저장에 실패했습니다.\n'
+      'Supabase SQL Editor에서 fix_reservation_insert.sql 과 '
+      'finalize_reservation_after_payment.sql 을 실행한 뒤 '
+      '결제 완료 화면을 새로고침해주세요.',
+    );
+  }
+
+  Future<PaymentConfirmResult> _finalizePaymentResult(
+    PaymentConfirmResult result, {
+    required String paymentKey,
+    required String orderId,
+  }) async {
+    if (result.reservationId.isEmpty) return result;
+
+    await _reservationService.ensureReservationConfirmed(
+      reservationId: result.reservationId,
+      paymentKey: paymentKey,
+      orderId: orderId,
+    );
+    await _reservationService.waitUntilReservationReady(result.reservationId);
+    return result;
   }
 
   Future<PaymentConfirmResult> _confirmViaEdgeFunction({
@@ -213,11 +383,24 @@ class PaymentService {
     required String orderId,
     required int amount,
   }) async {
+    debugPrint(
+      '[payment/success] Edge payment-confirm request: '
+      'paymentKey=$paymentKey, orderId=$orderId, amount=$amount',
+    );
+
     final body = await _invokeFunction('payment-confirm', {
       'paymentKey': paymentKey,
       'orderId': orderId,
       'amount': amount,
     });
+
+    debugPrint('[payment/success] Edge payment-confirm response: $body');
+
+    if (body['payment'] != null) {
+      debugPrint(
+        '[payment/success] Toss confirm API response: ${body['payment']}',
+      );
+    }
 
     if (body['error'] != null) {
       throw Exception(body['error'].toString());
@@ -244,6 +427,8 @@ class PaymentService {
       );
       return PaymentConfirmResult.fromMap(data);
     } on PostgrestException catch (e) {
+      throw Exception(_friendlyError(e));
+    } catch (e) {
       throw Exception(_friendlyError(e));
     }
   }
@@ -277,6 +462,93 @@ class PaymentService {
       // 취소 API 실패는 UI 복귀를 막지 않음
     }
   }
+
+  /// 확정 예약 취소 + Toss 환불 (payment-cancel Edge Function, TOSS_SECRET_KEY)
+  Future<Map<String, dynamic>> cancelConfirmedReservation({
+    required String reservationId,
+  }) async {
+    try {
+      return await _invokeFunction('payment-cancel', {
+        'reservationId': reservationId,
+      });
+    } on FunctionException catch (e) {
+      if (_isMissingFunctionError(e)) {
+        return _cancelReservationViaRpc(reservationId);
+      }
+      throw Exception(_friendlyError(e));
+    } catch (e) {
+      final message = _friendlyError(e);
+      if (_shouldCancelViaRpcFallback(message)) {
+        return _cancelReservationViaRpc(reservationId);
+      }
+      throw Exception(message);
+    }
+  }
+
+  bool _isMissingFunctionError(FunctionException error) {
+    final details = error.details?.toString().toLowerCase() ?? '';
+    final reason = error.reasonPhrase?.toLowerCase() ?? '';
+    return details.contains('not found') ||
+        reason.contains('not found') ||
+        error.status == 404;
+  }
+
+  bool _shouldCancelViaRpcFallback(String message) {
+    final lower = message.toLowerCase();
+    return lower.contains('failed to fetch') ||
+        lower.contains('payment-cancel') ||
+        lower.contains('v.name') ||
+        lower.contains('does not exist') ||
+        lower.contains('42703') ||
+        lower.contains('cancel_reservation_for_me');
+  }
+
+  Future<Map<String, dynamic>> _cancelReservationViaRpc(
+    String reservationId,
+  ) async {
+    try {
+      final data = await supabase.rpc('cancel_reservation_for_me', params: {
+        'p_reservation_id': reservationId,
+      });
+      if (data is Map<String, dynamic>) return data;
+      if (data is Map) return Map<String, dynamic>.from(data);
+      return {'ok': true};
+    } on PostgrestException catch (e) {
+      throw Exception(_friendlyCancelError(e));
+    }
+  }
+}
+
+String _mapCancelError(String message) {
+  final lower = message.toLowerCase();
+  if (lower.contains('cancel_too_late') ||
+      lower.contains('1시간') ||
+      lower.contains('60분')) {
+    return ReservationCancelMessages.tooLate;
+  }
+  if (lower.contains('invalid input syntax for type uuid')) {
+    return '예약 취소 처리 중 ID 형식 오류가 발생했습니다. 잠시 후 다시 시도해주세요.';
+  }
+  return message;
+}
+
+String _friendlyCancelError(PostgrestException error) {
+  final msg = error.message.toLowerCase();
+  if (msg.contains('cancel_too_late')) {
+    return ReservationCancelMessages.tooLate;
+  }
+  if (msg.contains('invalid_status')) {
+    return '취소할 수 없는 예약 상태입니다.';
+  }
+  if (msg.contains('reservation_not_found')) {
+    return '예약 정보를 찾을 수 없습니다.';
+  }
+  if (msg.contains('cancel_reservation_for_me') &&
+      msg.contains('could not find')) {
+    return '예약 취소 RPC가 설치되지 않았습니다.\n'
+        'Supabase에서 cancel_reservation_rpc.sql 을 실행해주세요.';
+  }
+  return error.message;
 }
 
 String friendlyPaymentError(Object error) {

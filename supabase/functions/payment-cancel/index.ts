@@ -1,5 +1,6 @@
 import { handleCors, jsonResponse } from '../_shared/http.ts';
 import { getAdminClient, getUserFromRequest } from '../_shared/payment.ts';
+import { cancelReservationForUser } from '../_shared/reservation_cancel.ts';
 
 Deno.serve(async (req) => {
   const cors = handleCors(req);
@@ -12,10 +13,33 @@ Deno.serve(async (req) => {
     const user = await getUserFromRequest(req);
     if (!user) return jsonResponse({ error: 'Unauthorized' }, 401);
 
-    const { orderId, code, message } = await req.json();
-    if (!orderId) return jsonResponse({ error: 'orderId 가 필요합니다.' }, 400);
+    const body = await req.json();
+    const { orderId, reservationId, code, message } = body;
 
     const admin = getAdminClient();
+
+    // 확정 예약 취소 + Toss 환불 (TOSS_SECRET_KEY 사용)
+    if (reservationId) {
+      const result = await cancelReservationForUser({
+        admin,
+        userId: user.id,
+        reservationId,
+      });
+
+      return jsonResponse({
+        ok: true,
+        cancelled: true,
+        ...result,
+      });
+    }
+
+    // 결제 실패/취소 — 미결제 주문만 취소
+    if (!orderId) {
+      return jsonResponse(
+        { error: 'orderId 또는 reservationId 가 필요합니다.' },
+        400,
+      );
+    }
 
     const { data: order } = await admin
       .from('payment_orders')
@@ -46,7 +70,10 @@ Deno.serve(async (req) => {
       message: message ?? null,
     });
   } catch (e) {
-    const message = e instanceof Error ? e.message : 'Internal error';
-    return jsonResponse({ error: message }, 500);
+    const err = e as Error & { code?: string };
+    return jsonResponse(
+      { error: err.message || 'Internal error', code: err.code },
+      500,
+    );
   }
 });

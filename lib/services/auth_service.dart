@@ -3,6 +3,9 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../supabase_client.dart';
 
 class AuthService {
+  /// 로그아웃 후 회원가입 화면 표시 (AuthGate에서 처리)
+  void Function(bool toSignUp)? onSignedOut;
+
   User? get currentUser => supabase.auth.currentUser;
 
   Future<void> signInWithEmail({
@@ -43,8 +46,9 @@ class AuthService {
     }
   }
 
-  Future<void> signOut() async {
+  Future<void> signOut({bool toSignUp = false}) async {
     await supabase.auth.signOut();
+    onSignedOut?.call(toSignUp);
   }
 }
 

@@ -1,30 +1,23 @@
-// This is a basic Flutter widget test.
-//
-// To perform an interaction with a widget in your test, use the WidgetTester
-// utility in the flutter_test package. For example, you can send tap and scroll
-// gestures. You can also use WidgetTester to find child widgets in the widget
-// tree, read text, and verify that the values of widget properties are correct.
-
-import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-import 'package:danjicar_app/main.dart';
+import 'package:danjicar_app/routing/app_routes.dart';
 
 void main() {
-  testWidgets('Counter increments smoke test', (WidgetTester tester) async {
-    // Build our app and trigger a frame.
-    await tester.pumpWidget(const MyApp());
+  test('routePath strips query string from payment redirect URL', () {
+    expect(
+      routePath('/payment/success?orderId=abc&paymentKey=pk&amount=1000'),
+      '/payment/success',
+    );
+    expect(routePath('/payment/fail?code=USER_CANCEL'), '/payment/fail');
+    expect(routePath('/home'), '/home');
+  });
 
-    // Verify that our counter starts at 0.
-    expect(find.text('0'), findsOneWidget);
-    expect(find.text('1'), findsNothing);
-
-    // Tap the '+' icon and trigger a frame.
-    await tester.tap(find.byIcon(Icons.add));
-    await tester.pump();
-
-    // Verify that our counter has incremented.
-    expect(find.text('0'), findsNothing);
-    expect(find.text('1'), findsOneWidget);
+  test('isPaymentSuccessPath detects payment success routes', () {
+    expect(isPaymentSuccessPath('/payment/success'), isTrue);
+    expect(
+      isPaymentSuccessPath('/payment/success?orderId=x'),
+      isTrue,
+    );
+    expect(isPaymentSuccessPath('/home'), isFalse);
   });
 }

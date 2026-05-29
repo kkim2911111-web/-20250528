@@ -11,18 +11,81 @@ export async function confirmTossPayment(params: {
   }
 
   const auth = btoa(`${secretKey}:`);
-  const res = await fetch(`${TOSS_API}/payments/confirm`, {
+  const url = `${TOSS_API}/payments/confirm`;
+  const body = JSON.stringify(params);
+
+  console.log('[toss] POST', url, 'request:', body);
+
+  const res = await fetch(url, {
     method: 'POST',
     headers: {
       Authorization: `Basic ${auth}`,
       'Content-Type': 'application/json',
     },
-    body: JSON.stringify(params),
+    body,
   });
 
   const data = await res.json();
+  console.log(
+    '[toss] POST',
+    url,
+    'response status:',
+    res.status,
+    'body:',
+    JSON.stringify(data),
+  );
   if (!res.ok) {
+    const code = data.code as string | undefined;
+    if (
+      res.status === 400 &&
+      (code === 'ALREADY_PROCESSED_PAYMENT' ||
+        code === 'NOT_FOUND_PAYMENT_SESSION')
+    ) {
+      console.log('[toss] payment already confirmed, treating as success:', code);
+      return data;
+    }
     const err = new Error(data.message || '토스 결제 승인 실패') as Error & {
+      code?: string;
+    };
+    err.code = code;
+    throw err;
+  }
+  return data;
+}
+
+export async function cancelTossPayment(params: {
+  paymentKey: string;
+  cancelReason: string;
+  cancelAmount?: number;
+}) {
+  const secretKey = Deno.env.get('TOSS_SECRET_KEY');
+  if (!secretKey) {
+    throw new Error('TOSS_SECRET_KEY 시크릿이 설정되지 않았습니다.');
+  }
+
+  const auth = btoa(`${secretKey}:`);
+  const body: Record<string, unknown> = {
+    cancelReason: params.cancelReason,
+  };
+  if (params.cancelAmount != null) {
+    body.cancelAmount = params.cancelAmount;
+  }
+
+  const res = await fetch(
+    `${TOSS_API}/payments/${encodeURIComponent(params.paymentKey)}/cancel`,
+    {
+      method: 'POST',
+      headers: {
+        Authorization: `Basic ${auth}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(body),
+    },
+  );
+
+  const data = await res.json();
+  if (!res.ok) {
+    const err = new Error(data.message || '토스 결제 취소 실패') as Error & {
       code?: string;
     };
     err.code = data.code;

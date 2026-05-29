@@ -18,7 +18,9 @@ class PaymentConfirmResult {
 
   factory PaymentConfirmResult.fromMap(Map<String, dynamic> map) {
     return PaymentConfirmResult(
-      reservationId: map['reservationId']?.toString() ?? '',
+      reservationId: map['reservationId']?.toString() ??
+          map['reservation_id']?.toString() ??
+          '',
       orderId: map['orderId']?.toString() ?? '',
       paymentKey: map['paymentKey']?.toString() ?? '',
       totalPrice: (map['totalPrice'] as num?)?.toInt(),

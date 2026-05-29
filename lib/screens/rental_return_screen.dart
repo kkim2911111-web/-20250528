@@ -8,6 +8,8 @@ import '../services/rental_service.dart';
 import '../widgets/danji_app_bar.dart';
 import '../widgets/fuel_level_selector.dart';
 import '../widgets/photo_upload_grid.dart';
+import '../theme/danji_colors.dart';
+import '../theme/danji_theme.dart';
 import '../widgets/section_card.dart';
 
 class RentalReturnScreen extends StatefulWidget {
@@ -20,10 +22,6 @@ class RentalReturnScreen extends StatefulWidget {
 }
 
 class _RentalReturnScreenState extends State<RentalReturnScreen> {
-  static const _bg = Color(0xFF071826);
-  static const _textPrimary = Color(0xFFEAF2FF);
-  static const _textSecondary = Color(0xFF9AB3C9);
-
   final _service = RentalService();
   final _mileageController = TextEditingController();
   final _accidentNoteController = TextEditingController();
@@ -138,7 +136,7 @@ class _RentalReturnScreenState extends State<RentalReturnScreen> {
     final vehicle = reservation?.vehicle;
 
     return Scaffold(
-      backgroundColor: _bg,
+      backgroundColor: DanjiColors.background,
       appBar: const DanjiAppBar(title: '차량 반납'),
       body: _loading
           ? const Center(child: CircularProgressIndicator())
@@ -154,7 +152,7 @@ class _RentalReturnScreenState extends State<RentalReturnScreen> {
                           Text(
                             vehicle?.name ?? '차량',
                             style: const TextStyle(
-                              color: _textPrimary,
+                              color: DanjiColors.textPrimary,
                               fontSize: 20,
                               fontWeight: FontWeight.w800,
                             ),
@@ -163,21 +161,27 @@ class _RentalReturnScreenState extends State<RentalReturnScreen> {
                             const SizedBox(height: 8),
                             Text(
                               '대여 시작: ${_dateFormat.format(reservation.rentalStartedAt!)}',
-                              style: const TextStyle(color: _textSecondary),
+                              style: const TextStyle(
+                                color: DanjiColors.textSecondary,
+                              ),
                             ),
                           ],
                           if (reservation.mileageStart != null) ...[
                             const SizedBox(height: 4),
                             Text(
                               '대여 시 주행거리: ${reservation.mileageStart} km',
-                              style: const TextStyle(color: _textSecondary),
+                              style: const TextStyle(
+                                color: DanjiColors.textSecondary,
+                              ),
                             ),
                           ],
                           if (reservation.fuelLevelStart != null) ...[
                             const SizedBox(height: 4),
                             Text(
                               '대여 시 주유: ${FuelLevel.fromValue(reservation.fuelLevelStart)?.label ?? reservation.fuelLevelStart}',
-                              style: const TextStyle(color: _textSecondary),
+                              style: const TextStyle(
+                                color: DanjiColors.textSecondary,
+                              ),
                             ),
                           ],
                         ],
@@ -198,7 +202,7 @@ class _RentalReturnScreenState extends State<RentalReturnScreen> {
                           const Text(
                             '반납 주행거리 (km)',
                             style: TextStyle(
-                              color: _textPrimary,
+                              color: DanjiColors.textPrimary,
                               fontWeight: FontWeight.w700,
                             ),
                           ),
@@ -207,14 +211,14 @@ class _RentalReturnScreenState extends State<RentalReturnScreen> {
                             controller: _mileageController,
                             keyboardType: TextInputType.number,
                             inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-                            style: const TextStyle(color: _textPrimary),
+                            style: const TextStyle(color: DanjiColors.textPrimary),
                             decoration: InputDecoration(
                               hintText: '현재 계기판 km',
                               hintStyle: TextStyle(
-                                color: _textSecondary.withValues(alpha: 0.7),
+                                color: DanjiColors.textMuted,
                               ),
                               filled: true,
-                              fillColor: const Color(0xFF132A3D),
+                              fillColor: DanjiColors.skyLight,
                               border: OutlineInputBorder(
                                 borderRadius: BorderRadius.circular(12),
                                 borderSide: BorderSide.none,
@@ -241,16 +245,18 @@ class _RentalReturnScreenState extends State<RentalReturnScreen> {
                             title: const Text(
                               '사고 발생',
                               style: TextStyle(
-                                color: _textPrimary,
+                                color: DanjiColors.textPrimary,
                                 fontWeight: FontWeight.w700,
                               ),
                             ),
                             subtitle: const Text(
                               '사고가 있었다면 체크 후 내용을 입력해주세요.',
-                              style: TextStyle(color: _textSecondary),
+                              style: const TextStyle(
+                                color: DanjiColors.textSecondary,
+                              ),
                             ),
                             value: _isAccident,
-                            activeThumbColor: const Color(0xFF4DA3FF),
+                            activeThumbColor: DanjiColors.buttonBlue,
                             onChanged: (value) {
                               setState(() {
                                 _isAccident = value;
@@ -263,14 +269,14 @@ class _RentalReturnScreenState extends State<RentalReturnScreen> {
                             TextField(
                               controller: _accidentNoteController,
                               maxLines: 4,
-                              style: const TextStyle(color: _textPrimary),
+                              style: const TextStyle(color: DanjiColors.textPrimary),
                               decoration: InputDecoration(
                                 hintText: '사고 시간, 장소, 내용 등',
                                 hintStyle: TextStyle(
-                                  color: _textSecondary.withValues(alpha: 0.7),
+                                  color: DanjiColors.textMuted,
                                 ),
                                 filled: true,
-                                fillColor: const Color(0xFF132A3D),
+                                fillColor: DanjiColors.skyLight,
                                 border: OutlineInputBorder(
                                   borderRadius: BorderRadius.circular(12),
                                   borderSide: BorderSide.none,
@@ -285,7 +291,7 @@ class _RentalReturnScreenState extends State<RentalReturnScreen> {
                       const SizedBox(height: 12),
                       Text(
                         _error!,
-                        style: const TextStyle(color: Colors.redAccent),
+                        style: const TextStyle(color: DanjiColors.accentRed),
                       ),
                     ],
                     const SizedBox(height: 20),
@@ -293,15 +299,12 @@ class _RentalReturnScreenState extends State<RentalReturnScreen> {
                       height: 52,
                       child: FilledButton(
                         onPressed: _submitting ? null : _submit,
-                        style: FilledButton.styleFrom(
-                          backgroundColor: Colors.white,
-                          foregroundColor: const Color(0xFF0B2235),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(14),
-                          ),
-                          textStyle: const TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.w800,
+                        style: DanjiTheme.primaryButton.copyWith(
+                          textStyle: WidgetStateProperty.all(
+                            const TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.w800,
+                            ),
                           ),
                         ),
                         child: _submitting

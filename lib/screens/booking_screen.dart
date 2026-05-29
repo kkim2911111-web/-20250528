@@ -8,6 +8,8 @@ import '../models/vehicle_query_result.dart';
 import '../services/payment_service.dart';
 import '../services/reservation_service.dart';
 import '../services/vehicle_service.dart';
+import '../theme/danji_colors.dart';
+import '../theme/danji_theme.dart';
 import '../widgets/danji_app_bar.dart';
 import '../widgets/payment_method_sheet.dart';
 
@@ -19,10 +21,9 @@ class BookingScreen extends StatefulWidget {
 }
 
 class _BookingScreenState extends State<BookingScreen> {
-  static const _bg = Color(0xFF071826);
-  static const _textPrimary = Color(0xFFEAF2FF);
-  static const _textSecondary = Color(0xFF9AB3C9);
-  static const _hours = [6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22];
+  /// 0~23시 시작·종료. 종료 시각이 시작 이하이면 익일로 처리 (예: 23:00~01:00)
+  static const _minHour = 0;
+  static const _maxHour = 23;
 
   final _vehicleService = VehicleService();
   final _reservationService = ReservationService();
@@ -43,6 +44,7 @@ class _BookingScreenState extends State<BookingScreen> {
   void initState() {
     super.initState();
     _selectedDay = _dateOnly(DateTime.now());
+    _normalizeHoursForSelectedDay();
     _vehiclesFuture = _loadVehicles();
   }
 
@@ -54,16 +56,104 @@ class _BookingScreenState extends State<BookingScreen> {
     return result;
   }
 
-  int get _durationHours => _endHour - _startHour;
+  int get _durationHours {
+    final start = _buildStartDateTime(_selectedDay, _startHour);
+    final end = _buildEndDateTime(_selectedDay, _endHour);
+    if (start == null || end == null) return 0;
+    return end.difference(start).inHours;
+  }
+
+  bool _isToday(DateTime day) {
+    final now = DateTime.now();
+    return day.year == now.year &&
+        day.month == now.month &&
+        day.day == now.day;
+  }
+
+  List<int> get _startHourOptions {
+    final options = <int>[
+      for (var h = _minHour; h <= _maxHour; h++) h,
+    ];
+    final day = _selectedDay;
+    if (day == null || !_isToday(day)) return options;
+
+    final now = DateTime.now();
+    return options.where((h) {
+      final slot = _buildStartDateTime(day, h);
+      if (slot == null) return false;
+      // 해당 시간대 시작부터 최소 1시간 예약 가능해야 함
+      return slot.add(const Duration(hours: 1)).isAfter(now);
+    }).toList();
+  }
+
+  List<int> get _endHourOptions {
+    final day = _selectedDay;
+    if (day == null) return const [];
+
+    return [
+      for (var h = _minHour; h <= _maxHour; h++)
+        if (_isValidEndHour(day, h)) h,
+    ];
+  }
+
+  bool _isValidEndHour(DateTime day, int endHour) {
+    final start = _buildStartDateTime(day, _startHour);
+    final end = _buildEndDateTime(day, endHour);
+    if (start == null || end == null) return false;
+    return end.difference(start).inHours >= 1;
+  }
+
+  void _normalizeHoursForSelectedDay() {
+    final starts = _startHourOptions;
+    if (starts.isEmpty) return;
+
+    if (!starts.contains(_startHour)) {
+      _startHour = starts.first;
+    }
+
+    final ends = _endHourOptions;
+    if (ends.isEmpty) return;
+    if (!ends.contains(_endHour)) {
+      _endHour = ends.first;
+    }
+  }
+
+  DateTime? _buildStartDateTime(DateTime? day, int hour) {
+    if (day == null) return null;
+    return DateTime(day.year, day.month, day.day, hour);
+  }
+
+  DateTime? _buildEndDateTime(DateTime? day, int hour) {
+    if (day == null) return null;
+    var end = DateTime(day.year, day.month, day.day, hour);
+    final start = _buildStartDateTime(day, _startHour);
+    if (start != null && !end.isAfter(start)) {
+      end = end.add(const Duration(days: 1));
+    }
+    return end;
+  }
+
+  String _formatHourLabel(int hour) =>
+      '${hour.toString().padLeft(2, '0')}:00';
+
+  String _formatEndHourLabel(int hour) {
+    final day = _selectedDay;
+    if (day == null) return _formatHourLabel(hour);
+
+    final start = _buildStartDateTime(day, _startHour);
+    final end = _buildEndDateTime(day, hour);
+    if (start != null &&
+        end != null &&
+        _dateOnly(end).isAfter(_dateOnly(start))) {
+      return '${_formatHourLabel(hour)} (익일)';
+    }
+    return _formatHourLabel(hour);
+  }
 
   int? get _totalPrice {
     final vehicle = _selected;
     if (vehicle == null || _durationHours < 1) return null;
     return _durationHours * vehicle.pricePerHour;
-  }
-
-  DateTime? _buildDateTime(DateTime day, int hour) {
-    return DateTime(day.year, day.month, day.day, hour);
   }
 
   void _selectVehicle(Vehicle vehicle) {
@@ -95,8 +185,8 @@ class _BookingScreenState extends State<BookingScreen> {
       return;
     }
 
-    final startTime = _buildDateTime(day, _startHour);
-    final endTime = _buildDateTime(day, _endHour);
+    final startTime = _buildStartDateTime(day, _startHour);
+    final endTime = _buildEndDateTime(day, _endHour);
     final totalPrice = _totalPrice;
     if (startTime == null || endTime == null || totalPrice == null) return;
 
@@ -157,21 +247,21 @@ class _BookingScreenState extends State<BookingScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: _bg,
+      backgroundColor: DanjiColors.background,
       appBar: const DanjiAppBar(title: '차량 예약'),
       body: FutureBuilder<VehicleQueryResult>(
         future: _vehiclesFuture,
         builder: (context, snapshot) {
           if (snapshot.connectionState == ConnectionState.waiting) {
             return const Center(
-              child: CircularProgressIndicator(color: _textPrimary),
+              child: CircularProgressIndicator(),
             );
           }
           if (snapshot.hasError) {
             return Center(
               child: Text(
                 '차량 목록 오류: ${snapshot.error}',
-                style: const TextStyle(color: Colors.redAccent),
+                style: const TextStyle(color: DanjiColors.accentRed),
               ),
             );
           }
@@ -187,20 +277,32 @@ class _BookingScreenState extends State<BookingScreen> {
                   result?.emptyMessage ??
                       '등록된 차량이 없습니다.\n입주민 인증·승인·Supabase 차량 데이터를 확인해주세요.',
                   textAlign: TextAlign.center,
-                  style: const TextStyle(color: _textSecondary, height: 1.5),
+                  style: const TextStyle(
+                    color: DanjiColors.textSecondary,
+                    height: 1.5,
+                  ),
                 ),
               ),
             );
           }
 
-          return ListView(
+          return RefreshIndicator(
+            color: DanjiColors.buttonBlue,
+            onRefresh: () async {
+              setState(() {
+                _vehiclesFuture = _loadVehicles();
+              });
+              await _vehiclesFuture;
+            },
+            child: ListView(
+            physics: const AlwaysScrollableScrollPhysics(),
             padding: const EdgeInsets.all(20),
             children: [
               if (result?.complexName != null) ...[
                 Text(
                   '${result!.complexName} 공용차',
                   style: const TextStyle(
-                    color: _textPrimary,
+                    color: DanjiColors.textPrimary,
                     fontSize: 20,
                     fontWeight: FontWeight.w700,
                   ),
@@ -211,7 +313,7 @@ class _BookingScreenState extends State<BookingScreen> {
                     child: Text(
                       '초대코드 ${result.inviteCode} · 다른 단지 차량은 표시되지 않습니다',
                       style: TextStyle(
-                        color: _textSecondary.withValues(alpha: 0.9),
+                        color: DanjiColors.textSecondary.withValues(alpha: 0.9),
                         fontSize: 13,
                       ),
                     ),
@@ -222,7 +324,7 @@ class _BookingScreenState extends State<BookingScreen> {
                 const Text(
                   '차량 선택',
                   style: TextStyle(
-                    color: _textPrimary,
+                    color: DanjiColors.textPrimary,
                     fontSize: 18,
                     fontWeight: FontWeight.w700,
                   ),
@@ -250,21 +352,34 @@ class _BookingScreenState extends State<BookingScreen> {
                       formatButtonVisible: false,
                       titleCentered: true,
                       titleTextStyle: TextStyle(
-                        color: _textPrimary,
+                        color: DanjiColors.textPrimary,
                         fontWeight: FontWeight.w700,
                       ),
-                      leftChevronIcon: Icon(Icons.chevron_left, color: _textPrimary),
-                      rightChevronIcon: Icon(Icons.chevron_right, color: _textPrimary),
+                      leftChevronIcon: const Icon(
+                        Icons.chevron_left,
+                        color: DanjiColors.textPrimary,
+                      ),
+                      rightChevronIcon: const Icon(
+                        Icons.chevron_right,
+                        color: DanjiColors.textPrimary,
+                      ),
                     ),
                     calendarStyle: CalendarStyle(
                       outsideDaysVisible: false,
-                      defaultTextStyle: const TextStyle(color: _textPrimary),
+                      defaultTextStyle:
+                          const TextStyle(color: DanjiColors.textPrimary),
+                      weekendTextStyle:
+                          const TextStyle(color: DanjiColors.textSecondary),
+                      todayTextStyle: const TextStyle(
+                        color: DanjiColors.buttonBlue,
+                        fontWeight: FontWeight.w800,
+                      ),
                       todayDecoration: BoxDecoration(
-                        color: Colors.white.withValues(alpha: 0.08),
+                        color: DanjiColors.skyLight,
                         shape: BoxShape.circle,
                       ),
                       selectedDecoration: const BoxDecoration(
-                        color: Color(0xFF4DA3FF),
+                        color: DanjiColors.buttonBlue,
                         shape: BoxShape.circle,
                       ),
                       selectedTextStyle: const TextStyle(
@@ -279,6 +394,7 @@ class _BookingScreenState extends State<BookingScreen> {
                         _selectedDay = _dateOnly(selectedDay);
                         _focusedDay = focusedDay;
                         _error = null;
+                        _normalizeHoursForSelectedDay();
                       });
                     },
                     onPageChanged: (focusedDay) => _focusedDay = focusedDay,
@@ -291,23 +407,23 @@ class _BookingScreenState extends State<BookingScreen> {
                       _HourDropdown(
                         label: '시작 (1시간 단위)',
                         value: _startHour,
-                        hours: _hours.where((h) => h < 22).toList(),
+                        hours: _startHourOptions,
+                        labelBuilder: _formatHourLabel,
                         onChanged: (hour) {
                           if (hour == null) return;
                           setState(() {
                             _startHour = hour;
-                            if (_endHour <= _startHour) {
-                              _endHour = _startHour + 1;
-                            }
+                            _normalizeHoursForSelectedDay();
                             _error = null;
                           });
                         },
                       ),
-                      const Divider(height: 24, color: Color(0xFF1A3348)),
+                      const Divider(height: 24, color: DanjiColors.border),
                       _HourDropdown(
                         label: '종료 (1시간 단위)',
                         value: _endHour,
-                        hours: _hours.where((h) => h > _startHour).toList(),
+                        hours: _endHourOptions,
+                        labelBuilder: _formatEndHourLabel,
                         onChanged: (hour) {
                           if (hour == null) return;
                           setState(() {
@@ -322,10 +438,13 @@ class _BookingScreenState extends State<BookingScreen> {
                 if (_selectedDay != null) ...[
                   const SizedBox(height: 12),
                   Text(
-                    '예약: ${_dateFormat.format(_buildDateTime(_selectedDay!, _startHour)!)}'
-                    ' ~ ${_dateFormat.format(_buildDateTime(_selectedDay!, _endHour)!)}'
+                    '예약: ${_dateFormat.format(_buildStartDateTime(_selectedDay!, _startHour)!)}'
+                    ' ~ ${_dateFormat.format(_buildEndDateTime(_selectedDay!, _endHour)!)}'
                     ' (${_durationHours}시간)',
-                    style: const TextStyle(color: _textSecondary, height: 1.4),
+                    style: const TextStyle(
+                      color: DanjiColors.textSecondary,
+                      height: 1.4,
+                    ),
                   ),
                 ],
                 if (_totalPrice != null) ...[
@@ -333,7 +452,7 @@ class _BookingScreenState extends State<BookingScreen> {
                   Text(
                     '총 요금: ₩${_formatWon(_totalPrice!)}',
                     style: const TextStyle(
-                      color: _textPrimary,
+                      color: DanjiColors.textPrimary,
                       fontSize: 18,
                       fontWeight: FontWeight.w800,
                     ),
@@ -341,7 +460,10 @@ class _BookingScreenState extends State<BookingScreen> {
                 ],
                 if (_error != null) ...[
                   const SizedBox(height: 12),
-                  Text(_error!, style: const TextStyle(color: Colors.redAccent)),
+                  Text(
+                    _error!,
+                    style: const TextStyle(color: DanjiColors.accentRed),
+                  ),
                 ],
                 const SizedBox(height: 16),
                 SizedBox(
@@ -349,13 +471,7 @@ class _BookingScreenState extends State<BookingScreen> {
                   width: double.infinity,
                   child: FilledButton(
                     onPressed: _loading ? null : _submit,
-                    style: FilledButton.styleFrom(
-                      backgroundColor: Colors.white,
-                      foregroundColor: const Color(0xFF0B2235),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(14),
-                      ),
-                    ),
+                    style: DanjiTheme.primaryButton,
                     child: _loading
                         ? const SizedBox(
                             height: 20,
@@ -373,6 +489,7 @@ class _BookingScreenState extends State<BookingScreen> {
                 ),
               ],
             ],
+          ),
           );
         },
       ),
@@ -393,48 +510,62 @@ class _VehicleTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    const primary = Color(0xFFEAF2FF);
-    const secondary = Color(0xFF9AB3C9);
-
     return Padding(
       padding: const EdgeInsets.only(bottom: 8),
       child: Material(
-        color: selected ? const Color(0xFF16324A) : const Color(0xFF0B2235),
+        color: selected ? DanjiColors.skyLight : DanjiColors.surface,
         borderRadius: BorderRadius.circular(14),
         child: InkWell(
           onTap: onTap,
           borderRadius: BorderRadius.circular(14),
-          child: Padding(
-            padding: const EdgeInsets.all(14),
-            child: Row(
-              children: [
-                Icon(
-                  Icons.directions_car_filled_outlined,
-                  color: vehicle.isAvailable ? primary : secondary,
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        vehicle.name,
-                        style: TextStyle(
-                          color: primary,
-                          fontWeight: FontWeight.w700,
-                          fontSize: 16,
-                        ),
-                      ),
-                      Text(
-                        '${vehicle.vehicleType} · ${vehicle.priceLabel}',
-                        style: const TextStyle(color: secondary, fontSize: 13),
-                      ),
-                    ],
+          child: DecoratedBox(
+            decoration: BoxDecoration(
+              border: Border.all(
+                color: selected ? DanjiColors.buttonBlue : DanjiColors.border,
+                width: selected ? 1.5 : 1,
+              ),
+              borderRadius: BorderRadius.circular(14),
+            ),
+            child: Padding(
+              padding: const EdgeInsets.all(14),
+              child: Row(
+                children: [
+                  Icon(
+                    Icons.directions_car_filled_outlined,
+                    color: vehicle.isAvailable
+                        ? DanjiColors.textPrimary
+                        : DanjiColors.textSecondary,
                   ),
-                ),
-                if (selected)
-                  const Icon(Icons.check_circle, color: Color(0xFF4DA3FF)),
-              ],
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          vehicle.name,
+                          style: const TextStyle(
+                            color: DanjiColors.textPrimary,
+                            fontWeight: FontWeight.w700,
+                            fontSize: 16,
+                          ),
+                        ),
+                        Text(
+                          '${vehicle.vehicleType} · ${vehicle.priceLabel}',
+                          style: const TextStyle(
+                            color: DanjiColors.textSecondary,
+                            fontSize: 13,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  if (selected)
+                    const Icon(
+                      Icons.check_circle,
+                      color: DanjiColors.buttonBlue,
+                    ),
+                ],
+              ),
             ),
           ),
         ),
@@ -457,7 +588,7 @@ class _VehicleDetailCard extends StatelessWidget {
           Text(
             vehicle.name,
             style: const TextStyle(
-              color: Color(0xFFEAF2FF),
+              color: DanjiColors.textPrimary,
               fontSize: 20,
               fontWeight: FontWeight.w800,
             ),
@@ -495,14 +626,14 @@ class _DetailRow extends StatelessWidget {
             width: 56,
             child: Text(
               label,
-              style: const TextStyle(color: Color(0xFF9AB3C9)),
+              style: const TextStyle(color: DanjiColors.textSecondary),
             ),
           ),
           Expanded(
             child: Text(
               value,
               style: const TextStyle(
-                color: Color(0xFFEAF2FF),
+                color: DanjiColors.textPrimary,
                 fontWeight: FontWeight.w600,
               ),
             ),
@@ -524,9 +655,9 @@ class _SectionCard extends StatelessWidget {
       width: double.infinity,
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: const Color(0xFF0B2235),
+        color: DanjiColors.surface,
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: Colors.white.withValues(alpha: 0.06)),
+        border: Border.all(color: DanjiColors.border),
       ),
       child: child,
     );
@@ -537,12 +668,14 @@ class _HourDropdown extends StatelessWidget {
   final String label;
   final int value;
   final List<int> hours;
+  final String Function(int hour) labelBuilder;
   final ValueChanged<int?> onChanged;
 
   const _HourDropdown({
     required this.label,
     required this.value,
     required this.hours,
+    required this.labelBuilder,
     required this.onChanged,
   });
 
@@ -554,26 +687,32 @@ class _HourDropdown extends StatelessWidget {
           child: Text(
             label,
             style: const TextStyle(
-              color: Color(0xFF9AB3C9),
+              color: DanjiColors.textSecondary,
               fontWeight: FontWeight.w600,
             ),
           ),
         ),
-        DropdownButton<int>(
-          value: hours.contains(value) ? value : null,
-          dropdownColor: const Color(0xFF0B2235),
-          style: const TextStyle(color: Color(0xFFEAF2FF)),
-          underline: const SizedBox.shrink(),
-          items: hours
-              .map(
-                (h) => DropdownMenuItem(
-                  value: h,
-                  child: Text('${h.toString().padLeft(2, '0')}:00'),
-                ),
-              )
-              .toList(),
-          onChanged: onChanged,
-        ),
+        if (hours.isEmpty)
+          const Text(
+            '선택 가능한 시간 없음',
+            style: TextStyle(color: DanjiColors.accentRed, fontSize: 13),
+          )
+        else
+          DropdownButton<int>(
+            value: hours.contains(value) ? value : null,
+            dropdownColor: DanjiColors.surface,
+            style: const TextStyle(color: DanjiColors.textPrimary),
+            underline: const SizedBox.shrink(),
+            items: hours
+                .map(
+                  (h) => DropdownMenuItem(
+                    value: h,
+                    child: Text(labelBuilder(h)),
+                  ),
+                )
+                .toList(),
+            onChanged: onChanged,
+          ),
       ],
     );
   }

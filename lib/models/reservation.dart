@@ -9,6 +9,9 @@ class Reservation {
   final DateTime? endAt;
   final int totalPrice;
   final String status;
+  final String? paymentKey;
+  final String? paymentStatus;
+  final String? orderId;
   final DateTime? rentalStartedAt;
   final DateTime? returnedAt;
   final List<String> pickupPhotos;
@@ -19,6 +22,7 @@ class Reservation {
   final String? fuelLevelEnd;
   final bool isAccident;
   final String? accidentNote;
+  final bool doorUnlocked;
   final Vehicle? vehicle;
 
   const Reservation({
@@ -29,6 +33,9 @@ class Reservation {
     this.endAt,
     required this.totalPrice,
     required this.status,
+    this.paymentKey,
+    this.paymentStatus,
+    this.orderId,
     this.rentalStartedAt,
     this.returnedAt,
     this.pickupPhotos = const [],
@@ -39,6 +46,7 @@ class Reservation {
     this.fuelLevelEnd,
     this.isAccident = false,
     this.accidentNote,
+    this.doorUnlocked = false,
     this.vehicle,
   });
 
@@ -57,6 +65,9 @@ class Reservation {
       endAt: _parseDate(map['end_at'] ?? map['end_time']),
       totalPrice: (map['total_price'] as num?)?.toInt() ?? 0,
       status: map['status']?.toString() ?? 'pending',
+      paymentKey: map['payment_key']?.toString(),
+      paymentStatus: map['payment_status']?.toString(),
+      orderId: map['order_id']?.toString(),
       rentalStartedAt: _parseDate(map['rental_started_at']),
       returnedAt: _parseDate(map['returned_at']),
       pickupPhotos: _parseStringList(map['pickup_photos']),
@@ -67,6 +78,7 @@ class Reservation {
       fuelLevelEnd: map['fuel_level_end']?.toString(),
       isAccident: map['is_accident'] == true,
       accidentNote: map['accident_note']?.toString(),
+      doorUnlocked: map['door_unlocked'] == true,
       vehicle: vehicle,
     );
   }
@@ -84,11 +96,137 @@ class Reservation {
     return const [];
   }
 
-  bool get canStartRental => status == 'confirmed';
+  bool get canStartRental =>
+      (status == 'confirmed' || status == 'pending') &&
+      !isEffectivelyFinished;
+
+  bool get canUseVehicle => status == 'in_use';
 
   bool get canReturn => status == 'in_use';
 
   bool get isFinished => status == 'returned' || status == 'completed';
+
+  bool get isCancelled => status == 'cancelled';
+
+  bool get isPaid =>
+      paymentStatus == 'paid' ||
+      (paymentKey != null && paymentKey!.trim().isNotEmpty);
+
+  bool get isCancellableStatus =>
+      status == 'confirmed' || status == 'pending';
+
+  /// 대여 시작 전인지
+  bool get isBeforeRentalStart {
+    final start = _start;
+    if (start == null) return true;
+    return DateTime.now().isBefore(start);
+  }
+
+  /// 취소 버튼 표시 — 이용 대기 중 결제/확정 예약
+  bool get canShowCancelButton =>
+      !isCancelled &&
+      !isFinished &&
+      status != 'in_use' &&
+      isCancellableStatus &&
+      isBeforeRentalStart;
+
+  /// 예약 취소 가능 — 대여 시작 1시간(60분) 전까지만 (미결제 pending 은 시작 전이면 가능)
+  bool get canCancel {
+    if (!canShowCancelButton) return false;
+    if (status == 'pending' && !isPaid) return true;
+    final start = _start;
+    if (start == null) return true;
+    return DateTime.now().add(const Duration(hours: 1)).isBefore(start);
+  }
+
+  /// 대여 1시간(60분) 이내로 취소 불가
+  bool get isCancelBlocked =>
+      canShowCancelButton && !canCancel;
+
+  DateTime? get _start => startAt;
+  DateTime? get _end => endAt;
+
+  /// 예약 이용 시간대 내 (start ~ end)
+  bool get isWithinUsageWindow {
+    final start = _start;
+    final end = _end;
+    if (start == null || end == null) return false;
+    final now = DateTime.now();
+    return !now.isBefore(start) && !now.isAfter(end);
+  }
+
+  /// 이용 시작 전 (시작 시각 없으면 대기로 분류)
+  bool get isBeforeUsageWindow {
+    final start = _start;
+    if (start == null) return true;
+    return DateTime.now().isBefore(start);
+  }
+
+  /// 이용 종료 시각 경과
+  bool get isUsageTimeExpired {
+    final end = _end;
+    if (end == null) return false;
+    return DateTime.now().isAfter(end);
+  }
+
+  bool get isActiveStatus =>
+      status == 'confirmed' || status == 'in_use' || status == 'pending';
+
+  /// DB completed/returned 또는 (in_use 제외) 이용시간 경과
+  bool get isEffectivelyFinished =>
+      isFinished ||
+      isCancelled ||
+      (isActiveStatus && status != 'in_use' && isUsageTimeExpired);
+
+  /// 마이페이지 이용내역 — 취소·완료·시간 경과(미운행 확정 예약)
+  bool get isInUsageHistory => isEffectivelyFinished;
+
+  /// 운행 중 — in_use 또는 이용 시간대 내
+  bool get isOperating =>
+      status == 'in_use' ||
+      (!isEffectivelyFinished &&
+          isActiveStatus &&
+          _start != null &&
+          isWithinUsageWindow);
+
+  /// 이용 대기 — 시작 전 (또는 시작 시각 미설정)
+  bool get isWaiting =>
+      !isEffectivelyFinished &&
+      isActiveStatus &&
+      !isOperating &&
+      (_start == null || isBeforeUsageWindow);
+
+  /// 예약 종료 시각이 지나지 않았는지
+  bool get isNotExpired => !isUsageTimeExpired;
+
+  /// 스마트키 — 대여 중·이용 대기·이용 시간대 내 활성 예약
+  bool get isSmartKeyEligible =>
+      !isEffectivelyFinished &&
+      isActiveStatus &&
+      (status == 'in_use' || isOperating || isWaiting);
+
+  DateTime get sortByStart => startAt ?? DateTime.fromMillisecondsSinceEpoch(0);
+
+  /// 홈·내 예약 — 대여 시작까지 남은 시간 문구
+  String get timeUntilStartLabel {
+    final start = startAt;
+    if (start == null) return '예약 확정';
+    final diff = start.difference(DateTime.now());
+    if (diff.isNegative) return '이용 가능 시간';
+    if (diff.inDays >= 1) return '${diff.inDays}일 후 시작';
+    if (diff.inHours >= 1) return '${diff.inHours}시간 후 시작';
+    if (diff.inMinutes >= 1) return '${diff.inMinutes}분 후 시작';
+    return '곧 시작';
+  }
+
+  String get displayStatusLabel {
+    if (isCancelled) return '예약 취소';
+    if (isEffectivelyFinished && !isFinished) return '이용 종료';
+    if (isOperating) return '운행 중';
+    if (isWaiting) return '이용 대기';
+    if (isFinished) return '이용 완료';
+    return statusLabel;
+  }
 
   String get statusLabel {
     switch (status) {
@@ -102,8 +240,19 @@ class Reservation {
         return '반납 완료';
       case 'completed':
         return '이용 완료';
+      case 'cancelled':
+        return '예약 취소';
       default:
         return status;
     }
   }
+}
+
+/// 예약 취소 안내 문구
+abstract final class ReservationCancelMessages {
+  static const success = '예약취소가 완료되었습니다.';
+  static const tooLate = '대여예약 1시간(60분)이전에는 예약취소가 불가능합니다';
+  static const waitingGuide =
+      '이용 시작 전까지「예약취소」를 누르면 결제 금액이 전액 환불됩니다. '
+      '단, 대여예약 1시간(60분) 이내에는 예약취소가 불가능합니다.';
 }

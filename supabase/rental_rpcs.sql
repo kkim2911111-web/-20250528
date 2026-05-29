@@ -50,7 +50,7 @@ begin
     raise exception 'reservation_not_found';
   end if;
 
-  if v_row.status <> 'confirmed' then
+  if v_row.status not in ('confirmed', 'pending') then
     raise exception 'invalid_status';
   end if;
 

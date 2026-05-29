@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../models/vehicle.dart';
 import '../models/vehicle_query_result.dart';
 import '../services/vehicle_service.dart';
+import '../theme/danji_colors.dart';
 import 'vehicle_card.dart';
 
 class VehicleListView extends StatefulWidget {
@@ -20,10 +21,6 @@ class VehicleListView extends StatefulWidget {
 }
 
 class _VehicleListViewState extends State<VehicleListView> {
-  static const _textPrimary = Color(0xFFEAF2FF);
-  static const _textSecondary = Color(0xFF9AB3C9);
-  static const _card = Color(0xFF0B2235);
-
   final _service = VehicleService();
   late Future<VehicleQueryResult> _vehiclesFuture;
 
@@ -43,15 +40,15 @@ class _VehicleListViewState extends State<VehicleListView> {
   @override
   Widget build(BuildContext context) {
     return RefreshIndicator(
-      color: _textPrimary,
-      backgroundColor: _card,
+      color: DanjiColors.buttonBlue,
+      backgroundColor: DanjiColors.surface,
       onRefresh: _reload,
       child: FutureBuilder<VehicleQueryResult>(
         future: _vehiclesFuture,
         builder: (context, snapshot) {
           if (snapshot.connectionState == ConnectionState.waiting) {
             return const Center(
-              child: CircularProgressIndicator(color: _textPrimary),
+              child: CircularProgressIndicator(),
             );
           }
 
@@ -60,13 +57,15 @@ class _VehicleListViewState extends State<VehicleListView> {
               physics: const AlwaysScrollableScrollPhysics(),
               children: [
                 const SizedBox(height: 80),
-                Icon(Icons.error_outline,
-                    color: Colors.redAccent.shade200, size: 48),
+                Icon(Icons.error_outline, color: DanjiColors.accentRed, size: 48),
                 const SizedBox(height: 12),
                 Text(
                   '차량 목록을 불러오지 못했습니다.\n${snapshot.error}',
                   textAlign: TextAlign.center,
-                  style: const TextStyle(color: _textSecondary, height: 1.5),
+                  style: const TextStyle(
+                    color: DanjiColors.textSecondary,
+                    height: 1.5,
+                  ),
                 ),
               ],
             );
@@ -81,8 +80,8 @@ class _VehicleListViewState extends State<VehicleListView> {
               padding: const EdgeInsets.all(24),
               children: [
                 const SizedBox(height: 32),
-                Icon(Icons.directions_car_outlined,
-                    color: _textSecondary, size: 56),
+                const Icon(Icons.directions_car_outlined,
+                    color: DanjiColors.textSecondary, size: 56),
                 const SizedBox(height: 16),
                 Text(
                   result.issue == VehicleLoadIssue.none
@@ -90,7 +89,7 @@ class _VehicleListViewState extends State<VehicleListView> {
                       : '차량을 불러올 수 없습니다',
                   textAlign: TextAlign.center,
                   style: const TextStyle(
-                    color: _textPrimary,
+                    color: DanjiColors.textPrimary,
                     fontSize: 18,
                     fontWeight: FontWeight.w700,
                   ),
@@ -99,7 +98,10 @@ class _VehicleListViewState extends State<VehicleListView> {
                 Text(
                   result.emptyMessage,
                   textAlign: TextAlign.center,
-                  style: const TextStyle(color: _textSecondary, height: 1.5),
+                  style: const TextStyle(
+                    color: DanjiColors.textSecondary,
+                    height: 1.5,
+                  ),
                 ),
               ],
             );
@@ -115,7 +117,7 @@ class _VehicleListViewState extends State<VehicleListView> {
                 return Text(
                   '${result.complexName} 공용차',
                   style: const TextStyle(
-                    color: _textPrimary,
+                    color: DanjiColors.textPrimary,
                     fontWeight: FontWeight.w700,
                     fontSize: 16,
                   ),

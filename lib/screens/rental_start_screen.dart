@@ -4,6 +4,7 @@ import 'package:intl/intl.dart';
 
 import '../models/fuel_level.dart';
 import '../models/reservation.dart';
+import '../theme/danji_colors.dart';
 import '../services/rental_service.dart';
 import '../widgets/danji_app_bar.dart';
 import '../widgets/fuel_level_selector.dart';
@@ -20,10 +21,6 @@ class RentalStartScreen extends StatefulWidget {
 }
 
 class _RentalStartScreenState extends State<RentalStartScreen> {
-  static const _bg = Color(0xFF071826);
-  static const _textPrimary = Color(0xFFEAF2FF);
-  static const _textSecondary = Color(0xFF9AB3C9);
-
   final _service = RentalService();
   final _mileageController = TextEditingController();
   final _dateFormat = DateFormat('yyyy-MM-dd HH:mm');
@@ -123,8 +120,8 @@ class _RentalStartScreenState extends State<RentalStartScreen> {
     final vehicle = reservation?.vehicle;
 
     return Scaffold(
-      backgroundColor: _bg,
-      appBar: const DanjiAppBar(title: '대여 시작'),
+      backgroundColor: DanjiColors.background,
+      appBar: const DanjiAppBar(title: '운행 시작', light: true),
       body: _loading
           ? const Center(child: CircularProgressIndicator())
           : reservation == null
@@ -139,7 +136,7 @@ class _RentalStartScreenState extends State<RentalStartScreen> {
                           Text(
                             vehicle?.name ?? '차량',
                             style: const TextStyle(
-                              color: _textPrimary,
+                              color: DanjiColors.textPrimary,
                               fontSize: 20,
                               fontWeight: FontWeight.w800,
                             ),
@@ -148,14 +145,14 @@ class _RentalStartScreenState extends State<RentalStartScreen> {
                             const SizedBox(height: 4),
                             Text(
                               '번호: ${vehicle!.carNumber}',
-                              style: const TextStyle(color: _textSecondary),
+                              style: const TextStyle(color: DanjiColors.textSecondary),
                             ),
                           ],
                           if (vehicle?.parkingLocation != null) ...[
                             const SizedBox(height: 4),
                             Text(
                               '주차: ${vehicle!.parkingLocation}',
-                              style: const TextStyle(color: _textSecondary),
+                              style: const TextStyle(color: DanjiColors.textSecondary),
                             ),
                           ],
                           const SizedBox(height: 8),
@@ -165,7 +162,7 @@ class _RentalStartScreenState extends State<RentalStartScreen> {
                               '예약: ${_dateFormat.format(reservation.startAt!)} ~ '
                               '${_dateFormat.format(reservation.endAt!)}',
                               style: const TextStyle(
-                                color: _textSecondary,
+                                color: DanjiColors.textSecondary,
                                 height: 1.4,
                               ),
                             ),
@@ -187,7 +184,7 @@ class _RentalStartScreenState extends State<RentalStartScreen> {
                           const Text(
                             '주행거리 (km)',
                             style: TextStyle(
-                              color: _textPrimary,
+                              color: DanjiColors.textPrimary,
                               fontWeight: FontWeight.w700,
                             ),
                           ),
@@ -196,17 +193,17 @@ class _RentalStartScreenState extends State<RentalStartScreen> {
                             controller: _mileageController,
                             keyboardType: TextInputType.number,
                             inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-                            style: const TextStyle(color: _textPrimary),
+                            style: const TextStyle(color: DanjiColors.textPrimary),
                             decoration: InputDecoration(
                               hintText: '예: 12345',
                               hintStyle: TextStyle(
-                                color: _textSecondary.withValues(alpha: 0.7),
+                                color: DanjiColors.textSecondary.withValues(alpha: 0.7),
                               ),
                               filled: true,
-                              fillColor: const Color(0xFF132A3D),
+                              fillColor: DanjiColors.skyLight,
                               border: OutlineInputBorder(
                                 borderRadius: BorderRadius.circular(12),
-                                borderSide: BorderSide.none,
+                                borderSide: const BorderSide(color: DanjiColors.border),
                               ),
                             ),
                           ),
@@ -224,7 +221,7 @@ class _RentalStartScreenState extends State<RentalStartScreen> {
                       const SizedBox(height: 12),
                       Text(
                         _error!,
-                        style: const TextStyle(color: Colors.redAccent),
+                        style: const TextStyle(color: DanjiColors.accentRed),
                       ),
                     ],
                     const SizedBox(height: 20),
@@ -233,8 +230,8 @@ class _RentalStartScreenState extends State<RentalStartScreen> {
                       child: FilledButton(
                         onPressed: _submitting ? null : _submit,
                         style: FilledButton.styleFrom(
-                          backgroundColor: Colors.white,
-                          foregroundColor: const Color(0xFF0B2235),
+                          backgroundColor: DanjiColors.rentalBlue,
+                          foregroundColor: Colors.white,
                           shape: RoundedRectangleBorder(
                             borderRadius: BorderRadius.circular(14),
                           ),
@@ -249,7 +246,7 @@ class _RentalStartScreenState extends State<RentalStartScreen> {
                                 width: 20,
                                 child: CircularProgressIndicator(strokeWidth: 2),
                               )
-                            : const Text('대여 시작'),
+                            : const Text('운행 시작'),
                       ),
                     ),
                   ],

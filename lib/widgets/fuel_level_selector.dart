@@ -1,11 +1,9 @@
 import 'package:flutter/material.dart';
 
 import '../models/fuel_level.dart';
+import '../theme/danji_colors.dart';
 
 class FuelLevelSelector extends StatelessWidget {
-  static const _textPrimary = Color(0xFFEAF2FF);
-  static const _textSecondary = Color(0xFF9AB3C9);
-
   final FuelLevel? value;
   final ValueChanged<FuelLevel> onChanged;
 
@@ -23,7 +21,7 @@ class FuelLevelSelector extends StatelessWidget {
         const Text(
           '주유 상태',
           style: TextStyle(
-            color: _textPrimary,
+            color: DanjiColors.textPrimary,
             fontWeight: FontWeight.w700,
           ),
         ),
@@ -37,16 +35,14 @@ class FuelLevelSelector extends StatelessWidget {
               label: Text(level.label),
               selected: selected,
               onSelected: (_) => onChanged(level),
-              selectedColor: const Color(0xFF4DA3FF),
-              backgroundColor: const Color(0xFF132A3D),
+              selectedColor: DanjiColors.rentalBlue,
+              backgroundColor: DanjiColors.skyLight,
               labelStyle: TextStyle(
-                color: selected ? Colors.white : _textSecondary,
+                color: selected ? Colors.white : DanjiColors.textSecondary,
                 fontWeight: FontWeight.w600,
               ),
               side: BorderSide(
-                color: selected
-                    ? const Color(0xFF4DA3FF)
-                    : Colors.white.withValues(alpha: 0.08),
+                color: selected ? DanjiColors.rentalBlue : DanjiColors.border,
               ),
             );
           }).toList(),

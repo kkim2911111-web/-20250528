@@ -4,6 +4,8 @@ import 'package:table_calendar/table_calendar.dart';
 
 import '../models/vehicle.dart';
 import '../services/reservation_service.dart';
+import '../theme/danji_colors.dart';
+import '../theme/danji_theme.dart';
 import '../widgets/danji_app_bar.dart';
 
 class ReservationScreen extends StatefulWidget {
@@ -16,11 +18,6 @@ class ReservationScreen extends StatefulWidget {
 }
 
 class _ReservationScreenState extends State<ReservationScreen> {
-  static const _bg = Color(0xFF071826);
-  static const _card = Color(0xFF0B2235);
-  static const _textPrimary = Color(0xFFEAF2FF);
-  static const _textSecondary = Color(0xFF9AB3C9);
-
   final _service = ReservationService();
   final _dateFormat = DateFormat('yyyy-MM-dd HH:mm');
 
@@ -51,9 +48,10 @@ class _ReservationScreenState extends State<ReservationScreen> {
       builder: (context, child) {
         return Theme(
           data: Theme.of(context).copyWith(
-            colorScheme: const ColorScheme.dark(
-              primary: Color(0xFF4DA3FF),
-              surface: _card,
+            colorScheme: ColorScheme.light(
+              primary: DanjiColors.buttonBlue,
+              surface: DanjiColors.surface,
+              onSurface: DanjiColors.textPrimary,
             ),
           ),
           child: child!,
@@ -132,7 +130,7 @@ class _ReservationScreenState extends State<ReservationScreen> {
     final endAt = day != null ? _buildDateTime(day, _endTime) : null;
 
     return Scaffold(
-      backgroundColor: _bg,
+      backgroundColor: DanjiColors.background,
       appBar: const DanjiAppBar(title: '예약하기'),
       body: ListView(
         padding: const EdgeInsets.all(20),
@@ -144,7 +142,7 @@ class _ReservationScreenState extends State<ReservationScreen> {
                 Text(
                   vehicle.name,
                   style: const TextStyle(
-                    color: _textPrimary,
+                    color: DanjiColors.textPrimary,
                     fontSize: 20,
                     fontWeight: FontWeight.w800,
                   ),
@@ -152,7 +150,7 @@ class _ReservationScreenState extends State<ReservationScreen> {
                 const SizedBox(height: 4),
                 Text(
                   '${vehicle.vehicleType} · ${vehicle.priceLabel}',
-                  style: const TextStyle(color: _textSecondary),
+                  style: const TextStyle(color: DanjiColors.textSecondary),
                 ),
               ],
             ),
@@ -174,30 +172,34 @@ class _ReservationScreenState extends State<ReservationScreen> {
                 formatButtonVisible: false,
                 titleCentered: true,
                 titleTextStyle: TextStyle(
-                  color: _textPrimary,
+                  color: DanjiColors.textPrimary,
                   fontWeight: FontWeight.w700,
                 ),
-                leftChevronIcon: Icon(Icons.chevron_left, color: _textPrimary),
-                rightChevronIcon: Icon(Icons.chevron_right, color: _textPrimary),
+                leftChevronIcon:
+                    Icon(Icons.chevron_left, color: DanjiColors.textPrimary),
+                rightChevronIcon:
+                    Icon(Icons.chevron_right, color: DanjiColors.textPrimary),
               ),
               daysOfWeekStyle: const DaysOfWeekStyle(
-                weekdayStyle: TextStyle(color: _textSecondary),
-                weekendStyle: TextStyle(color: _textSecondary),
+                weekdayStyle: TextStyle(color: DanjiColors.textSecondary),
+                weekendStyle: TextStyle(color: DanjiColors.textSecondary),
               ),
               calendarStyle: CalendarStyle(
                 outsideDaysVisible: false,
-                defaultTextStyle: const TextStyle(color: _textPrimary),
-                weekendTextStyle: const TextStyle(color: _textPrimary),
+                defaultTextStyle:
+                    const TextStyle(color: DanjiColors.textPrimary),
+                weekendTextStyle:
+                    const TextStyle(color: DanjiColors.textPrimary),
                 todayDecoration: BoxDecoration(
-                  color: Colors.white.withValues(alpha: 0.08),
+                  color: DanjiColors.skySoft.withValues(alpha: 0.5),
                   shape: BoxShape.circle,
                 ),
                 todayTextStyle: const TextStyle(
-                  color: _textPrimary,
+                  color: DanjiColors.textPrimary,
                   fontWeight: FontWeight.w700,
                 ),
                 selectedDecoration: const BoxDecoration(
-                  color: Color(0xFF4DA3FF),
+                  color: DanjiColors.buttonBlue,
                   shape: BoxShape.circle,
                 ),
                 selectedTextStyle: const TextStyle(
@@ -205,7 +207,7 @@ class _ReservationScreenState extends State<ReservationScreen> {
                   fontWeight: FontWeight.w700,
                 ),
                 disabledTextStyle: TextStyle(
-                  color: _textSecondary.withValues(alpha: 0.35),
+                  color: DanjiColors.textMuted.withValues(alpha: 0.6),
                 ),
               ),
               enabledDayPredicate: (day) {
@@ -232,7 +234,7 @@ class _ReservationScreenState extends State<ReservationScreen> {
                   value: _startTime.format(context),
                   onTap: () => _pickTime(isStart: true),
                 ),
-                const Divider(height: 24, color: Color(0xFF1A3348)),
+                const Divider(height: 24, color: DanjiColors.border),
                 _TimeRow(
                   label: '종료',
                   value: _endTime.format(context),
@@ -245,14 +247,17 @@ class _ReservationScreenState extends State<ReservationScreen> {
             const SizedBox(height: 12),
             Text(
               '예약 시간: ${_dateFormat.format(startAt)} ~ ${_dateFormat.format(endAt)}',
-              style: const TextStyle(color: _textSecondary, height: 1.4),
+              style: const TextStyle(
+                color: DanjiColors.textSecondary,
+                height: 1.4,
+              ),
             ),
           ],
           if (_error != null) ...[
             const SizedBox(height: 12),
             Text(
               _error!,
-              style: const TextStyle(color: Colors.redAccent),
+              style: const TextStyle(color: DanjiColors.accentRed),
             ),
           ],
           const SizedBox(height: 20),
@@ -260,17 +265,7 @@ class _ReservationScreenState extends State<ReservationScreen> {
             height: 52,
             child: FilledButton(
               onPressed: _loading ? null : _submit,
-              style: FilledButton.styleFrom(
-                backgroundColor: Colors.white,
-                foregroundColor: const Color(0xFF0B2235),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(14),
-                ),
-                textStyle: const TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.w800,
-                ),
-              ),
+              style: DanjiTheme.primaryButton,
               child: _loading
                   ? const SizedBox(
                       height: 20,
@@ -287,8 +282,6 @@ class _ReservationScreenState extends State<ReservationScreen> {
 }
 
 class _SectionCard extends StatelessWidget {
-  static const _card = Color(0xFF0B2235);
-
   final Widget child;
 
   const _SectionCard({required this.child});
@@ -298,9 +291,9 @@ class _SectionCard extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: _card,
+        color: DanjiColors.surface,
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: Colors.white.withValues(alpha: 0.06)),
+        border: Border.all(color: DanjiColors.border),
       ),
       child: child,
     );
@@ -330,7 +323,7 @@ class _TimeRow extends StatelessWidget {
             Text(
               label,
               style: const TextStyle(
-                color: Color(0xFF9AB3C9),
+                color: DanjiColors.textSecondary,
                 fontWeight: FontWeight.w600,
               ),
             ),
@@ -338,13 +331,14 @@ class _TimeRow extends StatelessWidget {
             Text(
               value,
               style: const TextStyle(
-                color: Color(0xFFEAF2FF),
+                color: DanjiColors.textPrimary,
                 fontWeight: FontWeight.w700,
                 fontSize: 16,
               ),
             ),
             const SizedBox(width: 8),
-            const Icon(Icons.schedule, color: Color(0xFF9AB3C9), size: 20),
+            const Icon(Icons.schedule,
+                color: DanjiColors.textSecondary, size: 20),
           ],
         ),
       ),

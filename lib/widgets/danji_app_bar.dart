@@ -1,10 +1,13 @@
 import 'package:flutter/material.dart';
 
+import '../theme/danji_colors.dart';
+
 class DanjiAppBar extends StatelessWidget implements PreferredSizeWidget {
   final String title;
   final List<Widget>? extraActions;
   final bool showBack;
   final bool showHome;
+  final bool light;
   final VoidCallback? onHome;
 
   const DanjiAppBar({
@@ -13,11 +16,9 @@ class DanjiAppBar extends StatelessWidget implements PreferredSizeWidget {
     this.extraActions,
     this.showBack = true,
     this.showHome = true,
+    this.light = true,
     this.onHome,
   });
-
-  static const bg = Color(0xFF071826);
-  static const fg = Color(0xFFEAF2FF);
 
   void _goHome(BuildContext context) {
     if (onHome != null) {
@@ -33,9 +34,10 @@ class DanjiAppBar extends StatelessWidget implements PreferredSizeWidget {
     final showHomeButton = showHome && (canPop || onHome != null);
 
     return AppBar(
-      backgroundColor: bg,
-      foregroundColor: fg,
+      backgroundColor: DanjiColors.background,
+      foregroundColor: DanjiColors.textPrimary,
       elevation: 0,
+      scrolledUnderElevation: 0,
       automaticallyImplyLeading: false,
       leading: showBack && canPop
           ? IconButton(
@@ -44,7 +46,13 @@ class DanjiAppBar extends StatelessWidget implements PreferredSizeWidget {
               onPressed: () => Navigator.of(context).pop(),
             )
           : null,
-      title: Text(title),
+      title: Text(
+        title,
+        style: const TextStyle(
+          color: DanjiColors.textPrimary,
+          fontWeight: FontWeight.w800,
+        ),
+      ),
       actions: [
         if (showHomeButton)
           IconButton(

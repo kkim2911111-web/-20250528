@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 
 import '../services/payment_service.dart';
+import '../theme/danji_colors.dart';
+import '../theme/danji_theme.dart';
 
 /// 토스 결제 실패/취소 리다이렉트 → 주문 취소 후 예약 화면 복귀
 class PaymentFailScreen extends StatefulWidget {
@@ -13,10 +15,6 @@ class PaymentFailScreen extends StatefulWidget {
 }
 
 class _PaymentFailScreenState extends State<PaymentFailScreen> {
-  static const _bg = Color(0xFF071826);
-  static const _textPrimary = Color(0xFFEAF2FF);
-  static const _textSecondary = Color(0xFF9AB3C9);
-
   final _paymentService = PaymentService();
   bool _loading = true;
 
@@ -48,22 +46,22 @@ class _PaymentFailScreenState extends State<PaymentFailScreen> {
     final message = widget.queryParams['message'] ?? '결제가 취소되었습니다.';
 
     return Scaffold(
-      backgroundColor: _bg,
+      backgroundColor: DanjiColors.background,
       body: Center(
         child: Padding(
           padding: const EdgeInsets.all(24),
           child: _loading
-              ? const CircularProgressIndicator(color: _textPrimary)
+              ? const CircularProgressIndicator()
               : Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     const Icon(Icons.cancel_outlined,
-                        color: Colors.orangeAccent, size: 56),
+                        color: DanjiColors.accentRed, size: 56),
                     const SizedBox(height: 16),
                     const Text(
                       '결제 실패',
                       style: TextStyle(
-                        color: _textPrimary,
+                        color: DanjiColors.textPrimary,
                         fontSize: 20,
                         fontWeight: FontWeight.w700,
                       ),
@@ -72,16 +70,20 @@ class _PaymentFailScreenState extends State<PaymentFailScreen> {
                     Text(
                       message,
                       textAlign: TextAlign.center,
-                      style: const TextStyle(color: _textSecondary, height: 1.4),
+                      style: const TextStyle(
+                        color: DanjiColors.textSecondary,
+                        height: 1.4,
+                      ),
                     ),
                     const SizedBox(height: 8),
                     const Text(
                       '예약이 취소되었습니다.',
-                      style: TextStyle(color: _textSecondary),
+                      style: TextStyle(color: DanjiColors.textSecondary),
                     ),
                     const SizedBox(height: 24),
                     FilledButton(
                       onPressed: _goBooking,
+                      style: DanjiTheme.primaryButton,
                       child: const Text('예약 화면으로 돌아가기'),
                     ),
                   ],

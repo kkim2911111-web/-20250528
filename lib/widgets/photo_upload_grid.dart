@@ -3,6 +3,8 @@ import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 
+import '../theme/danji_colors.dart';
+
 class PhotoUploadGrid extends StatefulWidget {
   static const maxPhotos = 10;
 
@@ -31,9 +33,6 @@ class PhotoUploadGrid extends StatefulWidget {
 }
 
 class _PhotoUploadGridState extends State<PhotoUploadGrid> {
-  static const _textPrimary = Color(0xFFEAF2FF);
-  static const _textSecondary = Color(0xFF9AB3C9);
-
   final _picker = ImagePicker();
 
   Future<void> _addPhoto() async {
@@ -96,21 +95,25 @@ class _PhotoUploadGridState extends State<PhotoUploadGrid> {
             const Text(
               '차량 사진',
               style: TextStyle(
-                color: _textPrimary,
+                color: DanjiColors.textPrimary,
                 fontWeight: FontWeight.w700,
               ),
             ),
             const Spacer(),
             Text(
               '${widget.photos.length}/${PhotoUploadGrid.maxPhotos}',
-              style: const TextStyle(color: _textSecondary),
+              style: const TextStyle(color: DanjiColors.textSecondary),
             ),
           ],
         ),
         const SizedBox(height: 8),
         const Text(
           '앞·뒤·좌·우·실내·계기판 등 차량 상태를 확인할 수 있도록 촬영해주세요.',
-          style: TextStyle(color: _textSecondary, height: 1.4, fontSize: 13),
+          style: TextStyle(
+            color: DanjiColors.textSecondary,
+            height: 1.4,
+            fontSize: 13,
+          ),
         ),
         const SizedBox(height: 8),
         Wrap(
@@ -120,12 +123,15 @@ class _PhotoUploadGridState extends State<PhotoUploadGrid> {
             return Container(
               padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
               decoration: BoxDecoration(
-                color: const Color(0xFF132A3D),
+                color: DanjiColors.skyLight,
                 borderRadius: BorderRadius.circular(8),
               ),
               child: Text(
                 guide,
-                style: const TextStyle(color: _textSecondary, fontSize: 11),
+                style: const TextStyle(
+                  color: DanjiColors.textSecondary,
+                  fontSize: 11,
+                ),
               ),
             );
           }).toList(),
@@ -184,7 +190,7 @@ class _PhotoTile extends StatelessWidget {
           right: -6,
           child: IconButton.filled(
             style: IconButton.styleFrom(
-              backgroundColor: Colors.black87,
+              backgroundColor: DanjiColors.textPrimary,
               minimumSize: const Size(28, 28),
               padding: EdgeInsets.zero,
             ),
@@ -218,19 +224,19 @@ class _AddPhotoButton extends StatelessWidget {
         width: 96,
         height: 96,
         decoration: BoxDecoration(
-          color: const Color(0xFF132A3D),
+          color: DanjiColors.skyLight,
           borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
+          border: Border.all(color: DanjiColors.border),
         ),
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(icon, color: const Color(0xFF9AB3C9)),
+            Icon(icon, color: DanjiColors.primaryBlue),
             const SizedBox(height: 4),
             Text(
               label,
               style: const TextStyle(
-                color: Color(0xFF9AB3C9),
+                color: DanjiColors.textSecondary,
                 fontSize: 12,
                 fontWeight: FontWeight.w600,
               ),

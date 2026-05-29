@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'supabase_client.dart';
+import 'theme/danji_colors.dart';
 import 'widgets/danji_app_bar.dart';
 
 class ResidentProfile {
@@ -81,7 +82,9 @@ class ResidentRepository {
 }
 
 class ResidentProfileScreen extends StatefulWidget {
-  const ResidentProfileScreen({super.key});
+  final bool embedded;
+
+  const ResidentProfileScreen({super.key, this.embedded = false});
 
   @override
   State<ResidentProfileScreen> createState() => _ResidentProfileScreenState();
@@ -249,6 +252,9 @@ class _ResidentProfileScreenState extends State<ResidentProfileScreen> {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('인증 신청 완료 (승인 대기)')),
       );
+      if (widget.embedded) {
+        Navigator.of(context).pop(true);
+      }
     } catch (e) {
       setState(() => _error = e.toString());
     } finally {
@@ -261,15 +267,23 @@ class _ResidentProfileScreenState extends State<ResidentProfileScreen> {
     final approved = _profile?.approved == true;
 
     return Scaffold(
+      backgroundColor: DanjiColors.background,
       appBar: DanjiAppBar(
         title: '입주민 인증',
-        extraActions: [
-          IconButton(
-            tooltip: '로그아웃',
-            onPressed: () async => supabase.auth.signOut(),
-            icon: const Icon(Icons.logout),
-          ),
-        ],
+        showBack: widget.embedded,
+        showHome: !widget.embedded,
+        light: true,
+        extraActions: widget.embedded
+            ? null
+            : [
+                IconButton(
+                  tooltip: '로그아웃',
+                  onPressed: () async {
+                    await supabase.auth.signOut();
+                  },
+                  icon: const Icon(Icons.logout),
+                ),
+              ],
       ),
       body: Padding(
         padding: const EdgeInsets.all(16),
@@ -277,7 +291,11 @@ class _ResidentProfileScreenState extends State<ResidentProfileScreen> {
           children: [
             const Text(
               '초대코드와 동/호수를 등록하면 관리자가 확인 후 승인합니다.',
-              style: TextStyle(fontWeight: FontWeight.w600),
+              style: TextStyle(
+                fontWeight: FontWeight.w600,
+                color: DanjiColors.textPrimary,
+                height: 1.45,
+              ),
             ),
             const SizedBox(height: 16),
             TextField(
@@ -296,7 +314,10 @@ class _ResidentProfileScreenState extends State<ResidentProfileScreen> {
               const SizedBox(height: 8),
             ],
             if (_lookupError != null)
-              Text(_lookupError!, style: const TextStyle(color: Colors.red)),
+              Text(
+                _lookupError!,
+                style: const TextStyle(color: DanjiColors.accentRed),
+              ),
             if (_complexName != null)
               Card(
                 child: ListTile(
@@ -331,7 +352,10 @@ class _ResidentProfileScreenState extends State<ResidentProfileScreen> {
             if (_error != null)
               Padding(
                 padding: const EdgeInsets.only(bottom: 12),
-                child: Text(_error!, style: const TextStyle(color: Colors.red)),
+                child: Text(
+                  _error!,
+                  style: const TextStyle(color: DanjiColors.accentRed),
+                ),
               ),
             if (approved) ...[
               const Card(

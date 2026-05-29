@@ -28,6 +28,63 @@ end $$;
 -- 3) RLS + insert 정책 재적용
 alter table public.reservations enable row level security;
 
+-- 3-1) vehicles.id ↔ reservations.vehicle_id 타입 불일치 수정
+--      (vehicles.id=bigint, reservations.vehicle_id=uuid 이면 결제 후 저장 100% 실패)
+do $$
+declare
+  v_type text;
+  r_type text;
+  v_count bigint;
+begin
+  select c.data_type into v_type
+  from information_schema.columns c
+  where c.table_schema = 'public'
+    and c.table_name = 'vehicles'
+    and c.column_name = 'id';
+
+  select c.data_type into r_type
+  from information_schema.columns c
+  where c.table_schema = 'public'
+    and c.table_name = 'reservations'
+    and c.column_name = 'vehicle_id';
+
+  if v_type is null or r_type is null or v_type = r_type then
+    return;
+  end if;
+
+  select count(*) into v_count from public.reservations;
+
+  alter table public.reservations drop constraint if exists reservations_vehicle_id_fkey;
+  alter table public.reservations drop constraint if exists reservations_no_overlap_confirmed;
+  alter table public.reservations drop constraint if exists reservations_no_overlap;
+
+  if v_count = 0 then
+    execute format(
+      'alter table public.reservations alter column vehicle_id type %s using vehicle_id::text::%s',
+      v_type,
+      v_type
+    );
+  else
+    raise notice 'reservations.vehicle_id 타입(%). vehicles.id 타입(%). 데이터가 있어 자동 변환을 건너뜁니다.',
+      r_type, v_type;
+  end if;
+
+  begin
+    execute format(
+      'alter table public.reservations add constraint reservations_vehicle_id_fkey '
+      'foreign key (vehicle_id) references public.vehicles(id) on delete restrict'
+    );
+  exception
+    when others then
+      raise notice 'FK 재생성 실패: %', sqlerrm;
+  end;
+end $$;
+
+-- status 제약 (confirmed 저장)
+alter table public.reservations drop constraint if exists reservations_status_check;
+alter table public.reservations add constraint reservations_status_check
+  check (status in ('pending', 'confirmed', 'in_use', 'returned', 'completed', 'cancelled'));
+
 drop policy if exists "reservations_select_own" on public.reservations;
 create policy "reservations_select_own"
 on public.reservations for select to authenticated
@@ -51,7 +108,7 @@ create policy "reservations_insert_own"
 on public.reservations for insert to authenticated
 with check (
   user_id = auth.uid()
-  and coalesce(status, 'pending') = 'pending'
+  and coalesce(status, 'pending') in ('pending', 'confirmed')
   and exists (
     select 1 from public.residents r
     where r.user_id = auth.uid()

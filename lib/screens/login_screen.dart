@@ -1,21 +1,25 @@
 import 'package:flutter/material.dart';
 
 import '../services/auth_service.dart';
-import '../supabase_client.dart';
+import '../theme/danji_colors.dart';
+import '../theme/danji_theme.dart';
 import '../widgets/danji_app_bar.dart';
+import 'admin/admin_sign_up_screen.dart';
 
 class LoginScreen extends StatelessWidget {
-  const LoginScreen({super.key});
+  final VoidCallback? onGoSignUp;
+  final VoidCallback? onGoAdminSignUp;
 
-  static const _bg = Color(0xFF071826); // dark navy
-  static const _card = Color(0xFF0B2235);
-  static const _textPrimary = Color(0xFFEAF2FF);
-  static const _textSecondary = Color(0xFF9AB3C9);
+  const LoginScreen({
+    super.key,
+    this.onGoSignUp,
+    this.onGoAdminSignUp,
+  });
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: _bg,
+      backgroundColor: DanjiColors.background,
       body: SafeArea(
         child: LayoutBuilder(
           builder: (context, constraints) {
@@ -40,11 +44,9 @@ class LoginScreen extends StatelessWidget {
                           Container(
                             padding: const EdgeInsets.all(16),
                             decoration: BoxDecoration(
-                              color: _card,
+                              color: DanjiColors.surface,
                               borderRadius: BorderRadius.circular(16),
-                              border: Border.all(
-                                color: Colors.white.withValues(alpha: 0.06),
-                              ),
+                              border: Border.all(color: DanjiColors.border),
                             ),
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -71,8 +73,8 @@ class LoginScreen extends StatelessWidget {
                                 const SizedBox(height: 12),
                                 _SocialButton(
                                   label: '이메일 로그인',
-                                  background: Colors.white,
-                                  foreground: const Color(0xFF0B2235),
+                                  background: DanjiColors.buttonBlue,
+                                  foreground: Colors.white,
                                   icon: Icons.mail_rounded,
                                   onPressed: () {
                                     Navigator.of(context).push(
@@ -88,10 +90,14 @@ class LoginScreen extends StatelessWidget {
                                   children: [
                                     const Text(
                                       '처음이신가요?',
-                                      style: TextStyle(color: _textSecondary),
+                                      style: TextStyle(color: DanjiColors.textSecondary),
                                     ),
                                     TextButton(
                                       onPressed: () {
+                                        if (onGoSignUp != null) {
+                                          onGoSignUp!();
+                                          return;
+                                        }
                                         Navigator.of(context).push(
                                           MaterialPageRoute(
                                             builder: (_) => const SignUpScreen(),
@@ -99,11 +105,25 @@ class LoginScreen extends StatelessWidget {
                                         );
                                       },
                                       style: TextButton.styleFrom(
-                                        foregroundColor: _textPrimary,
+                                        foregroundColor: DanjiColors.buttonBlue,
                                       ),
                                       child: const Text('회원가입'),
                                     ),
                                   ],
+                                ),
+                                TextButton(
+                                  onPressed: () {
+                                    if (onGoAdminSignUp != null) {
+                                      onGoAdminSignUp!();
+                                      return;
+                                    }
+                                    Navigator.of(context).push(
+                                      MaterialPageRoute(
+                                        builder: (_) => const AdminSignUpScreen(),
+                                      ),
+                                    );
+                                  },
+                                  child: const Text('관리자 회원가입'),
                                 ),
                               ],
                             ),
@@ -113,7 +133,7 @@ class LoginScreen extends StatelessWidget {
                             '계속 진행하면 서비스 이용약관 및 개인정보 처리방침에 동의한 것으로 간주됩니다.',
                             textAlign: TextAlign.center,
                             style: TextStyle(
-                              color: _textSecondary.withValues(alpha: 0.9),
+                              color: DanjiColors.textSecondary.withValues(alpha: 0.9),
                               fontSize: 12,
                               height: 1.35,
                             ),
@@ -136,7 +156,7 @@ class LoginScreen extends StatelessWidget {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(msg),
-        backgroundColor: const Color(0xFF0B2235),
+        backgroundColor: DanjiColors.surface,
       ),
     );
   }
@@ -144,9 +164,6 @@ class LoginScreen extends StatelessWidget {
 
 class _Header extends StatelessWidget {
   const _Header();
-
-  static const _textPrimary = LoginScreen._textPrimary;
-  static const _textSecondary = LoginScreen._textSecondary;
 
   @override
   Widget build(BuildContext context) {
@@ -156,15 +173,15 @@ class _Header extends StatelessWidget {
           height: 72,
           width: 72,
           decoration: BoxDecoration(
-            color: Colors.white.withValues(alpha: 0.06),
+            color: DanjiColors.skyLight,
             borderRadius: BorderRadius.circular(18),
-            border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
+            border: Border.all(color: DanjiColors.border),
           ),
           child: const Center(
             child: Text(
               '단지카',
               style: TextStyle(
-                color: _textPrimary,
+                color: DanjiColors.textPrimary,
                 fontWeight: FontWeight.w800,
                 letterSpacing: -0.2,
               ),
@@ -176,7 +193,7 @@ class _Header extends StatelessWidget {
           '우리 단지의 두 번째 차',
           textAlign: TextAlign.center,
           style: TextStyle(
-            color: _textPrimary,
+            color: DanjiColors.textPrimary,
             fontSize: 20,
             fontWeight: FontWeight.w700,
             height: 1.2,
@@ -187,7 +204,7 @@ class _Header extends StatelessWidget {
           '한 번의 인증, 간편한 예약.',
           textAlign: TextAlign.center,
           style: TextStyle(
-            color: _textSecondary,
+            color: DanjiColors.textSecondary,
             fontSize: 14,
             height: 1.3,
           ),
@@ -245,11 +262,6 @@ class EmailLoginScreen extends StatefulWidget {
 }
 
 class _EmailLoginScreenState extends State<EmailLoginScreen> {
-  static const _bg = LoginScreen._bg;
-  static const _card = LoginScreen._card;
-  static const _textPrimary = LoginScreen._textPrimary;
-  static const _textSecondary = LoginScreen._textSecondary;
-
   final _auth = AuthService();
   final _email = TextEditingController();
   final _password = TextEditingController();
@@ -281,7 +293,6 @@ class _EmailLoginScreenState extends State<EmailLoginScreen> {
       await _auth.signInWithEmail(email: email, password: password);
 
       if (!mounted) return;
-      // AuthGate가 세션 감지 후 HomeScreen으로 자동 전환
       Navigator.of(context).popUntil((route) => route.isFirst);
     } catch (e) {
       setState(() => _error = friendlyAuthError(e));
@@ -293,7 +304,7 @@ class _EmailLoginScreenState extends State<EmailLoginScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: _bg,
+      backgroundColor: DanjiColors.background,
       appBar: const DanjiAppBar(title: '이메일 로그인'),
       body: SafeArea(
         child: Padding(
@@ -304,9 +315,9 @@ class _EmailLoginScreenState extends State<EmailLoginScreen> {
               child: Container(
                 padding: const EdgeInsets.all(16),
                 decoration: BoxDecoration(
-                  color: _card,
+                  color: DanjiColors.surface,
                   borderRadius: BorderRadius.circular(16),
-                  border: Border.all(color: Colors.white.withValues(alpha: 0.06)),
+                  border: Border.all(color: DanjiColors.border),
                 ),
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
@@ -315,14 +326,14 @@ class _EmailLoginScreenState extends State<EmailLoginScreen> {
                     TextField(
                       controller: _email,
                       keyboardType: TextInputType.emailAddress,
-                      style: const TextStyle(color: _textPrimary),
+                      style: const TextStyle(color: DanjiColors.textPrimary),
                       decoration: _inputDecoration('이메일'),
                     ),
                     const SizedBox(height: 12),
                     TextField(
                       controller: _password,
                       obscureText: true,
-                      style: const TextStyle(color: _textPrimary),
+                      style: const TextStyle(color: DanjiColors.textPrimary),
                       decoration: _inputDecoration('비밀번호'),
                     ),
                     const SizedBox(height: 14),
@@ -331,24 +342,14 @@ class _EmailLoginScreenState extends State<EmailLoginScreen> {
                         padding: const EdgeInsets.only(bottom: 10),
                         child: Text(
                           _error!,
-                          style: const TextStyle(color: Colors.redAccent),
+                          style: const TextStyle(color: DanjiColors.accentRed),
                         ),
                       ),
                     SizedBox(
                       height: 52,
                       child: FilledButton(
                         onPressed: _loading ? null : _submit,
-                        style: FilledButton.styleFrom(
-                          backgroundColor: Colors.white,
-                          foregroundColor: const Color(0xFF0B2235),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(14),
-                          ),
-                          textStyle: const TextStyle(
-                            fontSize: 15,
-                            fontWeight: FontWeight.w800,
-                          ),
-                        ),
+                        style: DanjiTheme.primaryButton,
                         child: _loading
                             ? const SizedBox(
                                 height: 18,
@@ -384,35 +385,32 @@ class _EmailLoginScreenState extends State<EmailLoginScreen> {
   InputDecoration _inputDecoration(String label) {
     return InputDecoration(
       labelText: label,
-      labelStyle: TextStyle(color: _textSecondary.withValues(alpha: 0.95)),
+      labelStyle: const TextStyle(color: DanjiColors.textSecondary),
       filled: true,
-      fillColor: Colors.white.withValues(alpha: 0.05),
+      fillColor: DanjiColors.skyLight,
       border: OutlineInputBorder(borderRadius: BorderRadius.circular(14)),
       enabledBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(14),
-        borderSide: BorderSide(color: Colors.white.withValues(alpha: 0.08)),
+        borderSide: const BorderSide(color: DanjiColors.border),
       ),
       focusedBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(14),
-        borderSide: BorderSide(color: Colors.white.withValues(alpha: 0.18)),
+        borderSide: const BorderSide(color: DanjiColors.buttonBlue, width: 1.5),
       ),
     );
   }
 }
 
 class SignUpScreen extends StatefulWidget {
-  const SignUpScreen({super.key});
+  final VoidCallback? onGoLogin;
+
+  const SignUpScreen({super.key, this.onGoLogin});
 
   @override
   State<SignUpScreen> createState() => _SignUpScreenState();
 }
 
 class _SignUpScreenState extends State<SignUpScreen> {
-  static const _bg = LoginScreen._bg;
-  static const _card = LoginScreen._card;
-  static const _textPrimary = LoginScreen._textPrimary;
-  static const _textSecondary = LoginScreen._textSecondary;
-
   final _auth = AuthService();
   final _email = TextEditingController();
   final _password = TextEditingController();
@@ -458,7 +456,6 @@ class _SignUpScreenState extends State<SignUpScreen> {
         return;
       }
 
-      // 가입 직후 세션 생성 → AuthGate가 HomeScreen으로 전환
       Navigator.of(context).popUntil((route) => route.isFirst);
     } catch (e) {
       setState(() => _error = friendlyAuthError(e));
@@ -470,7 +467,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: _bg,
+      backgroundColor: DanjiColors.background,
       appBar: const DanjiAppBar(title: '회원가입'),
       body: SafeArea(
         child: Padding(
@@ -481,9 +478,9 @@ class _SignUpScreenState extends State<SignUpScreen> {
               child: Container(
                 padding: const EdgeInsets.all(16),
                 decoration: BoxDecoration(
-                  color: _card,
+                  color: DanjiColors.surface,
                   borderRadius: BorderRadius.circular(16),
-                  border: Border.all(color: Colors.white.withValues(alpha: 0.06)),
+                  border: Border.all(color: DanjiColors.border),
                 ),
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
@@ -492,14 +489,14 @@ class _SignUpScreenState extends State<SignUpScreen> {
                     TextField(
                       controller: _email,
                       keyboardType: TextInputType.emailAddress,
-                      style: const TextStyle(color: _textPrimary),
+                      style: const TextStyle(color: DanjiColors.textPrimary),
                       decoration: _inputDecoration('이메일'),
                     ),
                     const SizedBox(height: 12),
                     TextField(
                       controller: _password,
                       obscureText: true,
-                      style: const TextStyle(color: _textPrimary),
+                      style: const TextStyle(color: DanjiColors.textPrimary),
                       decoration: _inputDecoration('비밀번호'),
                     ),
                     const SizedBox(height: 14),
@@ -508,24 +505,14 @@ class _SignUpScreenState extends State<SignUpScreen> {
                         padding: const EdgeInsets.only(bottom: 10),
                         child: Text(
                           _error!,
-                          style: const TextStyle(color: Colors.redAccent),
+                          style: const TextStyle(color: DanjiColors.accentRed),
                         ),
                       ),
                     SizedBox(
                       height: 52,
                       child: FilledButton(
                         onPressed: _loading ? null : _submit,
-                        style: FilledButton.styleFrom(
-                          backgroundColor: Colors.white,
-                          foregroundColor: const Color(0xFF0B2235),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(14),
-                          ),
-                          textStyle: const TextStyle(
-                            fontSize: 15,
-                            fontWeight: FontWeight.w800,
-                          ),
-                        ),
+                        style: DanjiTheme.primaryButton,
                         child: _loading
                             ? const SizedBox(
                                 height: 18,
@@ -540,6 +527,10 @@ class _SignUpScreenState extends State<SignUpScreen> {
                       onPressed: _loading
                           ? null
                           : () {
+                              if (widget.onGoLogin != null) {
+                                widget.onGoLogin!();
+                                return;
+                              }
                               Navigator.of(context).pushReplacement(
                                 MaterialPageRoute(
                                   builder: (_) => const EmailLoginScreen(),
@@ -561,19 +552,18 @@ class _SignUpScreenState extends State<SignUpScreen> {
   InputDecoration _inputDecoration(String label) {
     return InputDecoration(
       labelText: label,
-      labelStyle: TextStyle(color: _textSecondary.withValues(alpha: 0.95)),
+      labelStyle: const TextStyle(color: DanjiColors.textSecondary),
       filled: true,
-      fillColor: Colors.white.withValues(alpha: 0.05),
+      fillColor: DanjiColors.skyLight,
       border: OutlineInputBorder(borderRadius: BorderRadius.circular(14)),
       enabledBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(14),
-        borderSide: BorderSide(color: Colors.white.withValues(alpha: 0.08)),
+        borderSide: const BorderSide(color: DanjiColors.border),
       ),
       focusedBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(14),
-        borderSide: BorderSide(color: Colors.white.withValues(alpha: 0.18)),
+        borderSide: const BorderSide(color: DanjiColors.buttonBlue, width: 1.5),
       ),
     );
   }
 }
-

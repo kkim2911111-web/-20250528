@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 
+import '../theme/danji_colors.dart';
+
 class SectionCard extends StatelessWidget {
-  static const cardColor = Color(0xFF0B2235);
+  static const cardColor = DanjiColors.surface;
 
   final Widget child;
   final EdgeInsetsGeometry padding;
@@ -19,7 +21,14 @@ class SectionCard extends StatelessWidget {
       decoration: BoxDecoration(
         color: cardColor,
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: Colors.white.withValues(alpha: 0.06)),
+        border: Border.all(color: DanjiColors.border),
+        boxShadow: const [
+          BoxShadow(
+            color: Color(0x0A000000),
+            blurRadius: 8,
+            offset: Offset(0, 2),
+          ),
+        ],
       ),
       child: child,
     );
