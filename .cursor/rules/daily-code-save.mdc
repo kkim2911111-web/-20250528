@@ -1,27 +1,38 @@
 ---
-description: 날짜별 코드 저장 및 Git 커밋 규칙
+description: 작업 완료 시 자동 Git 커밋·푸시 (1작업 1커밋)
 alwaysApply: true
 ---
 
-# 날짜별 코드 저장
+# 작업 완료 시 자동 Git 저장
 
-작업이 끝나면 아래를 따른다.
+코드 수정·개선 작업이 **한 건 끝날 때마다**, 사용자 멘트 없이 아래를 **자동** 실행한다.
 
-## 1. 작업일지 (changelog)
-- `docs/changelog/YYYY-MM-DD.md` 파일을 만들거나 해당 날짜 섹션에 추가한다.
-- 포함 내용: 추가/수정 기능, 주요 파일 경로, Supabase SQL·배포 메모.
+## 1. 커밋 원칙
+- **1작업 = 1커밋 = 1푸시** (여러 작업을 한 커밋에 묶지 않음)
+- 커밋 메시지: **핵심 요약 한 줄** (한국어, `무엇을 왜` 중심)
+  - 예: `결제 success 라우트 path 분리 및 쿼리 파라미터 전달`
+  - 예: `내 예약 — 종료 예약을 이용내역으로 분리`
+- **질문-only / 리뷰-only** 작업(파일 변경 없음)은 커밋하지 않음
 
-## 2. Git 커밋 (사용자가 요청했을 때)
-- 커밋 메시지 형식: `[YYYY-MM-DD] 한 줄 요약`
-- 커밋 대상: `lib/`, `web/`, `supabase/`, `api/`, `pubspec.yaml`, `vercel.json`, `.env.example`, `docs/changelog/`
-- **제외**: `.dart_tool/`, `build/`, `.env`, `*firebase-adminsdk*.json`, `.idea/`, `*.log`
+## 2. 스테이징
+- **포함**: 해당 작업과 직접 관련된 `lib/`, `supabase/`, `test/`, `web/`, `scripts/`, `docs/changelog/` 등
+- **제외**: `.dart_tool/`, `build/`, `.env`, `.env.*`, `*firebase-adminsdk*.json`, `.idea/`, `*.log`, `supabase/.temp/`, `.flutter-plugins-dependencies`
 
-## 3. GitHub push
-- 사용자가 push를 요청했을 때만 `git push origin main` 실행.
-- push 전 `git status`로 민감 파일·빌드 산출물이 포함되지 않았는지 확인.
+## 3. 실행 순서 (매 작업 종료 시)
+1. `git status` / `git diff`로 변경 범위 확인
+2. 관련 파일만 `git add`
+3. `git commit -m "핵심 요약"`
+4. `git push origin main` (현재 브랜치가 feature면 해당 브랜치 push)
+5. 응답 마지막에 **커밋 해시·푸시 브랜치** 한 줄 보고
 
-## 4. 저장 상태 보고
-- "저장됐는지" 질문 시 구분해서 답한다.
-  - **로컬 파일**: 디스크에 저장됨
-  - **Git commit**: 커밋 여부
-  - **GitHub**: push 여부
+## 4. Git 안전
+- `git config` 변경 금지
+- author 미설정 시 이전 커밋 author 또는 `kkim2@users.noreply.github.com` 환경변수로 1회 커밋
+- force push, amend(예외 조건 아닐 때) 금지
+
+## 5. changelog (선택)
+- 큰 기능·DB 변경이 있으면 `docs/changelog/YYYY-MM-DD.md`에 해당 작업 한 줄 추가 (커밋에 포함 가능)
+
+## 6. 사용자에게 보고
+- 작업 요약 + 커밋 메시지 + `b8287b8 → origin/main` 형태로 간단히 알림
+- push 실패 시 원인과 다음 조치만 보고 (재시도는 자동 1회)
