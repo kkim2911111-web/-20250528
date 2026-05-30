@@ -4,6 +4,7 @@ import 'package:flutter_web_plugins/url_strategy.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:intl/date_symbol_data_local.dart';
 
+import 'config/supabase_config.dart';
 import 'routing/app_routes.dart';
 import 'services/fcm_service.dart';
 import 'supabase_client.dart';
@@ -12,9 +13,9 @@ import 'theme/danji_theme.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  await SupabaseConfig.loadEnv();
   if (kIsWeb) {
     usePathUrlStrategy();
-    // Supabase/세션 복구 전 결제 리다이렉트 URL 보존
     captureLaunchUri();
   }
   runApp(const BootstrapApp());
@@ -31,35 +32,60 @@ class BootstrapApp extends StatefulWidget {
 class _BootstrapAppState extends State<BootstrapApp> {
   final _navKey = GlobalKey<NavigatorState>();
   bool _ready = false;
-  String? _error;
+  String? _initWarning;
 
   @override
   void initState() {
     super.initState();
-    _initSupabase();
+    _initApp();
   }
 
-  Future<void> _initSupabase() async {
-    try {
-      await Supabase.initialize(
-        url: 'https://knxkmngonkzchwelpdjn.supabase.co',
-        anonKey: 'sb_publishable_Mg_xNFRdV1QoH_-m0IsKGQ_fZJbfl6t',
-        authOptions: const FlutterAuthClientOptions(
-          authFlowType: AuthFlowType.pkce,
-        ),
-      );
-      await initializeDateFormatting('ko_KR', null);
+  Future<void> _initApp() async {
+    String? warning;
 
-      if (!_isPaymentReturnUrl()) {
+    try {
+      if (!SupabaseConfig.isConfigured) {
+        warning = 'SUPABASE_URL 또는 SUPABASE_ANON_KEY가 비어 있습니다.\n'
+            '.env 또는 --dart-define를 확인해주세요.';
+      } else {
+        await Supabase.initialize(
+          url: SupabaseConfig.url,
+          anonKey: SupabaseConfig.anonKey,
+          authOptions: const FlutterAuthClientOptions(
+            authFlowType: AuthFlowType.pkce,
+          ),
+        );
+        debugPrint('[bootstrap] Supabase initialized: ${SupabaseConfig.url}');
+      }
+    } catch (e, st) {
+      debugPrint('[bootstrap] Supabase init failed: $e\n$st');
+      warning = 'Supabase 연결 실패: $e\n'
+          'URL: ${SupabaseConfig.url}\n'
+          '.env의 SUPABASE_URL·SUPABASE_ANON_KEY를 확인해주세요.';
+    }
+
+    try {
+      await initializeDateFormatting('ko_KR', null);
+    } catch (e) {
+      debugPrint('[bootstrap] date formatting init failed: $e');
+    }
+
+    if (isSupabaseInitialized && !_isPaymentReturnUrl()) {
+      try {
         await FcmService.instance.initialize();
         if (supabase.auth.currentSession != null) {
           await FcmService.instance.registerForCurrentUser();
         }
+      } catch (e) {
+        debugPrint('[bootstrap] FCM init skipped: $e');
       }
+    }
 
-      if (mounted) setState(() => _ready = true);
-    } catch (e) {
-      if (mounted) setState(() => _error = e.toString());
+    if (mounted) {
+      setState(() {
+        _ready = true;
+        _initWarning = warning;
+      });
     }
   }
 
@@ -71,26 +97,23 @@ class _BootstrapAppState extends State<BootstrapApp> {
 
   @override
   Widget build(BuildContext context) {
-    if (_error != null) {
-      return StartupErrorApp(message: _error!);
-    }
-
     return MaterialApp(
       navigatorKey: _navKey,
       debugShowCheckedModeBanner: false,
       title: '단지카',
       theme: DanjiTheme.light,
-      // path만 initialRoute — 쿼리(?orderId=...)는 paymentQueryParams()로 분리
       initialRoute: webInitialRoute(),
       onGenerateRoute: onGenerateRoute,
       onUnknownRoute: onUnknownRoute,
       onGenerateInitialRoutes: generateInitialRoutes,
       builder: (context, child) {
+        Widget content = child ?? const SizedBox.shrink();
+
         if (!_ready) {
-          return Stack(
+          content = Stack(
             fit: StackFit.expand,
             children: [
-              if (child != null) child,
+              content,
               ColoredBox(
                 color: DanjiColors.background.withValues(alpha: 0.92),
                 child: const Center(
@@ -109,13 +132,51 @@ class _BootstrapAppState extends State<BootstrapApp> {
               ),
             ],
           );
+        } else if (_initWarning != null) {
+          content = Stack(
+            fit: StackFit.expand,
+            children: [
+              content,
+              Align(
+                alignment: Alignment.topCenter,
+                child: Material(
+                  elevation: 1,
+                  color: DanjiColors.accentRed.withValues(alpha: 0.12),
+                  child: Padding(
+                    padding: const EdgeInsets.all(12),
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Icon(
+                          Icons.warning_amber_rounded,
+                          color: DanjiColors.accentRed,
+                          size: 20,
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            _initWarning!,
+                            style: const TextStyle(
+                              color: DanjiColors.accentRed,
+                              fontSize: 13,
+                              height: 1.4,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          );
         }
 
         if (_ready) {
           _registerFcmForegroundOnce();
         }
 
-        return child ?? const SizedBox.shrink();
+        return content;
       },
     );
   }
@@ -123,7 +184,7 @@ class _BootstrapAppState extends State<BootstrapApp> {
   bool _fcmForegroundRegistered = false;
 
   void _registerFcmForegroundOnce() {
-    if (_fcmForegroundRegistered) return;
+    if (_fcmForegroundRegistered || !FcmService.instance.isSupported) return;
     _fcmForegroundRegistered = true;
     FcmService.instance.listenForegroundMessages((message) {
       final title = message.notification?.title;
@@ -134,30 +195,5 @@ class _BootstrapAppState extends State<BootstrapApp> {
         SnackBar(content: Text(title)),
       );
     });
-  }
-}
-
-class StartupErrorApp extends StatelessWidget {
-  final String message;
-
-  const StartupErrorApp({super.key, required this.message});
-
-  @override
-  Widget build(BuildContext context) {
-    return MaterialApp(
-      home: Scaffold(
-        backgroundColor: DanjiColors.background,
-        body: Padding(
-          padding: const EdgeInsets.all(24),
-          child: Center(
-            child: Text(
-              'Supabase 초기화 실패\n\n$message',
-              style: const TextStyle(color: DanjiColors.accentRed),
-              textAlign: TextAlign.center,
-            ),
-          ),
-        ),
-      ),
-    );
   }
 }

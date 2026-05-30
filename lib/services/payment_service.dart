@@ -124,6 +124,12 @@ class PaymentService {
     required DateTime endTime,
     required int totalPrice,
   }) async {
+    if (!isSupabaseInitialized) {
+      throw StateError(
+        '서버(Supabase)에 연결되지 않았습니다.\n'
+        '앱을 새로고침하거나 .env의 SUPABASE_URL·SUPABASE_ANON_KEY를 확인해주세요.',
+      );
+    }
     try {
       final data = await supabase.rpc('prepare_payment_order', params: {
         'p_vehicle_id': vehicle.id,
@@ -552,8 +558,27 @@ String _friendlyCancelError(PostgrestException error) {
 }
 
 String friendlyPaymentError(Object error) {
-  if (error is Exception && error.toString().startsWith('Exception: ')) {
-    return error.toString().substring('Exception: '.length);
+  if (error is StateError) return error.message;
+  if (error is AuthException) {
+    return error.message.isNotEmpty
+        ? error.message
+        : '로그인이 필요합니다. 다시 로그인해주세요.';
   }
-  return error.toString();
+  if (error is PostgrestException) {
+    return error.message;
+  }
+  final text = error.toString();
+  if (text.contains('AbortError') ||
+      text.contains('push service not available')) {
+    return '알림 설정 오류입니다. 예약·결제는 계속 진행할 수 있습니다.';
+  }
+  if (text.contains('알 수 없') || text.toLowerCase().contains('unknown')) {
+    return '결제 요청 중 오류가 발생했습니다.\n'
+        '로그인 상태와 TOSS_CLIENT_KEY 설정을 확인한 뒤 다시 시도해주세요.\n'
+        '(상세: $text)';
+  }
+  if (text.startsWith('Exception: ')) {
+    return text.substring('Exception: '.length);
+  }
+  return text;
 }
