@@ -5,6 +5,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:intl/date_symbol_data_local.dart';
 
 import 'config/supabase_config.dart';
+import 'config/payment_config.dart';
 import 'routing/app_routes.dart';
 import 'services/fcm_service.dart';
 import 'supabase_client.dart';
@@ -14,6 +15,7 @@ import 'theme/danji_theme.dart';
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await SupabaseConfig.loadEnv();
+  PaymentConfig.logLoadedKey();
   if (kIsWeb) {
     usePathUrlStrategy();
     captureLaunchUri();
