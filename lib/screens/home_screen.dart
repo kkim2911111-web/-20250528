@@ -12,7 +12,6 @@ import '../services/reservation_refresh_bus.dart';
 import 'booking_screen.dart';
 import 'my_reservations_screen.dart';
 import '../utils/rental_navigation.dart';
-import 'rental_return_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   final VoidCallback? onGoMyPage;
@@ -231,6 +230,7 @@ class HomeScreenState extends State<HomeScreen> {
                       reservation: primary!,
                       timeFormat: _timeFormat,
                       onReturn: () => _openReturn(primary),
+                      onStartUse: () => _openStartRental(primary),
                       onReservations: () => _openMyReservations(context),
                     ),
                 },
@@ -259,11 +259,7 @@ class HomeScreenState extends State<HomeScreen> {
   }
 
   void _openReturn(Reservation reservation) {
-    Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (_) => RentalReturnScreen(reservationId: reservation.id),
-      ),
-    ).then((_) => reload());
+    openRentalReturn<bool>(context, reservation).then((_) => reload());
   }
 
   Future<void> _openResidentVerification() async {
@@ -597,25 +593,28 @@ class _OperatingHomeBody extends StatelessWidget {
   final Reservation reservation;
   final DateFormat timeFormat;
   final VoidCallback onReturn;
+  final VoidCallback onStartUse;
   final VoidCallback onReservations;
 
   const _OperatingHomeBody({
     required this.reservation,
     required this.timeFormat,
     required this.onReturn,
+    required this.onStartUse,
     required this.onReservations,
   });
 
   @override
   Widget build(BuildContext context) {
     final end = reservation.endAt;
+    final canReturn = reservation.canReturn;
     return Column(
       children: [
         _ReservationInfoCard(
           reservation: reservation,
           timeFormat: timeFormat,
-          title: '이용 중인 차량',
-          badge: '이용 중',
+          title: canReturn ? '이용 중인 차량' : '이용 시간대',
+          badge: canReturn ? '대여 중' : '이용 중',
           badgeColor: DanjiColors.sectionOperating,
           footer: end != null
               ? '반납 마감 ${timeFormat.format(end)} · ${_timeRemaining(end)}'
@@ -624,10 +623,18 @@ class _OperatingHomeBody extends StatelessWidget {
         const SizedBox(height: 16),
         _MainActionCard(
           color: DanjiColors.rentalBlue,
-          icon: Icons.local_parking_outlined,
-          title: '반납하기',
-          subtitle: '주차 후 사진 찍어 반납',
-          onTap: onReturn,
+          icon: canReturn
+              ? Icons.local_parking_outlined
+              : Icons.directions_car_outlined,
+          subtitle: canReturn
+              ? (reservation.canEarlyReturn
+                  ? '중도반납 · 남은 시간 환불 불가'
+                  : '주차 후 사진 찍어 반납')
+              : '대여 시작 후 반납할 수 있습니다',
+          title: canReturn
+              ? (reservation.canEarlyReturn ? '중도반납' : '반납하기')
+              : '차량 이용 시작',
+          onTap: canReturn ? onReturn : onStartUse,
         ),
         const SizedBox(height: 16),
         Row(

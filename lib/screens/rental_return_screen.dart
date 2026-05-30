@@ -14,8 +14,15 @@ import '../widgets/section_card.dart';
 
 class RentalReturnScreen extends StatefulWidget {
   final String reservationId;
+  final bool isEarlyReturn;
+  final bool earlyReturnAcknowledged;
 
-  const RentalReturnScreen({super.key, required this.reservationId});
+  const RentalReturnScreen({
+    super.key,
+    required this.reservationId,
+    this.isEarlyReturn = false,
+    this.earlyReturnAcknowledged = false,
+  });
 
   @override
   State<RentalReturnScreen> createState() => _RentalReturnScreenState();
@@ -115,10 +122,18 @@ class _RentalReturnScreenState extends State<RentalReturnScreen> {
         isAccident: _isAccident,
         accidentNote:
             _isAccident ? _accidentNoteController.text.trim() : null,
+        isEarlyReturn: widget.isEarlyReturn,
+        earlyReturnAcknowledged: widget.earlyReturnAcknowledged,
       );
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('반납이 완료되었습니다.')),
+        SnackBar(
+          content: Text(
+            widget.isEarlyReturn
+                ? EarlyReturnMessages.success
+                : '반납이 완료되었습니다.',
+          ),
+        ),
       );
       Navigator.of(context).pop(true);
     } catch (e) {
@@ -137,7 +152,9 @@ class _RentalReturnScreenState extends State<RentalReturnScreen> {
 
     return Scaffold(
       backgroundColor: DanjiColors.background,
-      appBar: const DanjiAppBar(title: '차량 반납'),
+      appBar: DanjiAppBar(
+        title: widget.isEarlyReturn ? '중도반납' : '차량 반납',
+      ),
       body: _loading
           ? const Center(child: CircularProgressIndicator())
           : reservation == null
@@ -145,6 +162,26 @@ class _RentalReturnScreenState extends State<RentalReturnScreen> {
               : ListView(
                   padding: const EdgeInsets.all(20),
                   children: [
+                    if (widget.isEarlyReturn) ...[
+                      Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.all(14),
+                        decoration: BoxDecoration(
+                          color: DanjiColors.skyLight,
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(color: DanjiColors.skySoft),
+                        ),
+                        child: const Text(
+                          EarlyReturnMessages.confirmBody,
+                          style: TextStyle(
+                            color: DanjiColors.textSecondary,
+                            height: 1.45,
+                            fontSize: 13,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+                    ],
                     SectionCard(
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
@@ -313,7 +350,7 @@ class _RentalReturnScreenState extends State<RentalReturnScreen> {
                                 width: 20,
                                 child: CircularProgressIndicator(strokeWidth: 2),
                               )
-                            : const Text('반납 완료'),
+                            : Text(widget.isEarlyReturn ? '중도반납 완료' : '반납 완료'),
                       ),
                     ),
                   ],

@@ -9,7 +9,6 @@ import '../theme/danji_colors.dart';
 import '../theme/danji_theme.dart';
 import '../widgets/danji_app_bar.dart';
 import '../utils/rental_navigation.dart';
-import 'rental_return_screen.dart';
 import 'vehicle_use_screen.dart';
 
 class MyReservationsScreen extends StatefulWidget {
@@ -103,11 +102,7 @@ class _MyReservationsScreenState extends State<MyReservationsScreen> {
   }
 
   Future<void> _openReturn(Reservation reservation) async {
-    final result = await Navigator.of(context).push<bool>(
-      MaterialPageRoute(
-        builder: (_) => RentalReturnScreen(reservationId: reservation.id),
-      ),
-    );
+    final result = await openRentalReturn<bool>(context, reservation);
     if (result == true) _reload();
   }
 
@@ -600,7 +595,9 @@ class _ReservationCard extends StatelessWidget {
                           EdgeInsets.symmetric(vertical: 14),
                         ),
                       ),
-                      child: const Text('반납하기'),
+                      child: Text(
+                        reservation.canEarlyReturn ? '중도반납' : '반납하기',
+                      ),
                     ),
                   ),
               ],

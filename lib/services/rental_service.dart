@@ -24,7 +24,8 @@ class RentalService {
   /// PostgREST * 가 DB에 없는 updated_at 을 포함할 때 오류 방지
   static const _selectFull = '''
 id,user_id,vehicle_id,start_at,end_at,start_time,end_time,total_price,status,
-payment_key,order_id,payment_status,rental_started_at,returned_at,
+payment_key,order_id,payment_status,rental_started_at,returned_at,actual_end_at,
+return_type,early_return_confirmed_at,
 pickup_photos,return_photos,mileage_start,mileage_end,
 fuel_level_start,fuel_level_end,is_accident,accident_note,door_unlocked
 ''';
@@ -212,6 +213,9 @@ fuel_level_start,fuel_level_end,is_accident,accident_note,door_unlocked
                     orderId: r.orderId,
                     rentalStartedAt: r.rentalStartedAt,
                     returnedAt: r.returnedAt,
+                    actualEndAt: r.actualEndAt,
+                    returnType: r.returnType,
+                    earlyReturnConfirmedAt: r.earlyReturnConfirmedAt,
                     pickupPhotos: r.pickupPhotos,
                     returnPhotos: r.returnPhotos,
                     mileageStart: r.mileageStart,
@@ -649,6 +653,8 @@ fuel_level_start,fuel_level_end,is_accident,accident_note,door_unlocked
     required FuelLevel fuelLevelEnd,
     required bool isAccident,
     String? accidentNote,
+    bool isEarlyReturn = false,
+    bool earlyReturnAcknowledged = false,
   }) async {
     final photoUrls = await uploadPhotos(
       reservationId: reservationId,
@@ -664,7 +670,10 @@ fuel_level_start,fuel_level_end,is_accident,accident_note,door_unlocked
         'p_fuel_level_end': fuelLevelEnd.value,
         'p_is_accident': isAccident,
         'p_accident_note': accidentNote,
+        'p_is_early_return': isEarlyReturn,
+        'p_early_return_acknowledged': earlyReturnAcknowledged,
       });
+      RentalService.signalListRefresh();
       return _asMap(data);
     } on PostgrestException catch (e) {
       throw RentalException(friendlyRentalError(e));
@@ -705,7 +714,16 @@ String friendlyRentalError(PostgrestException error) {
     return '예약 정보를 찾을 수 없습니다.';
   }
   if (msg.contains('invalid_status')) {
-    return '현재 상태에서는 진행할 수 없습니다.';
+    return '현재 상태에서는 진행할 수 없습니다. 대여 시작(in_use) 후 반납해주세요.';
+  }
+  if (msg.contains('early_return_not_acknowledged')) {
+    return '중도반납 환불 불가 안내에 동의해주세요.';
+  }
+  if (msg.contains('not_early_return')) {
+    return '예약 종료 시각이 지나 정상 반납으로 진행해주세요.';
+  }
+  if (msg.contains('invalid_end_time')) {
+    return '예약 종료 시간 정보가 없습니다.';
   }
   if (msg.contains('too_early')) {
     return '대여 시작 가능 시간이 아닙니다. (예약 시작 30분 전부터 가능)';

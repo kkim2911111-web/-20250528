@@ -7,9 +7,9 @@ import 'package:intl/intl.dart';
 import '../models/reservation.dart';
 import '../services/rental_service.dart';
 import '../theme/danji_colors.dart';
+import '../utils/rental_navigation.dart';
 import '../widgets/danji_app_bar.dart';
 import '../widgets/section_card.dart';
-import 'rental_return_screen.dart';
 
 /// 예약 완료 후 차량 이용 화면 (사진 등록 · 도어 제어 · 반납)
 class VehicleUseScreen extends StatefulWidget {
@@ -210,11 +210,10 @@ class _VehicleUseScreenState extends State<VehicleUseScreen> {
       return;
     }
 
-    final result = await Navigator.of(context).push<bool>(
-      MaterialPageRoute(
-        builder: (_) => RentalReturnScreen(reservationId: widget.reservationId),
-      ),
-    );
+    final reservation = _reservation;
+    if (reservation == null) return;
+
+    final result = await openRentalReturn<bool>(context, reservation);
     if (result == true && mounted) {
       Navigator.of(context).pop(true);
     }
