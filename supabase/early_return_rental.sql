@@ -79,8 +79,10 @@ $$;
 --    return_type: normal | early
 -- ---------------------------------------------------------------------------
 
+drop function if exists public.complete_rental_for_me(uuid, text[], integer, text, boolean, text, boolean, boolean);
+
 create or replace function public.complete_rental_for_me(
-  p_reservation_id uuid,
+  p_reservation_id text,
   p_return_photos text[],
   p_mileage_end integer,
   p_fuel_level_end text,
@@ -96,6 +98,7 @@ set search_path = public
 as $$
 declare
   v_user uuid := auth.uid();
+  v_id text := nullif(trim(p_reservation_id), '');
   v_row public.reservations%rowtype;
   v_scheduled_end timestamptz;
   v_now timestamptz := now();
@@ -103,6 +106,10 @@ declare
 begin
   if v_user is null then
     raise exception 'not_authenticated';
+  end if;
+
+  if v_id is null then
+    raise exception 'invalid_reservation_id';
   end if;
 
   if p_return_photos is null or cardinality(p_return_photos) < 1 then
@@ -132,9 +139,9 @@ begin
 
   select *
   into v_row
-  from public.reservations
-  where id = p_reservation_id
-    and user_id = v_user
+  from public.reservations r
+  where r.id::text = v_id
+    and r.user_id = v_user
   for update;
 
   if not found then
@@ -182,10 +189,10 @@ begin
       else null
     end,
     updated_at = v_now
-  where id = p_reservation_id;
+  where id::text = v_id;
 
   return jsonb_build_object(
-    'reservationId', p_reservation_id::text,
+    'reservationId', v_id,
     'status', 'returned',
     'returnType', v_return_type,
     'returnedAt', v_now,
@@ -197,10 +204,10 @@ end;
 $$;
 
 revoke all on function public.complete_rental_for_me(
-  uuid, text[], integer, text, boolean, text, boolean, boolean
+  text, text[], integer, text, boolean, text, boolean, boolean
 ) from public;
 grant execute on function public.complete_rental_for_me(
-  uuid, text[], integer, text, boolean, text, boolean, boolean
+  text, text[], integer, text, boolean, text, boolean, boolean
 ) to authenticated;
 
 -- ---------------------------------------------------------------------------

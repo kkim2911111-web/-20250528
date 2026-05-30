@@ -11,6 +11,10 @@
       throw new Error('TossPayments SDK가 로드되지 않았습니다.');
     }
 
+    if (!options.clientKey) {
+      throw new Error('TOSS_CLIENT_KEY가 설정되지 않았습니다.');
+    }
+
     var clientKey = options.clientKey;
     var method = options.method || 'CARD';
     var amount = options.amount;
@@ -44,7 +48,18 @@
       params.transfer = { cashReceipt: { type: '소득공제' } };
     }
 
-    await payment.requestPayment(params);
+    try {
+      await payment.requestPayment(params);
+    } catch (err) {
+      var msg = err && err.message ? err.message : String(err);
+      if (msg.indexOf('알 수 없') >= 0 || msg.toLowerCase().indexOf('unknown') >= 0) {
+        throw new Error(
+          'TOSS_CLIENT_KEY가 올바르지 않거나 결제 초기화에 실패했습니다. ' +
+            '(.env 또는 dart-define 확인) 원인: ' + msg
+        );
+      }
+      throw err;
+    }
   }
 
   window.DanjiToss = {

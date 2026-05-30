@@ -1,6 +1,7 @@
 import 'package:flutter/foundation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../models/rental_extension_result.dart';
 import '../models/fuel_level.dart';
 import '../models/grouped_reservations.dart';
 import '../constants/payment_order_status.dart';
@@ -339,7 +340,7 @@ fuel_level_start,fuel_level_end,is_accident,accident_note,door_unlocked
       }
     }
 
-    operating.sort(_compareByStartAsc);
+    operating.sort(_compareOperatingForDisplay);
     waiting.sort(_compareByStartAsc);
     finished.sort(_compareByStartDesc);
 
@@ -366,6 +367,12 @@ fuel_level_start,fuel_level_end,is_accident,accident_note,door_unlocked
 
   static int _compareByStartAsc(Reservation a, Reservation b) =>
       a.sortByStart.compareTo(b.sortByStart);
+
+  static int _compareOperatingForDisplay(Reservation a, Reservation b) {
+    if (a.status == 'in_use' && b.status != 'in_use') return -1;
+    if (b.status == 'in_use' && a.status != 'in_use') return 1;
+    return _compareByStartAsc(a, b);
+  }
 
   static int _compareByStartDesc(Reservation a, Reservation b) =>
       b.sortByStart.compareTo(a.sortByStart);
@@ -442,6 +449,17 @@ fuel_level_start,fuel_level_end,is_accident,accident_note,door_unlocked
     return urls;
   }
 
+  static bool reservationIdIsBigint(String reservationId) {
+    return RegExp(r'^\d+$').hasMatch(reservationId.trim());
+  }
+
+  Object _reservationIdFilter(String reservationId) {
+    if (reservationIdIsBigint(reservationId)) {
+      return int.parse(reservationId.trim());
+    }
+    return reservationId;
+  }
+
   Future<Map<String, dynamic>> startRental({
     required String reservationId,
     required List<Uint8List> photos,
@@ -454,6 +472,7 @@ fuel_level_start,fuel_level_end,is_accident,accident_note,door_unlocked
       photos: photos,
     );
 
+    PostgrestException? rpcError;
     try {
       final data = await supabase.rpc('start_rental_for_me', params: {
         'p_reservation_id': reservationId,
@@ -461,10 +480,184 @@ fuel_level_start,fuel_level_end,is_accident,accident_note,door_unlocked
         'p_mileage_start': mileageStart,
         'p_fuel_level_start': fuelLevelStart.value,
       });
+      await _assertReservationInUse(reservationId);
+      RentalService.signalListRefresh();
       return _asMap(data);
     } on PostgrestException catch (e) {
-      throw RentalException(friendlyRentalError(e));
+      rpcError = e;
+      if (!_shouldFallbackStartRental(e)) {
+        throw RentalException(friendlyStartRentalError(e));
+      }
     }
+
+    try {
+      final result = await _startRentalDirect(
+        reservationId: reservationId,
+        photoUrls: photoUrls,
+        mileageStart: mileageStart,
+        fuelLevelStart: fuelLevelStart,
+      );
+      await _assertReservationInUse(reservationId);
+      RentalService.signalListRefresh();
+      return result;
+    } on PostgrestException catch (e) {
+      throw RentalException(friendlyStartRentalError(e));
+    } on RentalException {
+      rethrow;
+    } catch (e) {
+      final rpcMsg = rpcError != null
+          ? friendlyStartRentalError(rpcError!)
+          : e.toString();
+      throw RentalException('$rpcMsg\n($e)');
+    }
+  }
+
+  bool _shouldFallbackStartRental(PostgrestException error) {
+    final msg = _postgrestErrorText(error);
+    return msg.contains('invalid input syntax for type uuid') ||
+        msg.contains('invalid_reservation_id') ||
+        msg.contains('reservation_not_found') ||
+        msg.contains('could not find the function') ||
+        msg.contains('start_rental_for_me');
+  }
+
+  String _postgrestErrorText(PostgrestException error) {
+    return '${error.message} ${error.details ?? ''} ${error.hint ?? ''}'
+        .toLowerCase();
+  }
+
+  bool _isMissingColumnError(PostgrestException error) {
+    final msg = _postgrestErrorText(error);
+    return msg.contains('does not exist') ||
+        msg.contains('42703') ||
+        msg.contains('schema cache');
+  }
+
+  Future<void> _persistRentalStart({
+    required String reservationId,
+    required String userId,
+    required String now,
+    required List<String> photoUrls,
+    required int mileageStart,
+    required FuelLevel fuelLevelStart,
+  }) async {
+    final idFilter = _reservationIdFilter(reservationId);
+    final payloads = <Map<String, dynamic>>[
+      {
+        'status': 'in_use',
+        'rental_started_at': now,
+        'pickup_photos': photoUrls,
+        'mileage_start': mileageStart,
+        'fuel_level_start': fuelLevelStart.value,
+      },
+      {
+        'status': 'in_use',
+        'rental_started_at': now,
+        'pickup_photos': photoUrls,
+      },
+      {
+        'status': 'in_use',
+        'rental_started_at': now,
+      },
+      {
+        'status': 'in_use',
+      },
+    ];
+
+    PostgrestException? lastError;
+    for (final payload in payloads) {
+      try {
+        await supabase
+            .from('reservations')
+            .update(payload)
+            .eq('id', idFilter)
+            .eq('user_id', userId);
+        return;
+      } on PostgrestException catch (e) {
+        lastError = e;
+        if (!_isMissingColumnError(e)) {
+          throw RentalException(friendlyStartRentalError(e));
+        }
+      }
+    }
+
+    throw RentalException(friendlyStartRentalError(lastError!));
+  }
+
+  Future<Map<String, dynamic>> _startRentalDirect({
+    required String reservationId,
+    required List<String> photoUrls,
+    required int mileageStart,
+    required FuelLevel fuelLevelStart,
+  }) async {
+    final user = supabase.auth.currentUser;
+    if (user == null) {
+      throw const AuthException('로그인이 필요합니다.');
+    }
+
+    final row = await _fetchReservationRow(reservationId, user.id);
+    if (row == null) {
+      throw const RentalException('예약 정보를 찾을 수 없습니다.');
+    }
+
+    final reservation = Reservation.fromMap(Map<String, dynamic>.from(row));
+    if (!reservation.canStartRental) {
+      throw RentalException(
+        '대여를 시작할 수 없는 예약 상태입니다. (${reservation.statusLabel})',
+      );
+    }
+
+    final nowDt = DateTime.now();
+    final start = reservation.startAt;
+    final end = reservation.endAt;
+    if (start != null &&
+        nowDt.isBefore(start.subtract(const Duration(minutes: 30)))) {
+      throw const RentalException(
+        '대여 시작 가능 시간이 아닙니다. (예약 시작 30분 전부터 가능)',
+      );
+    }
+    if (end != null && nowDt.isAfter(end)) {
+      throw const RentalException('예약 시간이 지나 대여를 시작할 수 없습니다.');
+    }
+
+    final now = nowDt.toUtc().toIso8601String();
+    await _persistRentalStart(
+      reservationId: reservationId,
+      userId: user.id,
+      now: now,
+      photoUrls: photoUrls,
+      mileageStart: mileageStart,
+      fuelLevelStart: fuelLevelStart,
+    );
+
+    return {
+      'reservationId': reservationId,
+      'status': 'in_use',
+      'rentalStartedAt': now,
+    };
+  }
+
+  Future<void> _assertReservationInUse(String reservationId) async {
+    final user = supabase.auth.currentUser;
+    if (user == null) {
+      throw const AuthException('로그인이 필요합니다.');
+    }
+
+    final row = await supabase
+        .from('reservations')
+        .select('status')
+        .eq('id', _reservationIdFilter(reservationId))
+        .eq('user_id', user.id)
+        .maybeSingle();
+
+    if (row != null && row['status']?.toString() == 'in_use') {
+      return;
+    }
+
+    throw const RentalException(
+      '대여 시작이 저장되지 않았습니다.\n'
+      'status가 in_use로 변경되지 않았습니다. 다시 시도해주세요.',
+    );
   }
 
   Future<Map<String, dynamic>> cancelReservation(String reservationId) async {
@@ -646,6 +839,57 @@ fuel_level_start,fuel_level_end,is_accident,accident_note,door_unlocked
     return {'reservationId': reservationId, 'deleted': true};
   }
 
+  Future<RentalExtensionCheckResult> checkRentalExtension({
+    required String reservationId,
+    int extensionHours = 1,
+  }) async {
+    try {
+      final data = await supabase.rpc('check_rental_extension_for_me', params: {
+        'p_reservation_id': reservationId,
+        'p_extension_hours': extensionHours,
+      });
+      return RentalExtensionCheckResult.fromMap(_asMap(data));
+    } on PostgrestException catch (e) {
+      throw RentalException(friendlyRentalError(e));
+    }
+  }
+
+  Future<Map<String, dynamic>> applyRentalExtension({
+    required String reservationId,
+    int extensionHours = 1,
+  }) async {
+    try {
+      final data = await supabase.rpc('apply_rental_extension_for_me', params: {
+        'p_reservation_id': reservationId,
+        'p_extension_hours': extensionHours,
+      });
+      RentalService.signalListRefresh();
+      return _asMap(data);
+    } on PostgrestException catch (e) {
+      throw RentalException(friendlyRentalError(e));
+    }
+  }
+
+  Future<Map<String, dynamic>> logEmergencyConsultation({
+    String? reservationId,
+    String requestType = 'extension_blocked',
+    String? reasonCode,
+    Map<String, dynamic>? context,
+  }) async {
+    try {
+      final data =
+          await supabase.rpc('log_emergency_consultation_for_me', params: {
+        'p_reservation_id': reservationId,
+        'p_request_type': requestType,
+        'p_reason_code': reasonCode,
+        'p_context': context ?? {},
+      });
+      return _asMap(data);
+    } on PostgrestException catch (e) {
+      throw RentalException(friendlyRentalError(e));
+    }
+  }
+
   Future<Map<String, dynamic>> completeReturn({
     required String reservationId,
     required List<Uint8List> photos,
@@ -725,6 +969,16 @@ String friendlyRentalError(PostgrestException error) {
   if (msg.contains('invalid_end_time')) {
     return '예약 종료 시간 정보가 없습니다.';
   }
+  if (msg.contains('invalid_extension_hours')) {
+    return '연장 시간을 올바르게 입력해주세요.';
+  }
+  if (msg.contains('extension_not_eligible') ||
+      msg.contains('next_reservation_exists')) {
+    return '다음 예약이 있어 연장할 수 없습니다.';
+  }
+  if (msg.contains('too_early') && msg.contains('extension')) {
+    return '대여 종료 1시간 전부터 연장 신청이 가능합니다.';
+  }
   if (msg.contains('too_early')) {
     return '대여 시작 가능 시간이 아닙니다. (예약 시작 30분 전부터 가능)';
   }
@@ -747,10 +1001,70 @@ String friendlyRentalError(PostgrestException error) {
     if (msg.contains('cancel_reservation_for_me')) {
       return '예약 취소 RPC가 설치되지 않았습니다.\nSupabase에서 cancel_reservation_rpc.sql 을 실행해주세요.';
     }
+    if (msg.contains('start_rental_for_me')) {
+      return '대여 시작 RPC가 설치되지 않았습니다.\nSupabase에서 fix_rental_rpcs_bigint.sql 을 실행해주세요.';
+    }
+    if (msg.contains('check_rental_extension_for_me') ||
+        msg.contains('apply_rental_extension_for_me')) {
+      return '대여 연장 RPC가 설치되지 않았습니다.\nSupabase에서 rental_extension.sql 을 실행해주세요.';
+    }
     return '대여 RPC가 설치되지 않았습니다.\nSupabase에서 rental_rpcs.sql 을 실행해주세요.';
+  }
+  if (msg.contains('invalid input syntax for type uuid') &&
+      msg.contains('reservation')) {
+    return '예약 ID 형식 오류입니다.\nSupabase에서 fix_rental_rpcs_bigint.sql 을 실행해주세요.';
   }
   if (msg.contains('row-level security') || msg.contains('policy')) {
     return '저장 권한이 없습니다. Storage 버킷 정책을 확인해주세요.';
+  }
+
+  return error.message;
+}
+
+String friendlyStartRentalError(PostgrestException error) {
+  final msg = error.message.toLowerCase();
+
+  if (msg.contains('photos_required')) {
+    return '차량 사진을 1장 이상 등록해주세요.';
+  }
+  if (msg.contains('invalid_mileage')) {
+    return '주행거리를 올바르게 입력해주세요.';
+  }
+  if (msg.contains('invalid_fuel_level')) {
+    return '주유 상태를 선택해주세요.';
+  }
+  if (msg.contains('reservation_not_found')) {
+    return '예약 정보를 찾을 수 없습니다.';
+  }
+  if (msg.contains('invalid_status')) {
+    return '대여를 시작할 수 없는 예약 상태입니다.';
+  }
+  if (msg.contains('too_early')) {
+    return '대여 시작 가능 시간이 아닙니다. (예약 시작 30분 전부터 가능)';
+  }
+  if (msg.contains('expired')) {
+    return '예약 시간이 지나 대여를 시작할 수 없습니다.';
+  }
+  if (msg.contains('invalid input syntax for type uuid')) {
+    return '예약 ID 형식 오류입니다.\n'
+        'Supabase SQL Editor에서 fix_rental_rpcs_bigint.sql 을 실행해주세요.';
+  }
+  if (msg.contains('reservations_status_check') ||
+      msg.contains('check constraint')) {
+    return 'in_use 상태가 DB에 없습니다.\n'
+        'Supabase SQL Editor에서 alter_reservations_rental_columns.sql 을 실행해주세요.';
+  }
+  if (msg.contains('does not exist') || msg.contains('42703')) {
+    return '대여 시작 컬럼이 DB에 없습니다.\n'
+        'Supabase SQL Editor에서 alter_reservations_rental_columns.sql 을 실행해주세요.';
+  }
+  if (msg.contains('could not find the function') &&
+      msg.contains('start_rental_for_me')) {
+    return '대여 시작 RPC가 설치되지 않았습니다.\n'
+        'Supabase SQL Editor에서 fix_rental_rpcs_bigint.sql 을 실행해주세요.';
+  }
+  if (msg.contains('row-level security') || msg.contains('policy')) {
+    return '대여 시작 저장 권한이 없습니다. RLS 정책을 확인해주세요.';
   }
 
   return error.message;

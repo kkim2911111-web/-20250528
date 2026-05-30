@@ -7,6 +7,7 @@ import 'package:intl/intl.dart';
 import '../models/reservation.dart';
 import '../services/rental_service.dart';
 import '../theme/danji_colors.dart';
+import '../utils/rental_extension_flow.dart';
 import '../utils/rental_navigation.dart';
 import '../widgets/danji_app_bar.dart';
 import '../widgets/section_card.dart';
@@ -200,6 +201,16 @@ class _VehicleUseScreenState extends State<VehicleUseScreen> {
     );
   }
 
+  Future<void> _onExtend() async {
+    final reservation = _reservation;
+    if (reservation == null) return;
+
+    final applied = await openRentalExtension(context, reservation);
+    if (applied && mounted) {
+      await _load();
+    }
+  }
+
   Future<void> _onReturn() async {
     if (!_photosCompleteForDoors) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -369,6 +380,17 @@ class _VehicleUseScreenState extends State<VehicleUseScreen> {
                       style: OutlinedButton.styleFrom(
                         foregroundColor: DanjiColors.textPrimary,
                         side: const BorderSide(color: DanjiColors.textSecondary),
+                        minimumSize: const Size.fromHeight(48),
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    OutlinedButton.icon(
+                      onPressed: _onExtend,
+                      icon: const Icon(Icons.schedule_outlined),
+                      label: const Text('대여 연장 (1시간)'),
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: DanjiColors.primaryBlue,
+                        side: const BorderSide(color: DanjiColors.primaryBlue),
                         minimumSize: const Size.fromHeight(48),
                       ),
                     ),

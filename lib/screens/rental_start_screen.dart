@@ -109,7 +109,7 @@ class _RentalStartScreenState extends State<RentalStartScreen> {
       if (!mounted) return;
       setState(() {
         _submitting = false;
-        _error = e.toString();
+        _error = e.toString().replaceFirst('RentalException: ', '');
       });
     }
   }

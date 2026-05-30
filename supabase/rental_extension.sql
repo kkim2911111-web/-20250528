@@ -89,11 +89,14 @@ where original_end_at is null
 
 -- ---------------------------------------------------------------------------
 -- 2) reservation_extensions — 연장 이력
+--    reservations.id = bigint 기준 (uuid DB는 p_reservation_id text + id::text 비교)
 -- ---------------------------------------------------------------------------
 
-create table if not exists public.reservation_extensions (
+drop table if exists public.reservation_extensions cascade;
+
+create table public.reservation_extensions (
   id uuid primary key default gen_random_uuid(),
-  reservation_id uuid not null references public.reservations(id) on delete cascade,
+  reservation_id bigint not null references public.reservations(id) on delete cascade,
   user_id uuid not null references auth.users(id) on delete cascade,
   vehicle_id text not null,
   extension_hours integer not null check (extension_hours > 0),
@@ -126,10 +129,12 @@ using (user_id = auth.uid());
 -- 3) emergency_consultation_requests — 긴급 상담 요청 로그
 -- ---------------------------------------------------------------------------
 
-create table if not exists public.emergency_consultation_requests (
+drop table if exists public.emergency_consultation_requests cascade;
+
+create table public.emergency_consultation_requests (
   id uuid primary key default gen_random_uuid(),
   user_id uuid not null references auth.users(id) on delete cascade,
-  reservation_id uuid references public.reservations(id) on delete set null,
+  reservation_id bigint references public.reservations(id) on delete set null,
   request_type text not null default 'extension_blocked'
     check (request_type in ('extension_blocked', 'extension_other', 'manual')),
   phone_number text not null default '010-4455-6676',
@@ -164,14 +169,18 @@ with check (user_id = auth.uid());
 --    reservation_effective_end 는 early_return_rental.sql 에 정의됨
 -- ---------------------------------------------------------------------------
 
+drop function if exists public.check_rental_extension_for_me(uuid, integer);
+drop function if exists public.apply_rental_extension_for_me(uuid, integer);
+drop function if exists public.log_emergency_consultation_for_me(uuid, text, text, jsonb);
+
 create or replace function public.reservation_blocks_extension_window(
   p_vehicle_id text,
-  p_exclude_reservation_id uuid,
+  p_exclude_reservation_id bigint,
   p_window_start timestamptz,
   p_window_end timestamptz
 )
 returns table (
-  blocking_reservation_id uuid,
+  blocking_reservation_id bigint,
   blocking_start_at timestamptz,
   blocking_end_at timestamptz,
   blocking_status text
@@ -212,7 +221,7 @@ $$;
 -- ---------------------------------------------------------------------------
 
 create or replace function public.check_rental_extension_for_me(
-  p_reservation_id uuid,
+  p_reservation_id text,
   p_extension_hours integer default 1
 )
 returns jsonb
@@ -222,6 +231,7 @@ set search_path = public
 as $$
 declare
   v_user uuid := auth.uid();
+  v_id text := nullif(trim(p_reservation_id), '');
   v_row public.reservations%rowtype;
   v_end timestamptz;
   v_new_end timestamptz;
@@ -238,10 +248,14 @@ begin
     raise exception 'invalid_extension_hours';
   end if;
 
+  if v_id is null then
+    raise exception 'invalid_reservation_id';
+  end if;
+
   select *
   into v_row
   from public.reservations
-  where id = p_reservation_id
+  where id::text = v_id
     and user_id = v_user;
 
   if not found then
@@ -303,7 +317,7 @@ begin
       'eligible', false,
       'reason', 'next_reservation_exists',
       'message', '다음 예약이 있어 연장할 수 없습니다.',
-      'blockingReservationId', v_block.blocking_reservation_id,
+      'blockingReservationId', v_block.blocking_reservation_id::text,
       'blockingStartAt', v_block.blocking_start_at,
       'blockingEndAt', v_block.blocking_end_at,
       'blockingStatus', v_block.blocking_status,
@@ -343,7 +357,7 @@ $$;
 -- ---------------------------------------------------------------------------
 
 create or replace function public.apply_rental_extension_for_me(
-  p_reservation_id uuid,
+  p_reservation_id text,
   p_extension_hours integer default 1
 )
 returns jsonb
@@ -353,6 +367,7 @@ set search_path = public
 as $$
 declare
   v_user uuid := auth.uid();
+  v_id text := nullif(trim(p_reservation_id), '');
   v_row public.reservations%rowtype;
   v_check jsonb;
   v_end timestamptz;
@@ -365,7 +380,11 @@ begin
     raise exception 'not_authenticated';
   end if;
 
-  v_check := public.check_rental_extension_for_me(p_reservation_id, p_extension_hours);
+  if v_id is null then
+    raise exception 'invalid_reservation_id';
+  end if;
+
+  v_check := public.check_rental_extension_for_me(v_id, p_extension_hours);
   if coalesce((v_check->>'eligible')::boolean, false) is not true then
     raise exception '%', coalesce(v_check->>'reason', 'extension_not_eligible');
   end if;
@@ -373,7 +392,7 @@ begin
   select *
   into v_row
   from public.reservations
-  where id = p_reservation_id
+  where id::text = v_id
     and user_id = v_user
   for update;
 
@@ -391,7 +410,7 @@ begin
     extension_price_total = extension_price_total + v_added_price,
     total_price = total_price + v_added_price,
     updated_at = v_now
-  where id = p_reservation_id;
+  where id::text = v_id;
 
   insert into public.reservation_extensions (
     reservation_id,
@@ -403,7 +422,7 @@ begin
     added_price,
     extension_seq
   ) values (
-    p_reservation_id,
+    v_row.id,
     v_user,
     v_row.vehicle_id::text,
     p_extension_hours,
@@ -415,7 +434,7 @@ begin
 
   return jsonb_build_object(
     'ok', true,
-    'reservationId', p_reservation_id::text,
+    'reservationId', v_row.id::text,
     'extensionHours', p_extension_hours,
     'previousEndAt', v_end,
     'newEndAt', v_new_end,
@@ -431,7 +450,7 @@ $$;
 -- ---------------------------------------------------------------------------
 
 create or replace function public.log_emergency_consultation_for_me(
-  p_reservation_id uuid default null,
+  p_reservation_id text default null,
   p_request_type text default 'extension_blocked',
   p_reason_code text default null,
   p_context jsonb default '{}'::jsonb
@@ -445,6 +464,8 @@ declare
   v_user uuid := auth.uid();
   v_phone text := public.get_emergency_phone();
   v_id uuid;
+  v_reservation_id bigint;
+  v_res_id_text text := nullif(trim(p_reservation_id), '');
 begin
   if v_user is null then
     raise exception 'not_authenticated';
@@ -454,11 +475,14 @@ begin
     raise exception 'invalid_request_type';
   end if;
 
-  if p_reservation_id is not null then
-    if not exists (
-      select 1 from public.reservations r
-      where r.id = p_reservation_id and r.user_id = v_user
-    ) then
+  if v_res_id_text is not null then
+    select r.id
+    into v_reservation_id
+    from public.reservations r
+    where r.id::text = v_res_id_text
+      and r.user_id = v_user;
+
+    if not found then
       raise exception 'reservation_not_found';
     end if;
   end if;
@@ -472,7 +496,7 @@ begin
     context
   ) values (
     v_user,
-    p_reservation_id,
+    v_reservation_id,
     p_request_type,
     v_phone,
     p_reason_code,
@@ -493,18 +517,18 @@ $$;
 -- 8) 권한
 -- ---------------------------------------------------------------------------
 
-revoke all on function public.check_rental_extension_for_me(uuid, integer) from public;
-grant execute on function public.check_rental_extension_for_me(uuid, integer) to authenticated;
+revoke all on function public.check_rental_extension_for_me(text, integer) from public;
+grant execute on function public.check_rental_extension_for_me(text, integer) to authenticated;
 
-revoke all on function public.apply_rental_extension_for_me(uuid, integer) from public;
-grant execute on function public.apply_rental_extension_for_me(uuid, integer) to authenticated;
+revoke all on function public.apply_rental_extension_for_me(text, integer) from public;
+grant execute on function public.apply_rental_extension_for_me(text, integer) to authenticated;
 
-revoke all on function public.log_emergency_consultation_for_me(uuid, text, text, jsonb) from public;
-grant execute on function public.log_emergency_consultation_for_me(uuid, text, text, jsonb) to authenticated;
+revoke all on function public.log_emergency_consultation_for_me(text, text, text, jsonb) from public;
+grant execute on function public.log_emergency_consultation_for_me(text, text, text, jsonb) to authenticated;
 
 -- ---------------------------------------------------------------------------
 -- 확인 쿼리
 -- ---------------------------------------------------------------------------
 -- select * from public.app_support_contacts;
 -- select public.get_emergency_phone();
--- select public.check_rental_extension_for_me('예약-uuid'::uuid, 1);
+-- select public.check_rental_extension_for_me('123', 1);

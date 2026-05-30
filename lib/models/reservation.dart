@@ -1,3 +1,5 @@
+import 'package:intl/intl.dart';
+
 import 'vehicle.dart';
 
 /// 예약 + 대여·반납 정보
@@ -225,6 +227,34 @@ class Reservation {
       (status == 'in_use' || isOperating || isWaiting);
 
   DateTime get sortByStart => startAt ?? DateTime.fromMillisecondsSinceEpoch(0);
+
+  /// 홈 이용 시간대 — 05/30 22:00 - 05/31 10:00 / 금일 09:00 - 18:00
+  String? get usagePeriodLabel {
+    final start = startAt;
+    final end = endAt;
+    if (start == null || end == null) return null;
+    return formatUsagePeriod(start, end);
+  }
+
+  static String formatUsagePeriod(DateTime start, DateTime end) {
+    final time = DateFormat('HH:mm');
+    final date = DateFormat('MM/dd');
+    final startDay = DateTime(start.year, start.month, start.day);
+    final endDay = DateTime(end.year, end.month, end.day);
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+
+    if (startDay != endDay) {
+      return '${date.format(start)} ${time.format(start)} - '
+          '${date.format(end)} ${time.format(end)}';
+    }
+
+    if (startDay == today) {
+      return '금일 ${time.format(start)} - ${time.format(end)}';
+    }
+
+    return '${date.format(start)} ${time.format(start)} - ${time.format(end)}';
+  }
 
   /// 홈·내 예약 — 대여 시작까지 남은 시간 문구
   String get timeUntilStartLabel {

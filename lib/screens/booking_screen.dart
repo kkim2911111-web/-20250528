@@ -8,6 +8,7 @@ import '../models/vehicle_query_result.dart';
 import '../services/payment_service.dart';
 import '../services/reservation_service.dart';
 import '../services/vehicle_service.dart';
+import '../supabase_client.dart';
 import '../theme/danji_colors.dart';
 import '../theme/danji_theme.dart';
 import '../widgets/danji_app_bar.dart';
@@ -197,6 +198,11 @@ class _BookingScreenState extends State<BookingScreen> {
 
     if (!PaymentConfig.isConfigured) {
       setState(() => _error = '결제 키(TOSS_CLIENT_KEY)가 설정되지 않았습니다.');
+      return;
+    }
+
+    if (supabase.auth.currentUser == null) {
+      setState(() => _error = '로그인이 필요합니다. 다시 로그인한 뒤 결제를 시도해주세요.');
       return;
     }
 

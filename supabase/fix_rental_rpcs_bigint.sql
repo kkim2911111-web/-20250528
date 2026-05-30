@@ -1,7 +1,7 @@
 -- ============================================================
--- 대여 시작 / 반납 RPC
--- Supabase SQL Editor → Run (alter_reservations_rental_columns.sql 선행)
--- reservations.id = bigint → p_reservation_id text + id::text 비교
+-- 대여 시작/반납 RPC — reservations.id = bigint 호환 (text ID)
+-- Supabase SQL Editor → Run
+-- 선행: alter_reservations_rental_columns.sql, fix_reservations_schema.sql
 -- ============================================================
 
 drop function if exists public.start_rental_for_me(uuid, text[], integer, text);
@@ -90,6 +90,7 @@ end;
 $$;
 
 drop function if exists public.complete_rental_for_me(uuid, text[], integer, text, boolean, text);
+drop function if exists public.complete_rental_for_me(uuid, text[], integer, text, boolean, text, boolean, boolean);
 drop function if exists public.complete_rental_for_me(uuid, text[], integer, text);
 
 create or replace function public.complete_rental_for_me(
@@ -98,7 +99,9 @@ create or replace function public.complete_rental_for_me(
   p_mileage_end integer,
   p_fuel_level_end text,
   p_is_accident boolean default false,
-  p_accident_note text default null
+  p_accident_note text default null,
+  p_is_early_return boolean default false,
+  p_early_return_acknowledged boolean default false
 )
 returns jsonb
 language plpgsql
@@ -109,7 +112,9 @@ declare
   v_user uuid := auth.uid();
   v_id text := nullif(trim(p_reservation_id), '');
   v_row public.reservations%rowtype;
+  v_scheduled_end timestamptz;
   v_now timestamptz := now();
+  v_return_type text;
 begin
   if v_user is null then
     raise exception 'not_authenticated';
@@ -140,6 +145,10 @@ begin
     raise exception 'accident_note_required';
   end if;
 
+  if p_is_early_return and not p_early_return_acknowledged then
+    raise exception 'early_return_not_acknowledged';
+  end if;
+
   select *
   into v_row
   from public.reservations r
@@ -155,6 +164,20 @@ begin
     raise exception 'invalid_status';
   end if;
 
+  v_scheduled_end := coalesce(v_row.end_at, v_row.end_time);
+
+  if p_is_early_return then
+    if v_scheduled_end is null then
+      raise exception 'invalid_end_time';
+    end if;
+    if v_now >= v_scheduled_end then
+      raise exception 'not_early_return';
+    end if;
+    v_return_type := 'early';
+  else
+    v_return_type := 'normal';
+  end if;
+
   if p_mileage_end < coalesce(v_row.mileage_start, 0) then
     raise exception 'mileage_decreased';
   end if;
@@ -163,6 +186,12 @@ begin
   set
     status = 'returned',
     returned_at = v_now,
+    actual_end_at = v_now,
+    return_type = v_return_type,
+    early_return_confirmed_at = case
+      when v_return_type = 'early' then v_now
+      else null
+    end,
     return_photos = p_return_photos,
     mileage_end = p_mileage_end,
     fuel_level_end = p_fuel_level_end,
@@ -177,7 +206,11 @@ begin
   return jsonb_build_object(
     'reservationId', v_id,
     'status', 'returned',
-    'returnedAt', v_now
+    'returnType', v_return_type,
+    'returnedAt', v_now,
+    'actualEndAt', v_now,
+    'scheduledEndAt', v_scheduled_end,
+    'isEarlyReturn', v_return_type = 'early'
   );
 end;
 $$;
@@ -186,8 +219,8 @@ revoke all on function public.start_rental_for_me(text, text[], integer, text) f
 grant execute on function public.start_rental_for_me(text, text[], integer, text) to authenticated;
 
 revoke all on function public.complete_rental_for_me(
-  text, text[], integer, text, boolean, text
+  text, text[], integer, text, boolean, text, boolean, boolean
 ) from public;
 grant execute on function public.complete_rental_for_me(
-  text, text[], integer, text, boolean, text
+  text, text[], integer, text, boolean, text, boolean, boolean
 ) to authenticated;

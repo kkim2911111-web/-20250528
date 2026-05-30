@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
 import '../models/grouped_reservations.dart';
+import '../models/rental_extension_result.dart';
 import '../models/reservation.dart';
 import '../supabase_client.dart';
 import '../theme/danji_colors.dart';
@@ -11,6 +12,7 @@ import '../services/rental_service.dart';
 import '../services/reservation_refresh_bus.dart';
 import 'booking_screen.dart';
 import 'my_reservations_screen.dart';
+import '../utils/rental_extension_flow.dart';
 import '../utils/rental_navigation.dart';
 
 class HomeScreen extends StatefulWidget {
@@ -98,7 +100,9 @@ class HomeScreenState extends State<HomeScreen> {
     }
 
     try {
-      final grouped = await _rentalService.fetchGroupedReservations();
+      final grouped = await _rentalService.fetchGroupedReservations(
+        forceRefresh: true,
+      );
       return _HomeData(
         grouped: grouped,
         userName: name,
@@ -118,7 +122,25 @@ class HomeScreenState extends State<HomeScreen> {
   }
 
   Reservation? _primary(GroupedReservations? grouped) {
-    return grouped?.soonestUpcoming;
+    return grouped?.homePrimary;
+  }
+
+  _HomeView _homeViewFor(Reservation reservation) {
+    if (reservation.status == 'in_use') {
+      return _HomeView.operating;
+    }
+    if ((reservation.status == 'confirmed' ||
+            reservation.status == 'pending') &&
+        reservation.isWithinUsageWindow) {
+      return _HomeView.operating;
+    }
+    if (reservation.isWaiting) {
+      return _HomeView.waiting;
+    }
+    if (reservation.isOperating) {
+      return _HomeView.operating;
+    }
+    return _HomeView.waiting;
   }
 
   @override
@@ -192,9 +214,7 @@ class HomeScreenState extends State<HomeScreen> {
             final primary = _primary(data.grouped);
             final view = primary == null
                 ? _HomeView.empty
-                : (primary.isOperating || primary.status == 'in_use')
-                    ? _HomeView.operating
-                    : _HomeView.waiting;
+                : _homeViewFor(primary);
 
             return ListView(
               physics: const AlwaysScrollableScrollPhysics(),
@@ -231,6 +251,7 @@ class HomeScreenState extends State<HomeScreen> {
                       timeFormat: _timeFormat,
                       onReturn: () => _openReturn(primary),
                       onStartUse: () => _openStartRental(primary),
+                      onExtend: () => _openExtension(primary),
                       onReservations: () => _openMyReservations(context),
                     ),
                 },
@@ -260,6 +281,12 @@ class HomeScreenState extends State<HomeScreen> {
 
   void _openReturn(Reservation reservation) {
     openRentalReturn<bool>(context, reservation).then((_) => reload());
+  }
+
+  void _openExtension(Reservation reservation) {
+    openRentalExtension(context, reservation).then((applied) {
+      if (applied) reload();
+    });
   }
 
   Future<void> _openResidentVerification() async {
@@ -559,7 +586,7 @@ class _WaitingHomeBody extends StatelessWidget {
         _MainActionCard(
           color: DanjiColors.rentalBlue,
           icon: Icons.play_circle_outline,
-          title: '운행시작',
+          title: _startButtonTitle(reservation),
           subtitle: '사진 등록 후 출발하세요',
           onTap: onStart,
         ),
@@ -587,6 +614,13 @@ class _WaitingHomeBody extends StatelessWidget {
       ],
     );
   }
+
+  static String _startButtonTitle(Reservation reservation) {
+    if (reservation.status == 'confirmed' || reservation.status == 'pending') {
+      return '차량 이용 시작';
+    }
+    return '운행시작';
+  }
 }
 
 class _OperatingHomeBody extends StatelessWidget {
@@ -594,6 +628,7 @@ class _OperatingHomeBody extends StatelessWidget {
   final DateFormat timeFormat;
   final VoidCallback onReturn;
   final VoidCallback onStartUse;
+  final VoidCallback onExtend;
   final VoidCallback onReservations;
 
   const _OperatingHomeBody({
@@ -601,20 +636,21 @@ class _OperatingHomeBody extends StatelessWidget {
     required this.timeFormat,
     required this.onReturn,
     required this.onStartUse,
+    required this.onExtend,
     required this.onReservations,
   });
 
   @override
   Widget build(BuildContext context) {
     final end = reservation.endAt;
-    final canReturn = reservation.canReturn;
+    final isInUse = reservation.status == 'in_use';
     return Column(
       children: [
         _ReservationInfoCard(
           reservation: reservation,
           timeFormat: timeFormat,
-          title: canReturn ? '이용 중인 차량' : '이용 시간대',
-          badge: canReturn ? '대여 중' : '이용 중',
+          title: isInUse ? '이용 중인 차량' : '이용 시간대',
+          badge: isInUse ? '대여 중' : reservation.statusLabel,
           badgeColor: DanjiColors.sectionOperating,
           footer: end != null
               ? '반납 마감 ${timeFormat.format(end)} · ${_timeRemaining(end)}'
@@ -623,18 +659,18 @@ class _OperatingHomeBody extends StatelessWidget {
         const SizedBox(height: 16),
         _MainActionCard(
           color: DanjiColors.rentalBlue,
-          icon: canReturn
+          icon: isInUse
               ? Icons.local_parking_outlined
               : Icons.directions_car_outlined,
-          subtitle: canReturn
+          subtitle: isInUse
               ? (reservation.canEarlyReturn
                   ? '중도반납 · 남은 시간 환불 불가'
                   : '주차 후 사진 찍어 반납')
               : '대여 시작 후 반납할 수 있습니다',
-          title: canReturn
+          title: isInUse
               ? (reservation.canEarlyReturn ? '중도반납' : '반납하기')
               : '차량 이용 시작',
-          onTap: canReturn ? onReturn : onStartUse,
+          onTap: isInUse ? onReturn : onStartUse,
         ),
         const SizedBox(height: 16),
         Row(
@@ -652,11 +688,15 @@ class _OperatingHomeBody extends StatelessWidget {
                 icon: Icons.schedule_outlined,
                 label: '연장하기',
                 iconColor: DanjiColors.primaryBlue,
-                onTap: () {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('연장 기능은 준비 중입니다.')),
-                  );
-                },
+                onTap: isInUse
+                    ? onExtend
+                    : () {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(
+                            content: Text(RentalExtensionMessages.needInUse),
+                          ),
+                        );
+                      },
               ),
             ),
           ],
@@ -714,8 +754,6 @@ class _ReservationInfoCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final vehicle = reservation.vehicle;
-    final start = reservation.startAt;
-    final end = reservation.endAt;
     final carLine = [
       vehicle?.name ?? '차량',
       if (vehicle?.carNumber != null) '(${vehicle!.carNumber})',
@@ -777,10 +815,10 @@ class _ReservationInfoCard extends StatelessWidget {
               fontWeight: FontWeight.w800,
             ),
           ),
-          if (start != null && end != null) ...[
+          if (reservation.usagePeriodLabel != null) ...[
             const SizedBox(height: 6),
             Text(
-              '${timeFormat.format(start)} - ${timeFormat.format(end)}'
+              '${reservation.usagePeriodLabel}'
               '${vehicle?.parkingLocation != null ? ' · ${vehicle!.parkingLocation}' : ''}',
               style: const TextStyle(
                 color: DanjiColors.textMuted,
