@@ -181,7 +181,7 @@ begin
 
   update public.payment_orders
   set
-    status = 'confirmed',
+    status = 'paid',
     payment_key = p_payment_key,
     has_payment_key = true,
     updated_at = now()

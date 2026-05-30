@@ -33,6 +33,15 @@ class PaymentService {
   String _friendlyError(Object error) {
     if (error is PostgrestException) {
       final msg = error.message.toLowerCase();
+      if (msg.contains('payment_orders_status_check') ||
+          (msg.contains('payment_orders') && msg.contains('check constraint'))) {
+        return 'payment_orders status 값이 DB 허용 범위를 벗어났습니다.\n'
+            '허용값: pending, paid, failed, cancelled\n'
+            'Supabase에서 fix_payment_orders_status_check.sql 을 실행해주세요.';
+      }
+      if (msg.contains('not_authenticated')) {
+        return '로그인이 필요합니다. 다시 로그인한 뒤 결제를 시도해주세요.';
+      }
       if (msg.contains('not_approved')) {
         return '입주민 승인이 필요합니다.';
       }
@@ -130,6 +139,10 @@ class PaymentService {
         '앱을 새로고침하거나 .env의 SUPABASE_URL·SUPABASE_ANON_KEY를 확인해주세요.',
       );
     }
+    final user = supabase.auth.currentUser;
+    if (user == null) {
+      throw const AuthException('로그인이 필요합니다. 다시 로그인한 뒤 결제를 시도해주세요.');
+    }
     try {
       final data = await supabase.rpc('prepare_payment_order', params: {
         'p_vehicle_id': vehicle.id,
@@ -191,6 +204,15 @@ class PaymentService {
 
     if (!PaymentConfig.isConfigured) {
       throw StateError('TOSS_CLIENT_KEY가 필요합니다.');
+    }
+
+    debugPrint(
+      '[payment] TOSS key from ${PaymentConfig.keySource}: ${PaymentConfig.maskedKey}',
+    );
+
+    final user = supabase.auth.currentUser;
+    if (user == null) {
+      throw const AuthException('로그인이 필요합니다. 다시 로그인한 뒤 결제를 시도해주세요.');
     }
 
     final prepared = await preparePayment(
@@ -573,6 +595,14 @@ String friendlyPaymentError(Object error) {
     return '알림 설정 오류입니다. 예약·결제는 계속 진행할 수 있습니다.';
   }
   if (text.contains('알 수 없') || text.toLowerCase().contains('unknown')) {
+    if (text.toLowerCase().contains('client') ||
+        text.contains('clientKey') ||
+        text.contains('인증')) {
+      return 'TOSS_CLIENT_KEY가 올바르지 않습니다.\n'
+          '.env의 TOSS_CLIENT_KEY(test_ck_...)를 확인하거나 '
+          'flutter run 시 잘못된 --dart-define 값이 덮어쓰지 않는지 확인해주세요.\n'
+          '(상세: $text)';
+    }
     return '결제 요청 중 오류가 발생했습니다.\n'
         '로그인 상태와 TOSS_CLIENT_KEY 설정을 확인한 뒤 다시 시도해주세요.\n'
         '(상세: $text)';

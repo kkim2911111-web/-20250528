@@ -1,6 +1,7 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../supabase_client.dart';
+import '../constants/payment_order_status.dart';
 
 class ReservationOverlapException implements Exception {
   final String message;
@@ -417,7 +418,7 @@ class ReservationService {
     if (orderId != null && orderId.isNotEmpty) {
       try {
         await supabase.from('payment_orders').update({
-          'status': 'confirmed',
+          'status': PaymentOrderStatus.paid,
           if (paymentKey != null && paymentKey.isNotEmpty)
             'payment_key': paymentKey,
           'has_payment_key': paymentKey != null && paymentKey.isNotEmpty,
@@ -426,7 +427,7 @@ class ReservationService {
       } on PostgrestException catch (e) {
         if (e.code != '42703' && e.code != 'PGRST204') rethrow;
         await supabase.from('payment_orders').update({
-          'status': 'confirmed',
+          'status': PaymentOrderStatus.paid,
           if (paymentKey != null && paymentKey.isNotEmpty)
             'payment_key': paymentKey,
           'reservation_id': reservationId,
@@ -501,7 +502,7 @@ class ReservationService {
     final paymentKey = order['payment_key']?.toString().trim() ?? '';
     final hasKeyFlag = order['has_payment_key'] == true;
     final hasKey = hasKeyFlag || paymentKey.isNotEmpty;
-    return hasKey && (status == 'confirmed' || status == 'paid');
+    return hasKey && PaymentOrderStatus.isPaid(status);
   }
 
   Future<Map<String, dynamic>?> findReservationByOrderId(String orderId) async {
@@ -613,7 +614,7 @@ class ReservationService {
 
     final orderStatus = order['status']?.toString() ?? '';
 
-    if (orderStatus == 'paid' || orderStatus == 'confirmed') {
+    if (PaymentOrderStatus.isPaid(orderStatus)) {
       final linkedId = order['reservation_id']?.toString();
       if (linkedId != null && linkedId.isNotEmpty) {
         return {
@@ -625,7 +626,8 @@ class ReservationService {
         };
       }
       // paid 이지만 reservations 미생성 — 아래에서 복구 저장
-    } else if (orderStatus != 'pending' && orderStatus != 'failed') {
+    } else if (orderStatus != PaymentOrderStatus.pending &&
+        orderStatus != PaymentOrderStatus.failed) {
       throw Exception('invalid_order_status');
     }
 
@@ -641,7 +643,7 @@ class ReservationService {
     if (overlaps) {
       await supabase
           .from('payment_orders')
-          .update({'status': 'cancelled'})
+          .update({'status': PaymentOrderStatus.cancelled})
           .eq('order_id', orderId);
       throw const ReservationOverlapException();
     }
@@ -728,14 +730,14 @@ class ReservationService {
 
     try {
       await supabase.from('payment_orders').update({
-        'status': 'confirmed',
+        'status': PaymentOrderStatus.paid,
         'payment_key': paymentKey,
         'has_payment_key': true,
       }).eq('order_id', orderId);
     } on PostgrestException catch (e) {
       if (e.code != '42703' && e.code != 'PGRST204') rethrow;
       await supabase.from('payment_orders').update({
-        'status': 'confirmed',
+        'status': PaymentOrderStatus.paid,
         'payment_key': paymentKey,
       }).eq('order_id', orderId);
     }

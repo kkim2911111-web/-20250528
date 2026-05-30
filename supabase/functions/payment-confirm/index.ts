@@ -126,7 +126,7 @@ Deno.serve(async (req) => {
       await admin
         .from('payment_orders')
         .update({
-          status: 'confirmed',
+          status: 'paid',
           payment_key: paymentKey,
           has_payment_key: true,
           updated_at: new Date().toISOString(),
@@ -163,7 +163,7 @@ Deno.serve(async (req) => {
       await admin
         .from('payment_orders')
         .update({
-          status: 'confirmed',
+          status: 'paid',
           payment_key: paymentKey,
           has_payment_key: true,
           updated_at: new Date().toISOString(),

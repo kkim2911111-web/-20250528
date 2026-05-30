@@ -50,7 +50,7 @@ Deno.serve(async (req) => {
 
     if (!order) return jsonResponse({ error: '주문을 찾을 수 없습니다.' }, 404);
 
-    if (order.status === 'paid') {
+    if (order.status === 'paid' || order.status === 'confirmed') {
       return jsonResponse({ ok: true, cancelled: false });
     }
 
