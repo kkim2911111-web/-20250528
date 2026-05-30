@@ -22,7 +22,7 @@ export default async function handler(req, res) {
 
     if (!order) return json(res, 404, { error: '주문을 찾을 수 없습니다.' });
 
-    if (order.status === 'paid') {
+    if (order.status === 'paid' || order.status === 'confirmed') {
       return json(res, 200, { ok: true, cancelled: false });
     }
 

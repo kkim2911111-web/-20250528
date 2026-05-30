@@ -1,6 +1,11 @@
 import { handleCors, jsonResponse } from '../_shared/http.ts';
 import { getAdminClient, getUserFromRequest } from '../_shared/payment.ts';
 import { cancelReservationForUser } from '../_shared/reservation_cancel.ts';
+import {
+  PaymentOrderStatus,
+  isPaymentOrderPaid,
+  paymentOrderCancelledUpdate,
+} from '../_shared/payment_order_status.ts';
 
 Deno.serve(async (req) => {
   const cors = handleCors(req);
@@ -50,16 +55,13 @@ Deno.serve(async (req) => {
 
     if (!order) return jsonResponse({ error: '주문을 찾을 수 없습니다.' }, 404);
 
-    if (order.status === 'paid' || order.status === 'confirmed') {
+    if (isPaymentOrderPaid(order.status)) {
       return jsonResponse({ ok: true, cancelled: false });
     }
 
     await admin
       .from('payment_orders')
-      .update({
-        status: 'cancelled',
-        updated_at: new Date().toISOString(),
-      })
+      .update(paymentOrderCancelledUpdate())
       .eq('order_id', orderId)
       .eq('user_id', user.id);
 

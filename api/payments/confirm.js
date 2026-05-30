@@ -112,7 +112,10 @@ export default async function handler(req, res) {
     if (overlap) {
       await admin
         .from('payment_orders')
-        .update({ status: 'cancelled', updated_at: new Date().toISOString() })
+        .update({
+          status: 'cancelled',
+          updated_at: new Date().toISOString(),
+        })
         .eq('order_id', orderId);
       return json(res, 409, { error: '이미 예약된 시간입니다.' });
     }
@@ -131,6 +134,7 @@ export default async function handler(req, res) {
       .update({
         status: 'paid',
         payment_key: paymentKey,
+        has_payment_key: true,
         reservation_id: reservationId,
         updated_at: new Date().toISOString(),
       })
@@ -147,7 +151,10 @@ export default async function handler(req, res) {
     if (orderId) {
       await admin
         .from('payment_orders')
-        .update({ status: 'failed', updated_at: new Date().toISOString() })
+        .update({
+          status: 'failed',
+          updated_at: new Date().toISOString(),
+        })
         .eq('order_id', orderId);
     }
     return json(res, 500, {

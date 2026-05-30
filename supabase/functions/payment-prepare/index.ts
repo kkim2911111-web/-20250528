@@ -5,6 +5,7 @@ import {
   hasOverlap,
   makeOrderId,
 } from '../_shared/payment.ts';
+import { PaymentOrderStatus } from '../_shared/payment_order_status.ts';
 
 Deno.serve(async (req) => {
   const cors = handleCors(req);
@@ -69,7 +70,7 @@ Deno.serve(async (req) => {
       start_time: startTime,
       end_time: endTime,
       total_price: amount,
-      status: 'pending',
+      status: PaymentOrderStatus.pending,
     });
 
     if (insertError) {

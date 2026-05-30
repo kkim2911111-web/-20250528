@@ -67,7 +67,7 @@ begin
 
   if v_row.order_id is not null then
     update public.payment_orders
-    set status = 'cancelled'
+    set status = 'cancelled', updated_at = now()
     where order_id = v_row.order_id
       and user_id = v_user;
   end if;

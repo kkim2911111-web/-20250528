@@ -1,5 +1,6 @@
 import { SupabaseClient } from 'https://esm.sh/@supabase/supabase-js@2.49.1';
 import { cancelTossPayment } from './toss.ts';
+import { paymentOrderCancelledUpdate } from './payment_order_status.ts';
 
 export async function cancelReservationForUser(params: {
   admin: SupabaseClient;
@@ -69,7 +70,7 @@ export async function cancelReservationForUser(params: {
   if (reservation.order_id) {
     await admin
       .from('payment_orders')
-      .update({ status: 'cancelled' })
+      .update(paymentOrderCancelledUpdate())
       .eq('order_id', reservation.order_id)
       .eq('user_id', userId);
   }

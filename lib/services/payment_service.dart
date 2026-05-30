@@ -2,6 +2,7 @@ import 'package:flutter/foundation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../config/payment_config.dart';
+import '../constants/payment_order_status.dart';
 import '../models/payment_confirm_result.dart';
 import '../models/reservation.dart';
 import '../models/vehicle.dart';
@@ -36,7 +37,7 @@ class PaymentService {
       if (msg.contains('payment_orders_status_check') ||
           (msg.contains('payment_orders') && msg.contains('check constraint'))) {
         return 'payment_orders status 값이 DB 허용 범위를 벗어났습니다.\n'
-            '허용값: pending, paid, failed, cancelled\n'
+            '허용값: ${PaymentOrderStatus.allowed.join(', ')}\n'
             'Supabase에서 fix_payment_orders_status_check.sql 을 실행해주세요.';
       }
       if (msg.contains('not_authenticated')) {

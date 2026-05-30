@@ -3,6 +3,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../models/fuel_level.dart';
 import '../models/grouped_reservations.dart';
+import '../constants/payment_order_status.dart';
 import '../models/reservation.dart';
 import '../models/vehicle.dart';
 import '../supabase_client.dart';
@@ -631,7 +632,7 @@ fuel_level_start,fuel_level_end,is_accident,accident_note,door_unlocked
       try {
         await supabase
             .from('payment_orders')
-            .update({'status': 'cancelled'})
+            .update(PaymentOrderPayload.markCancelled())
             .eq('order_id', orderId)
             .eq('user_id', userId);
       } catch (_) {}

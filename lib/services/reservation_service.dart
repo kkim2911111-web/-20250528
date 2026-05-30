@@ -416,23 +416,12 @@ class ReservationService {
     }
 
     if (orderId != null && orderId.isNotEmpty) {
-      try {
-        await supabase.from('payment_orders').update({
-          'status': PaymentOrderStatus.paid,
-          if (paymentKey != null && paymentKey.isNotEmpty)
-            'payment_key': paymentKey,
-          'has_payment_key': paymentKey != null && paymentKey.isNotEmpty,
-          'reservation_id': reservationId,
-        }).eq('order_id', orderId).eq('user_id', user.id);
-      } on PostgrestException catch (e) {
-        if (e.code != '42703' && e.code != 'PGRST204') rethrow;
-        await supabase.from('payment_orders').update({
-          'status': PaymentOrderStatus.paid,
-          if (paymentKey != null && paymentKey.isNotEmpty)
-            'payment_key': paymentKey,
-          'reservation_id': reservationId,
-        }).eq('order_id', orderId).eq('user_id', user.id);
-      }
+      await supabase.from('payment_orders').update(
+        PaymentOrderPayload.markPaid(
+          paymentKey: paymentKey ?? '',
+          reservationId: reservationId,
+        ),
+      ).eq('order_id', orderId).eq('user_id', user.id);
     }
   }
 
@@ -474,26 +463,12 @@ class ReservationService {
     final user = supabase.auth.currentUser;
     if (user == null) return null;
 
-    try {
-      return await supabase
-          .from('payment_orders')
-          .select(
-            'order_id, status, payment_key, has_payment_key, reservation_id, total_price',
-          )
-          .eq('order_id', orderId)
-          .eq('user_id', user.id)
-          .maybeSingle();
-    } on PostgrestException catch (e) {
-      if (e.code == '42703' || e.code == 'PGRST204') {
-        return await supabase
-            .from('payment_orders')
-            .select('order_id, status, payment_key, reservation_id, total_price')
-            .eq('order_id', orderId)
-            .eq('user_id', user.id)
-            .maybeSingle();
-      }
-      rethrow;
-    }
+    return await supabase
+        .from('payment_orders')
+        .select(PaymentOrderColumns.selectSummary)
+        .eq('order_id', orderId)
+        .eq('user_id', user.id)
+        .maybeSingle();
   }
 
   bool isPaymentOrderConfirmed(Map<String, dynamic>? order) {
@@ -600,10 +575,7 @@ class ReservationService {
 
     final order = await supabase
         .from('payment_orders')
-        .select(
-          'order_id, user_id, vehicle_id, vehicle_name, start_time, end_time, '
-          'total_price, status, payment_key, reservation_id',
-        )
+        .select(PaymentOrderColumns.selectDetail)
         .eq('order_id', orderId)
         .eq('user_id', user.id)
         .maybeSingle();
@@ -643,7 +615,7 @@ class ReservationService {
     if (overlaps) {
       await supabase
           .from('payment_orders')
-          .update({'status': PaymentOrderStatus.cancelled})
+          .update(PaymentOrderPayload.markCancelled())
           .eq('order_id', orderId);
       throw const ReservationOverlapException();
     }
@@ -728,19 +700,12 @@ class ReservationService {
       }
     }
 
-    try {
-      await supabase.from('payment_orders').update({
-        'status': PaymentOrderStatus.paid,
-        'payment_key': paymentKey,
-        'has_payment_key': true,
-      }).eq('order_id', orderId);
-    } on PostgrestException catch (e) {
-      if (e.code != '42703' && e.code != 'PGRST204') rethrow;
-      await supabase.from('payment_orders').update({
-        'status': PaymentOrderStatus.paid,
-        'payment_key': paymentKey,
-      }).eq('order_id', orderId);
-    }
+    await supabase.from('payment_orders').update(
+      PaymentOrderPayload.markPaid(
+        paymentKey: paymentKey,
+        reservationId: reservationId,
+      ),
+    ).eq('order_id', orderId);
 
     return {
       'reservationId': reservationId,

@@ -6,6 +6,13 @@ import {
 } from '../_shared/payment.ts';
 import { confirmTossPayment } from '../_shared/toss.ts';
 import { sendReservationCompletePush } from '../_shared/fcm.ts';
+import {
+  PaymentOrderStatus,
+  isPaymentOrderPaid,
+  paymentOrderCancelledUpdate,
+  paymentOrderFailedUpdate,
+  paymentOrderPaidUpdate,
+} from '../_shared/payment_order_status.ts';
 
 Deno.serve(async (req) => {
   const cors = handleCors(req);
@@ -45,9 +52,8 @@ Deno.serve(async (req) => {
     }
 
     if (
-      order.status === 'paid' ||
-      order.status === 'confirmed' ||
-      order.status === 'failed'
+      isPaymentOrderPaid(order.status) ||
+      order.status === PaymentOrderStatus.failed
     ) {
       if (order.reservation_id) {
         return jsonResponse({
@@ -77,7 +83,7 @@ Deno.serve(async (req) => {
       }
 
       // paid/confirmed/failed 이지만 reservations 미생성 — 아래 finalize 로 복구 (토스 재승인 없음)
-    } else if (order.status !== 'pending') {
+    } else if (order.status !== PaymentOrderStatus.pending) {
       return jsonResponse({ error: '결제할 수 없는 주문 상태입니다.' }, 400);
     }
 
@@ -95,17 +101,16 @@ Deno.serve(async (req) => {
     ) {
       await admin
         .from('payment_orders')
-        .update({ status: 'cancelled', updated_at: new Date().toISOString() })
+        .update(paymentOrderCancelledUpdate())
         .eq('order_id', orderId);
       return jsonResponse({ error: '이미 예약된 시간입니다.' }, 409);
     }
 
     const alreadyApproved =
-      order.status === 'paid' ||
-      order.status === 'confirmed' ||
+      isPaymentOrderPaid(order.status) ||
       order.has_payment_key === true ||
       (order.payment_key != null && String(order.payment_key).length > 0) ||
-      (order.status === 'failed' &&
+      (order.status === PaymentOrderStatus.failed &&
         order.payment_key != null &&
         String(order.payment_key).length > 0);
 
@@ -125,12 +130,7 @@ Deno.serve(async (req) => {
 
       await admin
         .from('payment_orders')
-        .update({
-          status: 'paid',
-          payment_key: paymentKey,
-          has_payment_key: true,
-          updated_at: new Date().toISOString(),
-        })
+        .update(paymentOrderPaidUpdate(paymentKey))
         .eq('order_id', orderId);
     } else {
       console.log(
@@ -162,12 +162,7 @@ Deno.serve(async (req) => {
       // 토스 승인은 완료 — confirmed 유지 후 클라이언트 RPC 재시도 가능
       await admin
         .from('payment_orders')
-        .update({
-          status: 'paid',
-          payment_key: paymentKey,
-          has_payment_key: true,
-          updated_at: new Date().toISOString(),
-        })
+        .update(paymentOrderPaidUpdate(paymentKey))
         .eq('order_id', orderId);
       throw finalizeErr;
     }
@@ -201,10 +196,10 @@ Deno.serve(async (req) => {
         .select('status, payment_key')
         .eq('order_id', orderId)
         .maybeSingle();
-      if (order?.status === 'pending') {
+      if (order?.status === PaymentOrderStatus.pending) {
         await admin
           .from('payment_orders')
-          .update({ status: 'failed', updated_at: new Date().toISOString() })
+          .update(paymentOrderFailedUpdate())
           .eq('order_id', orderId);
       }
     }
