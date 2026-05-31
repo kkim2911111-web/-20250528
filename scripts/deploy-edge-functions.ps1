@@ -35,6 +35,7 @@ try {
     Write-Host "==> Edge Functions 배포 (기존 TOSS_SECRET_KEY / FIREBASE 시크릿 사용)"
     & $sb functions deploy payment-cancel --project-ref $ProjectRef
     & $sb functions deploy payment-confirm --project-ref $ProjectRef
+    & $sb functions deploy payment-webhook --project-ref $ProjectRef
     & $sb functions deploy reservation-cancel --project-ref $ProjectRef
 
     Write-Host ""

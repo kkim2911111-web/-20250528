@@ -34,6 +34,32 @@ export function json(res, status, body) {
   res.end(JSON.stringify(body));
 }
 
+export async function invokeEdgeFunction(name, body) {
+  const url = process.env.SUPABASE_URL;
+  const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (!url || !key) {
+    throw new Error('SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY 환경변수가 필요합니다.');
+  }
+
+  const res = await fetch(`${url}/functions/v1/${name}`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${key}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(body),
+  });
+
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    const err = new Error(data.error || `Edge Function ${name} 호출 실패`);
+    err.status = res.status;
+    err.body = data;
+    throw err;
+  }
+  return data;
+}
+
 export function cors(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET,POST,OPTIONS');

@@ -2,18 +2,24 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
 import '../models/grouped_reservations.dart';
-import '../models/rental_extension_result.dart';
+import '../models/home_banner.dart';
 import '../models/reservation.dart';
 import '../supabase_client.dart';
 import '../theme/danji_colors.dart';
 import '../resident_profile_screen.dart';
+import '../services/banner_service.dart';
 import '../services/my_page_service.dart';
 import '../services/rental_service.dart';
 import '../services/reservation_refresh_bus.dart';
+import '../theme/danji_theme.dart';
+import '../utils/network_retry.dart';
 import 'booking_screen.dart';
 import 'my_reservations_screen.dart';
+import '../utils/accident_emergency_flow.dart';
 import '../utils/rental_extension_flow.dart';
 import '../utils/rental_navigation.dart';
+import '../widgets/rental_inquiry_button.dart';
+import '../widgets/smart_key_door_buttons.dart';
 
 class HomeScreen extends StatefulWidget {
   final VoidCallback? onGoMyPage;
@@ -27,9 +33,11 @@ class HomeScreen extends StatefulWidget {
 class HomeScreenState extends State<HomeScreen> {
   final _rentalService = RentalService();
   final _myPageService = MyPageService();
+  final _bannerService = BannerService();
   final _timeFormat = DateFormat('HH:mm');
 
   Future<_HomeData>? _future;
+  Future<HomeBanner?>? _bannerFuture;
 
   @override
   void initState() {
@@ -52,6 +60,7 @@ class HomeScreenState extends State<HomeScreen> {
   void reload() {
     setState(() {
       _future = _load();
+      _bannerFuture = _bannerService.fetchActiveBanner();
     });
   }
 
@@ -100,8 +109,8 @@ class HomeScreenState extends State<HomeScreen> {
     }
 
     try {
-      final grouped = await _rentalService.fetchGroupedReservations(
-        forceRefresh: true,
+      final grouped = await withNetworkRetry(
+        () => _rentalService.fetchGroupedReservations(forceRefresh: true),
       );
       return _HomeData(
         grouped: grouped,
@@ -121,26 +130,39 @@ class HomeScreenState extends State<HomeScreen> {
     }
   }
 
-  Reservation? _primary(GroupedReservations? grouped) {
-    return grouped?.homePrimary;
+  List<Reservation> _homeCarouselReservations(GroupedReservations? grouped) {
+    if (grouped == null) return [];
+
+    final seen = <String>{};
+    final list = <Reservation>[];
+    for (final r in [...grouped.operating, ...grouped.waiting]) {
+      if (seen.add(r.id)) list.add(r);
+    }
+
+    list.sort((a, b) {
+      final aInUse = a.status == 'in_use';
+      final bInUse = b.status == 'in_use';
+      if (aInUse && !bInUse) return -1;
+      if (bInUse && !aInUse) return 1;
+      return a.sortByStart.compareTo(b.sortByStart);
+    });
+    return list;
   }
 
-  _HomeView _homeViewFor(Reservation reservation) {
+  _HomeReservationMode _homeMode(Reservation reservation) {
     if (reservation.status == 'in_use') {
-      return _HomeView.operating;
+      return _HomeReservationMode.inUse;
     }
-    if ((reservation.status == 'confirmed' ||
-            reservation.status == 'pending') &&
-        reservation.isWithinUsageWindow) {
-      return _HomeView.operating;
+    if (reservation.status == 'confirmed' || reservation.status == 'pending') {
+      if (reservation.isWithinUsageWindow) {
+        return _HomeReservationMode.confirmedInWindow;
+      }
+      return _HomeReservationMode.confirmedBeforeWindow;
     }
-    if (reservation.isWaiting) {
-      return _HomeView.waiting;
+    if (reservation.isWithinUsageWindow) {
+      return _HomeReservationMode.confirmedInWindow;
     }
-    if (reservation.isOperating) {
-      return _HomeView.operating;
-    }
-    return _HomeView.waiting;
+    return _HomeReservationMode.confirmedBeforeWindow;
   }
 
   @override
@@ -211,10 +233,7 @@ class HomeScreenState extends State<HomeScreen> {
               return const SizedBox.shrink();
             }
 
-            final primary = _primary(data.grouped);
-            final view = primary == null
-                ? _HomeView.empty
-                : _homeViewFor(primary);
+            final reservations = _homeCarouselReservations(data.grouped);
 
             return ListView(
               physics: const AlwaysScrollableScrollPhysics(),
@@ -232,29 +251,29 @@ class HomeScreenState extends State<HomeScreen> {
                   _ErrorBanner(message: data.error.toString()),
                   const SizedBox(height: 16),
                 ],
-                switch (view) {
-                  _HomeView.empty => _EmptyHomeBody(
-                      onBook: () => _openBooking(context),
-                      onReservations: () => _openMyReservations(context),
-                      onMyPage: widget.onGoMyPage,
-                    ),
-                  _HomeView.waiting => _WaitingHomeBody(
-                      reservation: primary!,
-                      timeFormat: _timeFormat,
-                      onStart: () => _openStartRental(primary),
-                      onBook: () => _openBooking(context),
-                      onReservations: () => _openMyReservations(context),
-                      upcomingCount: data.grouped?.activeCount ?? 0,
-                    ),
-                  _HomeView.operating => _OperatingHomeBody(
-                      reservation: primary!,
-                      timeFormat: _timeFormat,
-                      onReturn: () => _openReturn(primary),
-                      onStartUse: () => _openStartRental(primary),
-                      onExtend: () => _openExtension(primary),
-                      onReservations: () => _openMyReservations(context),
-                    ),
-                },
+                if (reservations.isEmpty)
+                  _EmptyHomeBody(
+                    onBook: () => _openBooking(context),
+                    onReservations: () => _openMyReservations(context),
+                  )
+                else
+                  _HomeReservationSection(
+                    reservations: reservations,
+                    timeFormat: _timeFormat,
+                    onBook: () => _openBooking(context),
+                    onReservations: () => _openMyReservations(context),
+                    onStart: (r) => _openStartRental(r),
+                    onReturn: (r) => _openReturn(r),
+                    onExtend: (r) => _openExtension(r),
+                    onAccident: (r) => _openAccidentReport(r),
+                    onCancel: (r) => _onCancelReservation(r),
+                    onRefresh: reload,
+                    modeFor: _homeMode,
+                  ),
+                const SizedBox(height: 24),
+                _HomeEventBannerSection(future: _bannerFuture),
+                const SizedBox(height: 16),
+                const RentalInquiryButton(),
               ],
             );
           },
@@ -276,6 +295,12 @@ class HomeScreenState extends State<HomeScreen> {
   }
 
   void _openStartRental(Reservation reservation) {
+    if (reservation.isTooEarlyForRentalStart) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text(RentalStartMessages.tooEarly)),
+      );
+      return;
+    }
     openRentalOrUseScreen(context, reservation).then((_) => reload());
   }
 
@@ -289,6 +314,82 @@ class HomeScreenState extends State<HomeScreen> {
     });
   }
 
+  void _openAccidentReport(Reservation reservation) {
+    showAccidentEmergencyDialog(context);
+  }
+
+  Future<void> _onCancelReservation(Reservation reservation) async {
+    if (reservation.isCancelBlocked) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text(ReservationCancelMessages.tooLate)),
+      );
+      return;
+    }
+    if (!reservation.canCancel) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('취소할 수 없는 예약입니다.')),
+      );
+      return;
+    }
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: DanjiColors.surface,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: const Text(
+          '예약 취소',
+          style: TextStyle(
+            color: DanjiColors.textPrimary,
+            fontWeight: FontWeight.w800,
+          ),
+        ),
+        content: const Text(
+          '정말 취소하시겠습니까? 결제하신 금액은 전액 환불됩니다.',
+          style: TextStyle(color: DanjiColors.textSecondary, height: 1.5),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('닫기'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            style: DanjiTheme.dangerButton,
+            child: const Text('예약취소'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+
+    showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => const Center(child: CircularProgressIndicator()),
+    );
+
+    try {
+      await _rentalService.cancelReservation(reservation.id);
+      if (!mounted) return;
+      Navigator.of(context).pop();
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text(ReservationCancelMessages.success)),
+      );
+      reload();
+    } catch (e) {
+      if (!mounted) return;
+      Navigator.of(context).pop();
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            e.toString().replaceFirst('RentalException: ', ''),
+          ),
+        ),
+      );
+    }
+  }
+
   Future<void> _openResidentVerification() async {
     await Navigator.of(context).push(
       MaterialPageRoute(
@@ -299,7 +400,326 @@ class HomeScreenState extends State<HomeScreen> {
   }
 }
 
-enum _HomeView { empty, waiting, operating }
+enum _HomeReservationMode {
+  confirmedBeforeWindow,
+  confirmedInWindow,
+  inUse,
+}
+
+class _HomeCardPresentation {
+  final String title;
+  final String badge;
+  final Color badgeColor;
+  final String? footer;
+
+  const _HomeCardPresentation({
+    required this.title,
+    required this.badge,
+    required this.badgeColor,
+    this.footer,
+  });
+}
+
+_HomeCardPresentation _homeCardPresentation({
+  required Reservation reservation,
+  required int index,
+  required DateFormat timeFormat,
+}) {
+  if (reservation.status == 'in_use') {
+    final end = reservation.endAt;
+    return _HomeCardPresentation(
+      title: '지금 타는 차',
+      badge: '대여 중',
+      badgeColor: DanjiColors.sectionOperating,
+      footer: end != null
+          ? '반납 마감 ${timeFormat.format(end)} · ${_formatTimeRemaining(end)}'
+          : null,
+    );
+  }
+
+  final inWindow = reservation.isWithinUsageWindow;
+  return _HomeCardPresentation(
+    title: index > 0
+        ? '다음 예약'
+        : (inWindow ? '이용 시간대' : '가장 임박한 예약'),
+    badge: inWindow
+        ? reservation.statusLabel
+        : reservation.timeUntilStartLabel,
+    badgeColor:
+        inWindow ? DanjiColors.sectionOperating : DanjiColors.buttonBlue,
+    footer: reservation.startAt != null
+        ? '${DateFormat('M월 d일 (E)', 'ko_KR').format(reservation.startAt!)} '
+            '${timeFormat.format(reservation.startAt!)} 시작'
+        : null,
+  );
+}
+
+String _formatTimeRemaining(DateTime end) {
+  final diff = end.difference(DateTime.now());
+  if (diff.isNegative) return '종료';
+  if (diff.inHours >= 1) {
+    return '${diff.inHours}시간 ${diff.inMinutes % 60}분 남음';
+  }
+  if (diff.inMinutes >= 1) return '${diff.inMinutes}분 남음';
+  return '곧 종료';
+}
+
+class _HomeReservationSection extends StatefulWidget {
+  final List<Reservation> reservations;
+  final DateFormat timeFormat;
+  final VoidCallback onBook;
+  final VoidCallback onReservations;
+  final void Function(Reservation reservation) onStart;
+  final void Function(Reservation reservation) onReturn;
+  final void Function(Reservation reservation) onExtend;
+  final void Function(Reservation reservation) onAccident;
+  final void Function(Reservation reservation) onCancel;
+  final VoidCallback onRefresh;
+  final _HomeReservationMode Function(Reservation reservation) modeFor;
+
+  const _HomeReservationSection({
+    required this.reservations,
+    required this.timeFormat,
+    required this.onBook,
+    required this.onReservations,
+    required this.onStart,
+    required this.onReturn,
+    required this.onExtend,
+    required this.onAccident,
+    required this.onCancel,
+    required this.onRefresh,
+    required this.modeFor,
+  });
+
+  @override
+  State<_HomeReservationSection> createState() =>
+      _HomeReservationSectionState();
+}
+
+class _HomeReservationSectionState extends State<_HomeReservationSection> {
+  late PageController _pageController;
+  int _currentPage = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    _pageController = PageController();
+  }
+
+  @override
+  void dispose() {
+    _pageController.dispose();
+    super.dispose();
+  }
+
+  @override
+  void didUpdateWidget(covariant _HomeReservationSection oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (_currentPage >= widget.reservations.length) {
+      final next = (widget.reservations.length - 1).clamp(0, 999);
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        _pageController.jumpToPage(next);
+        setState(() => _currentPage = next);
+      });
+    }
+  }
+
+  Reservation get _current => widget.reservations[_currentPage];
+
+  @override
+  Widget build(BuildContext context) {
+    final mode = widget.modeFor(_current);
+    final multi = widget.reservations.length > 1;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        SizedBox(
+          height: 188,
+          child: PageView.builder(
+            controller: _pageController,
+            itemCount: widget.reservations.length,
+            onPageChanged: (index) => setState(() => _currentPage = index),
+            itemBuilder: (context, index) {
+              final reservation = widget.reservations[index];
+              final meta = _homeCardPresentation(
+                reservation: reservation,
+                index: index,
+                timeFormat: widget.timeFormat,
+              );
+              return _ReservationInfoCard(
+                reservation: reservation,
+                timeFormat: widget.timeFormat,
+                title: meta.title,
+                badge: meta.badge,
+                badgeColor: meta.badgeColor,
+                footer: meta.footer,
+              );
+            },
+          ),
+        ),
+        if (multi) ...[
+          const SizedBox(height: 12),
+          _PageDots(
+            count: widget.reservations.length,
+            index: _currentPage,
+          ),
+        ],
+        const SizedBox(height: 16),
+        ...switch (mode) {
+          _HomeReservationMode.inUse => [
+              if (_current.status == 'in_use') ...[
+                SmartKeyDoorButtons(
+                  key: ValueKey('door-${_current.id}'),
+                  reservation: _current,
+                  onChanged: widget.onRefresh,
+                ),
+                const SizedBox(height: 16),
+              ],
+              _MainActionCard(
+                color: DanjiColors.rentalBlue,
+                icon: Icons.local_parking_outlined,
+                title: '반납하기',
+                onTap: () => widget.onReturn(_current),
+              ),
+              const SizedBox(height: 16),
+              Row(
+                children: [
+                  Expanded(
+                    child: _QuickTile(
+                      icon: Icons.schedule_outlined,
+                      label: '연장하기',
+                      iconColor: DanjiColors.primaryBlue,
+                      onTap: () => widget.onExtend(_current),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: _QuickTile(
+                      icon: Icons.warning_amber_rounded,
+                      label: '사고신고',
+                      iconColor: DanjiColors.accentRed,
+                      labelColor: DanjiColors.accentRed,
+                      onTap: () => widget.onAccident(_current),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+              _BookAndReservationsRow(
+                onBook: widget.onBook,
+                onReservations: widget.onReservations,
+              ),
+            ],
+          _HomeReservationMode.confirmedBeforeWindow ||
+          _HomeReservationMode.confirmedInWindow =>
+            [
+              _MainActionCard(
+                color: DanjiColors.rentalBlue,
+                icon: Icons.directions_car_outlined,
+                title: '차량 이용 시작',
+                subtitle: _current.canStartRental
+                    ? RentalStartMessages.subtitleReady
+                    : RentalStartMessages.subtitleWhenTooEarly,
+                enabled: _current.canStartRental,
+                onTap: () => widget.onStart(_current),
+              ),
+              const SizedBox(height: 16),
+              _BookAndReservationsRow(
+                onBook: widget.onBook,
+                onReservations: widget.onReservations,
+                showCancel: _current.shouldShowCancelButton,
+                onCancel: () => widget.onCancel(_current),
+              ),
+            ],
+        },
+      ],
+    );
+  }
+}
+
+class _PageDots extends StatelessWidget {
+  final int count;
+  final int index;
+
+  const _PageDots({
+    required this.count,
+    required this.index,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: List.generate(count, (i) {
+        final active = i == index;
+        return AnimatedContainer(
+          duration: const Duration(milliseconds: 200),
+          margin: const EdgeInsets.symmetric(horizontal: 4),
+          width: active ? 8 : 6,
+          height: active ? 8 : 6,
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            color: active
+                ? DanjiColors.primaryBlue
+                : DanjiColors.primaryBlue.withValues(alpha: 0.25),
+          ),
+        );
+      }),
+    );
+  }
+}
+
+class _BookAndReservationsRow extends StatelessWidget {
+  final VoidCallback onBook;
+  final VoidCallback onReservations;
+  final bool showCancel;
+  final VoidCallback? onCancel;
+
+  const _BookAndReservationsRow({
+    required this.onBook,
+    required this.onReservations,
+    this.showCancel = false,
+    this.onCancel,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        Expanded(
+          child: _QuickTile(
+            icon: Icons.calendar_month_outlined,
+            label: '예약하기',
+            iconColor: DanjiColors.primaryBlue,
+            onTap: onBook,
+          ),
+        ),
+        const SizedBox(width: 12),
+        Expanded(
+          child: _QuickTile(
+            icon: Icons.assignment_outlined,
+            label: '내 예약',
+            onTap: onReservations,
+          ),
+        ),
+        if (showCancel) ...[
+          const SizedBox(width: 12),
+          Expanded(
+            child: _QuickTile(
+              icon: Icons.event_busy_outlined,
+              label: '예약취소',
+              iconColor: DanjiColors.accentRed,
+              labelColor: DanjiColors.accentRed,
+              onTap: onCancel ?? () {},
+            ),
+          ),
+        ],
+      ],
+    );
+  }
+}
 
 class _HomeData {
   final GroupedReservations? grouped;
@@ -317,6 +737,109 @@ class _HomeData {
     this.hasResidentRegistration = false,
     this.error,
   });
+}
+
+class _HomeEventBannerSection extends StatelessWidget {
+  final Future<HomeBanner?>? future;
+
+  const _HomeEventBannerSection({required this.future});
+
+  @override
+  Widget build(BuildContext context) {
+    return FutureBuilder<HomeBanner?>(
+      future: future,
+      builder: (context, snap) {
+        if (snap.connectionState == ConnectionState.waiting) {
+          return const Padding(
+            padding: EdgeInsets.symmetric(vertical: 28),
+            child: Center(
+              child: SizedBox(
+                width: 28,
+                height: 28,
+                child: CircularProgressIndicator(strokeWidth: 2.5),
+              ),
+            ),
+          );
+        }
+
+        if (snap.hasError || snap.data == null) {
+          return const SizedBox.shrink();
+        }
+
+        return _EventBannerCard(banner: snap.data!);
+      },
+    );
+  }
+}
+
+class _EventBannerCard extends StatelessWidget {
+  final HomeBanner banner;
+
+  const _EventBannerCard({required this.banner});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.fromLTRB(20, 18, 20, 20),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          colors: [
+            DanjiColors.buttonBlue.withValues(alpha: 0.92),
+            DanjiColors.badgeBlue.withValues(alpha: 0.88),
+          ],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [
+          BoxShadow(
+            color: DanjiColors.buttonBlue.withValues(alpha: 0.18),
+            blurRadius: 14,
+            offset: const Offset(0, 6),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          if (banner.subTitle.isNotEmpty)
+            Text(
+              banner.subTitle,
+              style: const TextStyle(
+                color: Color(0xE6FFFFFF),
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
+                height: 1.4,
+              ),
+            ),
+          if (banner.subTitle.isNotEmpty && banner.mainTitle.isNotEmpty)
+            const SizedBox(height: 8),
+          if (banner.mainTitle.isNotEmpty)
+            Text(
+              banner.mainTitle,
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 20,
+                fontWeight: FontWeight.w800,
+                height: 1.35,
+              ),
+            ),
+          if (banner.description.isNotEmpty) ...[
+            const SizedBox(height: 10),
+            Text(
+              banner.description,
+              style: const TextStyle(
+                color: Color(0xCCFFFFFF),
+                fontSize: 13,
+                height: 1.45,
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
 }
 
 class _GreetingCard extends StatelessWidget {
@@ -496,12 +1019,10 @@ class _ErrorBanner extends StatelessWidget {
 class _EmptyHomeBody extends StatelessWidget {
   final VoidCallback onBook;
   final VoidCallback onReservations;
-  final VoidCallback? onMyPage;
 
   const _EmptyHomeBody({
     required this.onBook,
     required this.onReservations,
-    this.onMyPage,
   });
 
   @override
@@ -525,212 +1046,10 @@ class _EmptyHomeBody extends StatelessWidget {
                 onTap: onReservations,
               ),
             ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: _QuickTile(
-                icon: Icons.person_outline,
-                label: '마이페이지',
-                onTap: onMyPage ?? () {},
-              ),
-            ),
           ],
         ),
       ],
     );
-  }
-}
-
-class _WaitingHomeBody extends StatelessWidget {
-  final Reservation reservation;
-  final DateFormat timeFormat;
-  final VoidCallback onStart;
-  final VoidCallback onBook;
-  final VoidCallback onReservations;
-  final int upcomingCount;
-
-  const _WaitingHomeBody({
-    required this.reservation,
-    required this.timeFormat,
-    required this.onStart,
-    required this.onBook,
-    required this.onReservations,
-    this.upcomingCount = 0,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      children: [
-        _ReservationInfoCard(
-          reservation: reservation,
-          timeFormat: timeFormat,
-          title: '가장 임박한 예약',
-          badge: reservation.timeUntilStartLabel,
-          badgeColor: DanjiColors.buttonBlue,
-          footer: reservation.startAt != null
-              ? '${DateFormat('M월 d일 (E)', 'ko_KR').format(reservation.startAt!)} '
-                  '${timeFormat.format(reservation.startAt!)} 시작'
-              : null,
-        ),
-        if (upcomingCount > 1) ...[
-          const SizedBox(height: 8),
-          Align(
-            alignment: Alignment.centerRight,
-            child: TextButton(
-              onPressed: onReservations,
-              child: Text('예약 ${upcomingCount}건 · 전체 보기'),
-            ),
-          ),
-        ],
-        const SizedBox(height: 16),
-        _MainActionCard(
-          color: DanjiColors.rentalBlue,
-          icon: Icons.play_circle_outline,
-          title: _startButtonTitle(reservation),
-          subtitle: '사진 등록 후 출발하세요',
-          onTap: onStart,
-        ),
-        const SizedBox(height: 16),
-        Row(
-          children: [
-            Expanded(
-              child: _QuickTile(
-                icon: Icons.calendar_month_outlined,
-                label: '예약하기',
-                iconColor: DanjiColors.primaryBlue,
-                onTap: onBook,
-              ),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: _QuickTile(
-                icon: Icons.assignment_outlined,
-                label: '내 예약',
-                onTap: onReservations,
-              ),
-            ),
-          ],
-        ),
-      ],
-    );
-  }
-
-  static String _startButtonTitle(Reservation reservation) {
-    if (reservation.status == 'confirmed' || reservation.status == 'pending') {
-      return '차량 이용 시작';
-    }
-    return '운행시작';
-  }
-}
-
-class _OperatingHomeBody extends StatelessWidget {
-  final Reservation reservation;
-  final DateFormat timeFormat;
-  final VoidCallback onReturn;
-  final VoidCallback onStartUse;
-  final VoidCallback onExtend;
-  final VoidCallback onReservations;
-
-  const _OperatingHomeBody({
-    required this.reservation,
-    required this.timeFormat,
-    required this.onReturn,
-    required this.onStartUse,
-    required this.onExtend,
-    required this.onReservations,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final end = reservation.endAt;
-    final isInUse = reservation.status == 'in_use';
-    return Column(
-      children: [
-        _ReservationInfoCard(
-          reservation: reservation,
-          timeFormat: timeFormat,
-          title: isInUse ? '이용 중인 차량' : '이용 시간대',
-          badge: isInUse ? '대여 중' : reservation.statusLabel,
-          badgeColor: DanjiColors.sectionOperating,
-          footer: end != null
-              ? '반납 마감 ${timeFormat.format(end)} · ${_timeRemaining(end)}'
-              : null,
-        ),
-        const SizedBox(height: 16),
-        _MainActionCard(
-          color: DanjiColors.rentalBlue,
-          icon: isInUse
-              ? Icons.local_parking_outlined
-              : Icons.directions_car_outlined,
-          subtitle: isInUse
-              ? (reservation.canEarlyReturn
-                  ? '중도반납 · 남은 시간 환불 불가'
-                  : '주차 후 사진 찍어 반납')
-              : '대여 시작 후 반납할 수 있습니다',
-          title: isInUse
-              ? (reservation.canEarlyReturn ? '중도반납' : '반납하기')
-              : '차량 이용 시작',
-          onTap: isInUse ? onReturn : onStartUse,
-        ),
-        const SizedBox(height: 16),
-        Row(
-          children: [
-            Expanded(
-              child: _QuickTile(
-                icon: Icons.assignment_outlined,
-                label: '내 예약',
-                onTap: onReservations,
-              ),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: _QuickTile(
-                icon: Icons.schedule_outlined,
-                label: '연장하기',
-                iconColor: DanjiColors.primaryBlue,
-                onTap: isInUse
-                    ? onExtend
-                    : () {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(
-                            content: Text(RentalExtensionMessages.needInUse),
-                          ),
-                        );
-                      },
-              ),
-            ),
-          ],
-        ),
-        const SizedBox(height: 12),
-        Row(
-          children: [
-            Expanded(
-              child: _QuickTile(
-                icon: Icons.warning_amber_rounded,
-                label: '사고신고',
-                iconColor: DanjiColors.accentRed,
-                labelColor: DanjiColors.accentRed,
-                onTap: () {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('사고 신고는 반납 화면에서 등록할 수 있습니다.')),
-                  );
-                },
-              ),
-            ),
-          ],
-        ),
-      ],
-    );
-  }
-
-  String _timeRemaining(DateTime end) {
-    final diff = end.difference(DateTime.now());
-    if (diff.isNegative) return '종료';
-    if (diff.inHours >= 1) {
-      return '${diff.inHours}시간 ${diff.inMinutes % 60}분 남음';
-    }
-    if (diff.inMinutes >= 1) return '${diff.inMinutes}분 남음';
-    return '곧 종료';
   }
 }
 
@@ -848,25 +1167,28 @@ class _MainActionCard extends StatelessWidget {
   final Color color;
   final IconData icon;
   final String title;
-  final String subtitle;
+  final String? subtitle;
   final VoidCallback onTap;
+  final bool enabled;
 
   const _MainActionCard({
     required this.color,
     required this.icon,
     required this.title,
-    required this.subtitle,
+    this.subtitle,
     required this.onTap,
+    this.enabled = true,
   });
 
   @override
   Widget build(BuildContext context) {
+    final cardColor = enabled ? color : DanjiColors.textMuted;
     return Material(
-      color: color,
+      color: cardColor,
       borderRadius: BorderRadius.circular(16),
       elevation: 0,
       child: InkWell(
-        onTap: onTap,
+        onTap: enabled ? onTap : null,
         borderRadius: BorderRadius.circular(16),
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 28),
@@ -886,14 +1208,16 @@ class _MainActionCard extends StatelessWidget {
                         fontWeight: FontWeight.w800,
                       ),
                     ),
-                    const SizedBox(height: 4),
-                    Text(
-                      subtitle,
-                      style: const TextStyle(
-                        color: Color(0xCCFFFFFF),
-                        fontSize: 14,
+                    if (subtitle != null) ...[
+                      const SizedBox(height: 4),
+                      Text(
+                        subtitle!,
+                        style: const TextStyle(
+                          color: Color(0xCCFFFFFF),
+                          fontSize: 14,
+                        ),
                       ),
-                    ),
+                    ],
                   ],
                 ),
               ),

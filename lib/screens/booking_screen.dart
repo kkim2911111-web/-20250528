@@ -222,6 +222,7 @@ class _BookingScreenState extends State<BookingScreen> {
       );
 
       await _paymentService.startBookingPayment(
+        context: context,
         vehicle: vehicle,
         startTime: startTime,
         endTime: endTime,

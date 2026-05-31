@@ -107,9 +107,29 @@ class Reservation {
     return const [];
   }
 
-  bool get canStartRental =>
+  /// 운행시작 버튼 활성화 — 예약 시작 30분 전부터
+  static const rentalStartLeadTime = Duration(minutes: 30);
+
+  /// 예약 시작 30분 전 이전 (버튼 비활성)
+  bool get isTooEarlyForRentalStart {
+    final start = _start;
+    if (start == null) return false;
+    return DateTime.now().isBefore(start.subtract(rentalStartLeadTime));
+  }
+
+  /// 운행시작 가능 시간대 — 시작 30분 전 ~ 종료 시각
+  bool get isRentalStartWindowOpen {
+    if (isUsageTimeExpired) return false;
+    return !isTooEarlyForRentalStart;
+  }
+
+  /// 운행시작 버튼 표시 (비활성 포함)
+  bool get showRentalStartButton =>
       (status == 'confirmed' || status == 'pending') &&
-      !isEffectivelyFinished;
+      !isEffectivelyFinished &&
+      !isUsageTimeExpired;
+
+  bool get canStartRental => showRentalStartButton && isRentalStartWindowOpen;
 
   bool get canUseVehicle => status == 'in_use';
 
@@ -164,6 +184,10 @@ class Reservation {
   bool get isCancelBlocked =>
       canShowCancelButton && !canCancel;
 
+  /// 예약취소 버튼 표시 — confirmed & 이용 시작 1시간 이전만
+  bool get shouldShowCancelButton =>
+      status == 'confirmed' && canCancel;
+
   DateTime? get _start => startAt;
   DateTime? get _end => endAt;
 
@@ -193,11 +217,11 @@ class Reservation {
   bool get isActiveStatus =>
       status == 'confirmed' || status == 'in_use' || status == 'pending';
 
-  /// DB completed/returned 또는 (in_use 제외) 이용시간 경과
+  /// DB completed/returned 또는 이용 종료 시각 경과
   bool get isEffectivelyFinished =>
       isFinished ||
       isCancelled ||
-      (isActiveStatus && status != 'in_use' && isUsageTimeExpired);
+      (isActiveStatus && isUsageTimeExpired);
 
   /// 마이페이지 이용내역 — 취소·완료·시간 경과(미운행 확정 예약)
   bool get isInUsageHistory => isEffectivelyFinished;
@@ -220,11 +244,12 @@ class Reservation {
   /// 예약 종료 시각이 지나지 않았는지
   bool get isNotExpired => !isUsageTimeExpired;
 
-  /// 스마트키 — 대여 중·이용 대기·이용 시간대 내 활성 예약
+  /// 스마트키 문열림 — 예약 시작 30분 전부터
+  bool get canUnlockDoor => !isTooEarlyForRentalStart;
+
+  /// 스마트키 — 대여 중(in_use)만
   bool get isSmartKeyEligible =>
-      !isEffectivelyFinished &&
-      isActiveStatus &&
-      (status == 'in_use' || isOperating || isWaiting);
+      status == 'in_use' && !isEffectivelyFinished;
 
   DateTime get sortByStart => startAt ?? DateTime.fromMillisecondsSinceEpoch(0);
 
@@ -295,6 +320,14 @@ class Reservation {
         return status;
     }
   }
+}
+
+/// 운행시작 안내
+abstract final class RentalStartMessages {
+  static const tooEarly = '대여 시작 가능 시간이 아닙니다. (예약 시작 30분 전부터 가능)';
+  static const subtitleWhenTooEarly = '예약 시작 30분 전부터 이용 가능';
+  static const subtitleReady = '사진 등록 후 출발하세요';
+  static const startButtonActivationHint = '(30분전 활성화됩니다)';
 }
 
 /// 중도반납 안내

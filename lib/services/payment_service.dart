@@ -1,4 +1,5 @@
 import 'package:flutter/foundation.dart';
+import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../config/payment_config.dart';
@@ -6,7 +7,11 @@ import '../constants/payment_order_status.dart';
 import '../models/payment_confirm_result.dart';
 import '../models/reservation.dart';
 import '../models/vehicle.dart';
+import '../screens/payment_fail_screen.dart';
+import '../screens/payment_success_screen.dart';
+import '../screens/toss_payment_webview_screen.dart';
 import '../supabase_client.dart';
+import '../utils/network_retry.dart';
 import 'reservation_service.dart';
 import 'toss_payments.dart';
 
@@ -102,9 +107,11 @@ class PaymentService {
     Map<String, dynamic> body,
   ) async {
     try {
-      final response = await supabase.functions.invoke(
-        functionName,
-        body: body,
+      final response = await withNetworkRetry(
+        () => supabase.functions.invoke(
+          functionName,
+          body: body,
+        ),
       );
 
       final data = response.data;
@@ -137,7 +144,7 @@ class PaymentService {
     if (!isSupabaseInitialized) {
       throw StateError(
         '서버(Supabase)에 연결되지 않았습니다.\n'
-        '앱을 새로고침하거나 .env의 SUPABASE_URL·SUPABASE_ANON_KEY를 확인해주세요.',
+        '네트워크 연결을 확인한 뒤 다시 시도해주세요.',
       );
     }
     final user = supabase.auth.currentUser;
@@ -145,13 +152,15 @@ class PaymentService {
       throw const AuthException('로그인이 필요합니다. 다시 로그인한 뒤 결제를 시도해주세요.');
     }
     try {
-      final data = await supabase.rpc('prepare_payment_order', params: {
-        'p_vehicle_id': vehicle.id,
-        'p_vehicle_name': vehicle.name,
-        'p_start_time': startTime.toUtc().toIso8601String(),
-        'p_end_time': endTime.toUtc().toIso8601String(),
-        'p_total_price': totalPrice,
-      });
+      final data = await withNetworkRetry(
+        () => supabase.rpc('prepare_payment_order', params: {
+          'p_vehicle_id': vehicle.id,
+          'p_vehicle_name': vehicle.name,
+          'p_start_time': startTime.toUtc().toIso8601String(),
+          'p_end_time': endTime.toUtc().toIso8601String(),
+          'p_total_price': totalPrice,
+        }),
+      );
 
       final map = data is Map<String, dynamic>
           ? data
@@ -169,40 +178,88 @@ class PaymentService {
   }
 
   Future<void> openTossPayment({
+    required BuildContext context,
     required PreparePaymentResult prepared,
     required TossPaymentMethod method,
   }) async {
-    if (!_toss.isReady) {
+    final user = supabase.auth.currentUser;
+
+    // Web(테스트) — JS SDK
+    if (kIsWeb) {
+      if (!_toss.isReady) {
+        throw StateError(
+          '토스페이먼츠 SDK가 로드되지 않았습니다.\n'
+          '페이지를 새로고침(F5) 후 다시 시도해주세요.',
+        );
+      }
+
+      await _toss.requestPayment(
+        orderId: prepared.orderId,
+        orderName: prepared.orderName,
+        amount: prepared.amount,
+        customerKey: prepared.customerKey,
+        method: method,
+        customerEmail: user?.email,
+        customerName: user?.email?.split('@').first,
+      );
+      return;
+    }
+
+    // Android/iOS — WebView 결제창
+    final params = await Navigator.of(context).push<Map<String, String>>(
+      MaterialPageRoute(
+        fullscreenDialog: true,
+        builder: (_) => TossPaymentWebViewScreen(
+          orderId: prepared.orderId,
+          orderName: prepared.orderName,
+          amount: prepared.amount,
+          customerKey: prepared.customerKey,
+          method: method,
+          customerEmail: user?.email,
+          customerName: user?.email?.split('@').first,
+        ),
+      ),
+    );
+
+    if (!context.mounted) return;
+
+    if (params == null) {
+      throw StateError('결제가 취소되었습니다.');
+    }
+
+    if (params['_route'] == 'fail') {
+      await Navigator.of(context).push<void>(
+        MaterialPageRoute(
+          builder: (_) => PaymentFailScreen(queryParams: params),
+        ),
+      );
+      return;
+    }
+
+    final paymentKey = params['paymentKey'] ?? params['payment_key'];
+    if (paymentKey == null || paymentKey.isEmpty) {
       throw StateError(
-        '토스페이먼츠 SDK가 로드되지 않았습니다.\n'
-        '페이지를 새로고침(F5) 후 다시 시도해주세요.',
+        '결제 승인 정보를 받지 못했습니다.\n'
+        '다시 예약하기를 시도해주세요.',
       );
     }
 
-    final user = supabase.auth.currentUser;
-    await _toss.requestPayment(
-      orderId: prepared.orderId,
-      orderName: prepared.orderName,
-      amount: prepared.amount,
-      customerKey: prepared.customerKey,
-      method: method,
-      customerEmail: user?.email,
-      customerName: user?.email?.split('@').first,
+    await Navigator.of(context).push<void>(
+      MaterialPageRoute(
+        builder: (_) => PaymentSuccessScreen(queryParams: params),
+      ),
     );
   }
 
-  /// 예약하기 → 결제창 (Flutter Web)
+  /// 예약하기 → 결제창
   Future<void> startBookingPayment({
+    required BuildContext context,
     required Vehicle vehicle,
     required DateTime startTime,
     required DateTime endTime,
     required int totalPrice,
     required TossPaymentMethod method,
   }) async {
-    if (!kIsWeb) {
-      throw UnsupportedError('결제는 Flutter Web에서만 지원합니다.');
-    }
-
     if (!PaymentConfig.isConfigured) {
       throw StateError('TOSS_CLIENT_KEY가 필요합니다.');
     }
@@ -222,7 +279,11 @@ class PaymentService {
       endTime: endTime,
       totalPrice: totalPrice,
     );
-    await openTossPayment(prepared: prepared, method: method);
+    await openTossPayment(
+      context: context,
+      prepared: prepared,
+      method: method,
+    );
   }
 
   /// API 호출 전 — DB에 이미 저장된 결제/예약인지 조회 (네트워크 승인 생략용)
@@ -387,7 +448,7 @@ class PaymentService {
       '결제는 완료되었으나 예약 저장에 실패했습니다.\n'
       'Supabase SQL Editor에서 fix_reservation_insert.sql 과 '
       'finalize_reservation_after_payment.sql 을 실행한 뒤 '
-      '결제 완료 화면을 새로고침해주세요.',
+      '「예약 저장 재시도」를 눌러주세요.',
     );
   }
 
@@ -586,6 +647,9 @@ String friendlyPaymentError(Object error) {
     return error.message.isNotEmpty
         ? error.message
         : '로그인이 필요합니다. 다시 로그인해주세요.';
+  }
+  if (isRetryableNetworkError(error)) {
+    return friendlyNetworkError(error);
   }
   if (error is PostgrestException) {
     return error.message;

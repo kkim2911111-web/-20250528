@@ -2,9 +2,14 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../models/my_page_profile.dart';
 import '../supabase_client.dart';
+import '../utils/network_retry.dart';
 
 class MyPageService {
   Future<MyPageProfile> fetchProfile() async {
+    return withNetworkRetry(_fetchProfile);
+  }
+
+  Future<MyPageProfile> _fetchProfile() async {
     final user = supabase.auth.currentUser;
     if (user == null) {
       throw const AuthException('로그인이 필요합니다.');
@@ -47,7 +52,7 @@ class MyPageService {
     final resident = await _fetchResident(user.id);
 
     return MyPageProfile(
-      name: row['full_name']?.toString(),
+      name: row['full_name']?.toString() ?? row['name']?.toString(),
       phone: row['phone']?.toString(),
       email: row['email']?.toString() ?? user.email,
       address: row['address']?.toString(),

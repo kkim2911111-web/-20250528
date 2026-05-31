@@ -1,7 +1,8 @@
 import '../config/payment_config.dart';
 
+/// Android/iOS — 결제는 [PaymentService.openTossPayment] WebView 경로 사용
 class TossPaymentsLauncher {
-  bool get isReady => false;
+  bool get isReady => PaymentConfig.isConfigured;
 
   Future<void> requestPayment({
     required String orderId,
@@ -13,9 +14,9 @@ class TossPaymentsLauncher {
     String? customerName,
   }) {
     throw UnsupportedError(
-      '토스페이먼츠는 이 플랫폼에서 지원되지 않습니다.',
+      '모바일 결제는 PaymentService.openTossPayment(context: ...)을 사용하세요.',
     );
   }
 
-  String get origin => '';
+  String get origin => PaymentConfig.mobilePaymentOrigin;
 }

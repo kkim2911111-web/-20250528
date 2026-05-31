@@ -5,9 +5,9 @@ import '../models/reservation.dart';
 import '../services/rental_service.dart';
 import '../theme/danji_colors.dart';
 import '../utils/rental_navigation.dart';
-import 'booking_screen.dart';
+import '../widgets/smart_key_door_buttons.dart';
 
-/// 스마트키 — 현재 예약 차량 도어 제어
+/// 스마트키 — 대여 중(in_use) 차량 도어 제어
 class SmartKeyScreen extends StatefulWidget {
   final bool isActive;
 
@@ -24,7 +24,6 @@ class SmartKeyScreenState extends State<SmartKeyScreen> {
   final _dateFormat = DateFormat('yyyy-MM-dd HH:mm');
 
   Future<List<Reservation>>? _future;
-  final Set<String> _doorLoading = {};
 
   @override
   void initState() {
@@ -46,66 +45,6 @@ class SmartKeyScreenState extends State<SmartKeyScreen> {
     setState(() {
       _future = _service.fetchSmartKeyReservations();
     });
-  }
-
-  bool _canUnlock(Reservation r) =>
-      r.status == 'in_use' ||
-      r.pickupPhotos.length >= 10 ||
-      r.isOperating;
-
-  void _onUnlock(Reservation r) async {
-    if (!_canUnlock(r)) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: const Text('운행 전 사진 10장 등록 후 문열림이 가능합니다.'),
-          action: SnackBarAction(
-            label: '등록하기',
-            onPressed: () => _openRentalFlow(r),
-          ),
-        ),
-      );
-      return;
-    }
-    await _setDoor(r, unlocked: true);
-  }
-
-  void _onLock(Reservation r) async {
-    await _setDoor(r, unlocked: false);
-  }
-
-  Future<void> _setDoor(Reservation r, {required bool unlocked}) async {
-    if (_doorLoading.contains(r.id)) return;
-    setState(() => _doorLoading.add(r.id));
-    try {
-      await _service.setDoorLock(
-        reservationId: r.id,
-        unlocked: unlocked,
-      );
-      if (!mounted) return;
-      _reload();
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            unlocked
-                ? '${r.vehicle?.name ?? '차량'} 문이 열렸습니다.'
-                : '${r.vehicle?.name ?? '차량'} 문이 잠겼습니다.',
-          ),
-        ),
-      );
-    } catch (e) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(e.toString())),
-      );
-    } finally {
-      if (mounted) setState(() => _doorLoading.remove(r.id));
-    }
-  }
-
-  void _openBooking() {
-    Navigator.of(context).push(
-      MaterialPageRoute(builder: (_) => const BookingScreen()),
-    );
   }
 
   void _openRentalFlow(Reservation r) {
@@ -165,12 +104,8 @@ class SmartKeyScreenState extends State<SmartKeyScreen> {
           final reservations = snap.data ?? [];
 
           if (reservations.isEmpty) {
-            return _EmptyState(onBook: _openBooking);
+            return const _EmptyState();
           }
-
-          final operating =
-              reservations.where((r) => r.isOperating || r.status == 'in_use').toList();
-          final waiting = reservations.where((r) => r.isWaiting).toList();
 
           return RefreshIndicator(
             onRefresh: () async => _reload(),
@@ -178,53 +113,25 @@ class SmartKeyScreenState extends State<SmartKeyScreen> {
               physics: const AlwaysScrollableScrollPhysics(),
               padding: const EdgeInsets.all(20),
               children: [
-                if (operating.isNotEmpty) ...[
-                  const _SectionTitle(
-                    title: '대여 중',
-                    icon: Icons.local_shipping_outlined,
-                    color: Color(0xFFFFB84D),
-                  ),
-                  const SizedBox(height: 10),
-                  ...operating.map(
-                    (r) => Padding(
-                      padding: const EdgeInsets.only(bottom: 12),
-                      child: _SmartKeyCard(
-                        reservation: r,
-                        dateFormat: _dateFormat,
-                        isUnlocked: r.doorUnlocked,
-                        isLoading: _doorLoading.contains(r.id),
-                        canUnlock: _canUnlock(r),
-                        onUnlock: () => _onUnlock(r),
-                        onLock: () => _onLock(r),
-                        onOpenDetail: () => _openRentalFlow(r),
-                      ),
+                const _SectionTitle(
+                  title: '대여 중',
+                  icon: Icons.local_shipping_outlined,
+                  color: Color(0xFFFFB84D),
+                ),
+                const SizedBox(height: 10),
+                ...reservations.map(
+                  (r) => Padding(
+                    padding: const EdgeInsets.only(bottom: 12),
+                    child: _SmartKeyCard(
+                      reservation: r,
+                      dateFormat: _dateFormat,
+                      isUnlocked: r.doorUnlocked,
+                      onOpenDetail: () => _openRentalFlow(r),
+                      onDoorChanged: _reload,
+                      service: _service,
                     ),
                   ),
-                  const SizedBox(height: 8),
-                ],
-                if (waiting.isNotEmpty) ...[
-                  const _SectionTitle(
-                    title: '이용 대기',
-                    icon: Icons.schedule_outlined,
-                    color: Color(0xFF4DA3FF),
-                  ),
-                  const SizedBox(height: 10),
-                  ...waiting.map(
-                    (r) => Padding(
-                      padding: const EdgeInsets.only(bottom: 12),
-                      child: _SmartKeyCard(
-                        reservation: r,
-                        dateFormat: _dateFormat,
-                        isUnlocked: r.doorUnlocked,
-                        isLoading: _doorLoading.contains(r.id),
-                        canUnlock: _canUnlock(r),
-                        onUnlock: () => _onUnlock(r),
-                        onLock: () => _onLock(r),
-                        onOpenDetail: () => _openRentalFlow(r),
-                      ),
-                    ),
-                  ),
-                ],
+                ),
               ],
             ),
           );
@@ -265,9 +172,7 @@ class _SectionTitle extends StatelessWidget {
 }
 
 class _EmptyState extends StatelessWidget {
-  final VoidCallback onBook;
-
-  const _EmptyState({required this.onBook});
+  const _EmptyState();
 
   @override
   Widget build(BuildContext context) {
@@ -284,36 +189,12 @@ class _EmptyState extends StatelessWidget {
             ),
             const SizedBox(height: 20),
             const Text(
-              '예약 진행 후 이용 가능합니다',
+              '현재 대여 중인 차량이 없습니다',
               textAlign: TextAlign.center,
               style: TextStyle(
                 color: DanjiColors.textPrimary,
                 fontSize: 18,
                 fontWeight: FontWeight.w700,
-              ),
-            ),
-            const SizedBox(height: 10),
-            const Text(
-              '차량을 예약하면 이 화면에서\n스마트키로 문을 열고 닫을 수 있습니다.',
-              textAlign: TextAlign.center,
-              style: TextStyle(
-                color: DanjiColors.textSecondary,
-                height: 1.5,
-              ),
-            ),
-            const SizedBox(height: 28),
-            FilledButton.icon(
-              onPressed: onBook,
-              icon: const Icon(Icons.event_available_outlined),
-              label: const Text('예약하기'),
-              style: FilledButton.styleFrom(
-                backgroundColor: DanjiColors.primaryBlue,
-                foregroundColor: Colors.white,
-                padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 14),
-                textStyle: const TextStyle(
-                  fontWeight: FontWeight.w800,
-                  fontSize: 16,
-                ),
               ),
             ),
           ],
@@ -327,41 +208,29 @@ class _SmartKeyCard extends StatelessWidget {
   final Reservation reservation;
   final DateFormat dateFormat;
   final bool isUnlocked;
-  final bool isLoading;
-  final bool canUnlock;
-  final VoidCallback onUnlock;
-  final VoidCallback onLock;
   final VoidCallback onOpenDetail;
+  final VoidCallback onDoorChanged;
+  final RentalService service;
 
   const _SmartKeyCard({
     required this.reservation,
     required this.dateFormat,
     required this.isUnlocked,
-    required this.isLoading,
-    required this.canUnlock,
-    required this.onUnlock,
-    required this.onLock,
     required this.onOpenDetail,
+    required this.onDoorChanged,
+    required this.service,
   });
 
   static const _unlockBlue = DanjiColors.rentalBlue;
-  static const _lockRed = DanjiColors.accentRed;
+  static const _badgeOrange = Color(0xFFFFB84D);
   static const _textPrimary = DanjiColors.textPrimary;
   static const _textSecondary = DanjiColors.textSecondary;
-  static const _waitingBlue = DanjiColors.primaryBlue;
 
   @override
   Widget build(BuildContext context) {
     final vehicle = reservation.vehicle;
     final start = reservation.startAt;
     final end = reservation.endAt;
-    final operating = reservation.isOperating || reservation.status == 'in_use';
-    final badgeColor = operating ? const Color(0xFFFFB84D) : _waitingBlue;
-    final badgeLabel = reservation.status == 'in_use'
-        ? '대여 중'
-        : operating
-            ? '운행 중'
-            : '이용 대기';
 
     return Container(
       padding: const EdgeInsets.all(16),
@@ -415,13 +284,13 @@ class _SmartKeyCard extends StatelessWidget {
                                 vertical: 3,
                               ),
                               decoration: BoxDecoration(
-                                color: badgeColor.withValues(alpha: 0.18),
+                                color: _badgeOrange.withValues(alpha: 0.18),
                                 borderRadius: BorderRadius.circular(999),
                               ),
-                              child: Text(
-                                badgeLabel,
+                              child: const Text(
+                                '대여 중',
                                 style: TextStyle(
-                                  color: badgeColor,
+                                  color: _badgeOrange,
                                   fontSize: 11,
                                   fontWeight: FontWeight.w700,
                                 ),
@@ -484,88 +353,12 @@ class _SmartKeyCard extends StatelessWidget {
               ),
             ),
           ),
-          if (!canUnlock) ...[
-            const Text(
-              '운행 전 사진 등록 후 문열림이 가능합니다. (문닫힘은 바로 사용 가능)',
-              style: TextStyle(color: _lockRed, fontSize: 12, height: 1.35),
-            ),
-            const SizedBox(height: 10),
-          ],
-          Row(
-            children: [
-              Expanded(
-                child: _DoorBtn(
-                  label: '문열림',
-                  icon: Icons.lock_open_rounded,
-                  color: _unlockBlue,
-                  enabled: canUnlock && !isLoading,
-                  loading: isLoading,
-                  onPressed: onUnlock,
-                ),
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: _DoorBtn(
-                  label: '문닫힘',
-                  icon: Icons.lock_rounded,
-                  color: _lockRed,
-                  enabled: !isLoading,
-                  loading: isLoading,
-                  onPressed: onLock,
-                ),
-              ),
-            ],
+          SmartKeyDoorButtons(
+            reservation: reservation,
+            service: service,
+            onChanged: onDoorChanged,
           ),
         ],
-      ),
-    );
-  }
-}
-
-class _DoorBtn extends StatelessWidget {
-  final String label;
-  final IconData icon;
-  final Color color;
-  final bool enabled;
-  final bool loading;
-  final VoidCallback onPressed;
-
-  const _DoorBtn({
-    required this.label,
-    required this.icon,
-    required this.color,
-    required this.enabled,
-    this.loading = false,
-    required this.onPressed,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return SizedBox(
-      height: 52,
-      child: FilledButton.icon(
-        onPressed: enabled && !loading ? onPressed : null,
-        icon: loading
-            ? SizedBox(
-                width: 18,
-                height: 18,
-                child: CircularProgressIndicator(
-                  strokeWidth: 2,
-                  color: color.withValues(alpha: 0.9),
-                ),
-              )
-            : Icon(icon, size: 22),
-        label: Text(
-          label,
-          style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 15),
-        ),
-        style: FilledButton.styleFrom(
-          backgroundColor: enabled ? color : color.withValues(alpha: 0.35),
-          foregroundColor: Colors.white,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(14),
-          ),
-        ),
       ),
     );
   }

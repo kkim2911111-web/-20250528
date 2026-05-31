@@ -1,13 +1,13 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_web_plugins/url_strategy.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:intl/date_symbol_data_local.dart';
 
 import 'config/supabase_config.dart';
 import 'config/payment_config.dart';
 import 'routing/app_routes.dart';
 import 'services/fcm_service.dart';
+import 'services/supabase_bootstrap.dart';
 import 'supabase_client.dart';
 import 'theme/danji_colors.dart';
 import 'theme/danji_theme.dart';
@@ -48,22 +48,16 @@ class _BootstrapAppState extends State<BootstrapApp> {
     try {
       if (!SupabaseConfig.isConfigured) {
         warning = 'SUPABASE_URL 또는 SUPABASE_ANON_KEY가 비어 있습니다.\n'
-            '.env 또는 --dart-define를 확인해주세요.';
+            'assets/.env 또는 --dart-define를 확인해주세요.';
       } else {
-        await Supabase.initialize(
-          url: SupabaseConfig.url,
-          anonKey: SupabaseConfig.anonKey,
-          authOptions: const FlutterAuthClientOptions(
-            authFlowType: AuthFlowType.pkce,
-          ),
-        );
+        await initializeSupabaseWithRetry();
         debugPrint('[bootstrap] Supabase initialized: ${SupabaseConfig.url}');
       }
     } catch (e, st) {
       debugPrint('[bootstrap] Supabase init failed: $e\n$st');
-      warning = 'Supabase 연결 실패: $e\n'
-          'URL: ${SupabaseConfig.url}\n'
-          '.env의 SUPABASE_URL·SUPABASE_ANON_KEY를 확인해주세요.';
+      warning = '서버 연결 실패: $e\n'
+          '네트워크 연결 후 앱을 다시 실행하거나 잠시 후 다시 시도해주세요.\n'
+          'URL: ${SupabaseConfig.url}';
     }
 
     try {
@@ -99,42 +93,38 @@ class _BootstrapAppState extends State<BootstrapApp> {
 
   @override
   Widget build(BuildContext context) {
+    // Supabase 초기화 전 AppEntry/AuthGate가 supabase에 접근하지 않도록 대기
+    if (!_ready) {
+      return MaterialApp(
+        debugShowCheckedModeBanner: false,
+        title: '단지카',
+        theme: DanjiTheme.light,
+        home: const _BootstrapLoadingScreen(),
+      );
+    }
+
+    final mobileHome = isSupabaseInitialized
+        ? const AppEntry()
+        : _BootstrapErrorScreen(
+            message: _initWarning ??
+                '서버 연결에 실패했습니다.\n네트워크 연결을 확인한 뒤 앱을 다시 실행해주세요.',
+          );
+
     return MaterialApp(
       navigatorKey: _navKey,
       debugShowCheckedModeBanner: false,
       title: '단지카',
       theme: DanjiTheme.light,
-      initialRoute: webInitialRoute(),
-      onGenerateRoute: onGenerateRoute,
-      onUnknownRoute: onUnknownRoute,
-      onGenerateInitialRoutes: generateInitialRoutes,
+      // Android/iOS: home 진입 / Web: URL 라우팅
+      home: kIsWeb ? null : mobileHome,
+      initialRoute: kIsWeb ? webInitialRoute() : null,
+      onGenerateRoute: kIsWeb ? onGenerateRoute : null,
+      onUnknownRoute: kIsWeb ? onUnknownRoute : null,
+      onGenerateInitialRoutes: kIsWeb ? generateInitialRoutes : null,
       builder: (context, child) {
         Widget content = child ?? const SizedBox.shrink();
 
-        if (!_ready) {
-          content = Stack(
-            fit: StackFit.expand,
-            children: [
-              content,
-              ColoredBox(
-                color: DanjiColors.background.withValues(alpha: 0.92),
-                child: const Center(
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      CircularProgressIndicator(color: DanjiColors.buttonBlue),
-                      SizedBox(height: 16),
-                      Text(
-                        '단지카 시작 중...',
-                        style: TextStyle(color: DanjiColors.textSecondary),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            ],
-          );
-        } else if (_initWarning != null) {
+        if (_initWarning != null && isSupabaseInitialized) {
           content = Stack(
             fit: StackFit.expand,
             children: [
@@ -197,5 +187,75 @@ class _BootstrapAppState extends State<BootstrapApp> {
         SnackBar(content: Text(title)),
       );
     });
+  }
+}
+
+class _BootstrapLoadingScreen extends StatelessWidget {
+  const _BootstrapLoadingScreen();
+
+  @override
+  Widget build(BuildContext context) {
+    return const Scaffold(
+      backgroundColor: DanjiColors.background,
+      body: Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            CircularProgressIndicator(color: DanjiColors.buttonBlue),
+            SizedBox(height: 16),
+            Text(
+              '단지카 시작 중...',
+              style: TextStyle(color: DanjiColors.textSecondary),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _BootstrapErrorScreen extends StatelessWidget {
+  final String message;
+
+  const _BootstrapErrorScreen({required this.message});
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: DanjiColors.background,
+      body: SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              const Icon(
+                Icons.wifi_off_rounded,
+                size: 48,
+                color: DanjiColors.accentRed,
+              ),
+              const SizedBox(height: 16),
+              const Text(
+                '서버 연결 실패',
+                style: TextStyle(
+                  color: DanjiColors.textPrimary,
+                  fontSize: 18,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+              const SizedBox(height: 12),
+              Text(
+                message,
+                textAlign: TextAlign.center,
+                style: const TextStyle(
+                  color: DanjiColors.textSecondary,
+                  height: 1.5,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 }

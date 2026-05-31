@@ -1,16 +1,46 @@
 const TOSS_API = 'https://api.tosspayments.com/v1';
 
+function getTossAuth(): string {
+  const secretKey = Deno.env.get('TOSS_SECRET_KEY');
+  if (!secretKey) {
+    throw new Error('TOSS_SECRET_KEY 시크릿이 설정되지 않았습니다.');
+  }
+  return btoa(`${secretKey}:`);
+}
+
+/** 웹훅 검증용 — paymentKey로 토스 결제 조회 */
+export async function getTossPayment(paymentKey: string) {
+  const auth = getTossAuth();
+  const url = `${TOSS_API}/payments/${encodeURIComponent(paymentKey)}`;
+
+  const res = await fetch(url, {
+    headers: { Authorization: `Basic ${auth}` },
+  });
+
+  const data = await res.json();
+  console.log('[toss] GET', url, 'response status:', res.status);
+  if (!res.ok) {
+    const err = new Error(data.message || '토스 결제 조회 실패') as Error & {
+      code?: string;
+    };
+    err.code = data.code;
+    throw err;
+  }
+  return data as {
+    paymentKey: string;
+    orderId: string;
+    status: string;
+    totalAmount: number;
+    secret?: string;
+  };
+}
+
 export async function confirmTossPayment(params: {
   paymentKey: string;
   orderId: string;
   amount: number;
 }) {
-  const secretKey = Deno.env.get('TOSS_SECRET_KEY');
-  if (!secretKey) {
-    throw new Error('TOSS_SECRET_KEY 시크릿이 설정되지 않았습니다.');
-  }
-
-  const auth = btoa(`${secretKey}:`);
+  const auth = getTossAuth();
   const url = `${TOSS_API}/payments/confirm`;
   const body = JSON.stringify(params);
 
@@ -58,12 +88,7 @@ export async function cancelTossPayment(params: {
   cancelReason: string;
   cancelAmount?: number;
 }) {
-  const secretKey = Deno.env.get('TOSS_SECRET_KEY');
-  if (!secretKey) {
-    throw new Error('TOSS_SECRET_KEY 시크릿이 설정되지 않았습니다.');
-  }
-
-  const auth = btoa(`${secretKey}:`);
+  const auth = getTossAuth();
   const body: Record<string, unknown> = {
     cancelReason: params.cancelReason,
   };

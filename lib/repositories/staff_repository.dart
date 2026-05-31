@@ -1,16 +1,19 @@
 import '../models/staff_profile.dart';
 import '../supabase_client.dart';
+import '../utils/network_retry.dart';
 
 class StaffRepository {
   Future<StaffProfile?> fetchMyProfile() async {
     final user = supabase.auth.currentUser;
     if (user == null) return null;
 
-    final row = await supabase
-        .from('staff_users')
-        .select('user_id, complex_id, display_name, role, approved, complexes(name)')
-        .eq('user_id', user.id)
-        .maybeSingle();
+    final row = await withNetworkRetry(
+      () => supabase
+          .from('staff_users')
+          .select('user_id, complex_id, display_name, role, approved, complexes(name)')
+          .eq('user_id', user.id)
+          .maybeSingle(),
+    );
 
     if (row == null) return null;
     return StaffProfile.fromMap(Map<String, dynamic>.from(row));
@@ -31,8 +34,10 @@ class StaffRepository {
 
     await for (final _ in Stream.periodic(const Duration(seconds: 3))) {
       if (supabase.auth.currentUser?.id != user.id) break;
-      profile = await fetchMyProfile();
-      yield profile;
+      try {
+        profile = await fetchMyProfile();
+        yield profile;
+      } catch (_) {}
       if (profile == null) break;
     }
   }

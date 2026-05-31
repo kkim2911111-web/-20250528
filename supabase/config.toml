@@ -9,3 +9,6 @@ verify_jwt = true
 
 [functions.reservation-cancel]
 verify_jwt = true
+
+[functions.payment-webhook]
+verify_jwt = false

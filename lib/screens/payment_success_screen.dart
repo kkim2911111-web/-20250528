@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -49,10 +50,16 @@ class _PaymentSuccessScreenState extends State<PaymentSuccessScreen> {
   }
 
   Map<String, String> get _params {
-    // Uri.base.queryParameters 우선, 스냅샷(captureLaunchUri)으로 유실분 보완
-    final merged = paymentQueryParams();
-    if (merged.isNotEmpty) return merged;
-    return Uri.base.queryParameters;
+    if (widget.queryParams.isNotEmpty) {
+      return widget.queryParams;
+    }
+    // Web(테스트): URL 쿼리 파라미터
+    if (kIsWeb) {
+      final merged = paymentQueryParams();
+      if (merged.isNotEmpty) return merged;
+      return Uri.base.queryParameters;
+    }
+    return const {};
   }
 
   int? _parseAmount(String? raw) {
@@ -114,10 +121,12 @@ class _PaymentSuccessScreenState extends State<PaymentSuccessScreen> {
     if (paymentKey == null || orderId == null || amountStr == null) {
       setState(() {
         _loading = false;
-        _error =
-            '결제 정보가 URL에 없습니다.\n'
-            '토스 결제 완료 후 자동으로 이 화면으로 와야 합니다.\n'
-            '현재 URL: ${Uri.base}';
+        _error = kIsWeb
+            ? '결제 정보가 URL에 없습니다.\n'
+                '토스 결제 완료 후 자동으로 이 화면으로 와야 합니다.\n'
+                '현재 URL: ${Uri.base}'
+            : '결제 승인 정보(paymentKey, orderId, amount)를 받지 못했습니다.\n'
+                '결제를 다시 시도해주세요.';
       });
       return;
     }

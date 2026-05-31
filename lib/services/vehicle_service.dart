@@ -3,9 +3,14 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../models/vehicle.dart';
 import '../models/vehicle_query_result.dart';
 import '../supabase_client.dart';
+import '../utils/network_retry.dart';
 
 class VehicleService {
   Future<VehicleQueryResult> fetchVehiclesForMyComplex() async {
+    return withNetworkRetry(_fetchVehiclesForMyComplex);
+  }
+
+  Future<VehicleQueryResult> _fetchVehiclesForMyComplex() async {
     final user = supabase.auth.currentUser;
     if (user == null) {
       return const VehicleQueryResult(

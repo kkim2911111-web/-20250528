@@ -1,14 +1,13 @@
+import 'dart:typed_data';
+
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
 
-import '../models/fuel_level.dart';
 import '../models/reservation.dart';
 import '../theme/danji_colors.dart';
 import '../services/rental_service.dart';
 import '../widgets/danji_app_bar.dart';
-import '../widgets/fuel_level_selector.dart';
-import '../widgets/photo_upload_grid.dart';
+import '../widgets/rental_start_photo_section.dart';
 import '../widgets/section_card.dart';
 
 class RentalStartScreen extends StatefulWidget {
@@ -22,7 +21,6 @@ class RentalStartScreen extends StatefulWidget {
 
 class _RentalStartScreenState extends State<RentalStartScreen> {
   final _service = RentalService();
-  final _mileageController = TextEditingController();
   final _dateFormat = DateFormat('yyyy-MM-dd HH:mm');
 
   Reservation? _reservation;
@@ -30,18 +28,14 @@ class _RentalStartScreenState extends State<RentalStartScreen> {
   bool _submitting = false;
   String? _error;
   List<Uint8List> _photos = [];
-  FuelLevel? _fuelLevel;
+
+  bool get _canSubmit =>
+      _photos.length >= RentalStartPhotoSection.minPhotos && !_submitting;
 
   @override
   void initState() {
     super.initState();
     _load();
-  }
-
-  @override
-  void dispose() {
-    _mileageController.dispose();
-    super.dispose();
   }
 
   Future<void> _load() async {
@@ -56,7 +50,9 @@ class _RentalStartScreenState extends State<RentalStartScreen> {
       if (!reservation.canStartRental) {
         setState(() {
           _loading = false;
-          _error = '대여를 시작할 수 없는 예약입니다. (상태: ${reservation.statusLabel})';
+          _error = reservation.isTooEarlyForRentalStart
+              ? RentalStartMessages.tooEarly
+              : '대여를 시작할 수 없는 예약입니다. (상태: ${reservation.statusLabel})';
         });
         return;
       }
@@ -74,19 +70,7 @@ class _RentalStartScreenState extends State<RentalStartScreen> {
   }
 
   Future<void> _submit() async {
-    final mileage = int.tryParse(_mileageController.text.trim());
-    if (_photos.isEmpty) {
-      setState(() => _error = '차량 사진을 1장 이상 등록해주세요.');
-      return;
-    }
-    if (mileage == null || mileage < 0) {
-      setState(() => _error = '주행거리(km)를 입력해주세요.');
-      return;
-    }
-    if (_fuelLevel == null) {
-      setState(() => _error = '주유 상태를 선택해주세요.');
-      return;
-    }
+    if (!_canSubmit) return;
 
     setState(() {
       _submitting = true;
@@ -97,8 +81,6 @@ class _RentalStartScreenState extends State<RentalStartScreen> {
       await _service.startRental(
         reservationId: widget.reservationId,
         photos: _photos,
-        mileageStart: mileage,
-        fuelLevelStart: _fuelLevel!,
       );
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -145,14 +127,18 @@ class _RentalStartScreenState extends State<RentalStartScreen> {
                             const SizedBox(height: 4),
                             Text(
                               '번호: ${vehicle!.carNumber}',
-                              style: const TextStyle(color: DanjiColors.textSecondary),
+                              style: const TextStyle(
+                                color: DanjiColors.textSecondary,
+                              ),
                             ),
                           ],
                           if (vehicle?.parkingLocation != null) ...[
                             const SizedBox(height: 4),
                             Text(
                               '주차: ${vehicle!.parkingLocation}',
-                              style: const TextStyle(color: DanjiColors.textSecondary),
+                              style: const TextStyle(
+                                color: DanjiColors.textSecondary,
+                              ),
                             ),
                           ],
                           const SizedBox(height: 8),
@@ -171,50 +157,9 @@ class _RentalStartScreenState extends State<RentalStartScreen> {
                     ),
                     const SizedBox(height: 16),
                     SectionCard(
-                      child: PhotoUploadGrid(
+                      child: RentalStartPhotoSection(
                         photos: _photos,
                         onChanged: (photos) => setState(() => _photos = photos),
-                      ),
-                    ),
-                    const SizedBox(height: 16),
-                    SectionCard(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          const Text(
-                            '주행거리 (km)',
-                            style: TextStyle(
-                              color: DanjiColors.textPrimary,
-                              fontWeight: FontWeight.w700,
-                            ),
-                          ),
-                          const SizedBox(height: 10),
-                          TextField(
-                            controller: _mileageController,
-                            keyboardType: TextInputType.number,
-                            inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-                            style: const TextStyle(color: DanjiColors.textPrimary),
-                            decoration: InputDecoration(
-                              hintText: '예: 12345',
-                              hintStyle: TextStyle(
-                                color: DanjiColors.textSecondary.withValues(alpha: 0.7),
-                              ),
-                              filled: true,
-                              fillColor: DanjiColors.skyLight,
-                              border: OutlineInputBorder(
-                                borderRadius: BorderRadius.circular(12),
-                                borderSide: const BorderSide(color: DanjiColors.border),
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                    const SizedBox(height: 16),
-                    SectionCard(
-                      child: FuelLevelSelector(
-                        value: _fuelLevel,
-                        onChanged: (level) => setState(() => _fuelLevel = level),
                       ),
                     ),
                     if (_error != null) ...[
@@ -224,14 +169,27 @@ class _RentalStartScreenState extends State<RentalStartScreen> {
                         style: const TextStyle(color: DanjiColors.accentRed),
                       ),
                     ],
+                    if (_photos.length < RentalStartPhotoSection.minPhotos) ...[
+                      const SizedBox(height: 12),
+                      const Text(
+                        '최소 6장 이상 등록해 주세요',
+                        style: TextStyle(
+                          color: DanjiColors.textMuted,
+                          fontSize: 13,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ],
                     const SizedBox(height: 20),
                     SizedBox(
                       height: 52,
                       child: FilledButton(
-                        onPressed: _submitting ? null : _submit,
+                        onPressed: _canSubmit ? _submit : null,
                         style: FilledButton.styleFrom(
                           backgroundColor: DanjiColors.rentalBlue,
+                          disabledBackgroundColor: DanjiColors.textMuted,
                           foregroundColor: Colors.white,
+                          disabledForegroundColor: Colors.white70,
                           shape: RoundedRectangleBorder(
                             borderRadius: BorderRadius.circular(14),
                           ),
@@ -244,7 +202,10 @@ class _RentalStartScreenState extends State<RentalStartScreen> {
                             ? const SizedBox(
                                 height: 20,
                                 width: 20,
-                                child: CircularProgressIndicator(strokeWidth: 2),
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                  color: Colors.white,
+                                ),
                               )
                             : const Text('운행 시작'),
                       ),

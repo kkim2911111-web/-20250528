@@ -1,7 +1,7 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 
-/// 토스페이먼츠 클라이언트 키 — dart-define → .env → 기본 테스트 키
+/// 토스페이먼츠 — Android/iOS 앱 기준 설정
 class PaymentConfig {
   static const _defaultKey = 'test_ck_6BYq7GWPVv4NoQ49k05n8NE5vbo1';
   static const _fromDefine = String.fromEnvironment('TOSS_CLIENT_KEY');
@@ -36,6 +36,23 @@ class PaymentConfig {
       '[PaymentConfig] TOSS_CLIENT_KEY loaded from $keySource: $maskedKey',
     );
   }
+
+  /// Android/iOS WebView 결제 redirect (Toss 등록 https origin)
+  static const mobilePaymentOrigin = 'https://danjicar.vercel.app';
+
+  static const appPaymentHost = 'danjicar.vercel.app';
+
+  static String appPaymentRedirectUrl(String segment) =>
+      '$mobilePaymentOrigin/payment/$segment';
+
+  /// 레거시 커스텀 스킴 (딥링크용)
+  static const appPaymentScheme = 'danjicar';
+
+  static Uri appPaymentRedirectUri(String segment) => Uri(
+        scheme: appPaymentScheme,
+        host: 'payment',
+        path: '/$segment',
+      );
 }
 
 enum TossPaymentMethod {

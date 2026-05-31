@@ -4,6 +4,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'supabase_client.dart';
 import 'theme/danji_colors.dart';
+import 'utils/network_retry.dart';
 import 'widgets/danji_app_bar.dart';
 
 class ResidentProfile {
@@ -37,11 +38,13 @@ class ResidentRepository {
     final user = supabase.auth.currentUser;
     if (user == null) return null;
 
-    final row = await supabase
-        .from('residents')
-        .select()
-        .eq('user_id', user.id)
-        .maybeSingle();
+    final row = await withNetworkRetry(
+      () => supabase
+          .from('residents')
+          .select()
+          .eq('user_id', user.id)
+          .maybeSingle(),
+    );
 
     if (row == null) return null;
     return ResidentProfile.fromMap(row);
@@ -59,7 +62,11 @@ class ResidentRepository {
     // Realtime 미설정 DB에서도 승인 상태를 감지 (3초마다 갱신)
     await for (final _ in Stream.periodic(const Duration(seconds: 3))) {
       if (supabase.auth.currentUser?.id != user.id) break;
-      yield await fetchMyProfile();
+      try {
+        yield await fetchMyProfile();
+      } catch (_) {
+        // 주기 갱신 실패는 스트림을 끊지 않음
+      }
     }
   }
 

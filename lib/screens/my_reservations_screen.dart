@@ -88,6 +88,10 @@ class _MyReservationsScreenState extends State<MyReservationsScreen> {
   }
 
   Future<void> _openStartRental(Reservation reservation) async {
+    if (reservation.isTooEarlyForRentalStart) {
+      _showCancelSnack(RentalStartMessages.tooEarly);
+      return;
+    }
     final result = await openRentalOrUseScreen<bool>(context, reservation);
     if (result == true) _reload();
   }
@@ -321,15 +325,16 @@ class _MyReservationsScreenState extends State<MyReservationsScreen> {
                         dateFormat: _dateFormat,
                         won: _won,
                         variant: _CardVariant.waiting,
-                        onUseVehicle: item.canStartRental
+                        onUseVehicle: item.showRentalStartButton
                             ? () => _openStartRental(item)
                             : item.canUseVehicle
                                 ? () => _openVehicleUse(item)
                                 : null,
+                        useVehicleEnabled: item.canStartRental || item.canUseVehicle,
                         onReturn: null,
-                        showCancelButton: item.canShowCancelButton,
-                        cancelBlocked: item.isCancelBlocked,
-                        onCancelTap: item.canShowCancelButton
+                        showCancelButton: item.shouldShowCancelButton,
+                        cancelBlocked: false,
+                        onCancelTap: item.shouldShowCancelButton
                             ? () => _onCancelTap(item)
                             : null,
                       ),
@@ -421,6 +426,7 @@ class _ReservationCard extends StatelessWidget {
   final VoidCallback? onCancelTap;
   final bool showCancelButton;
   final bool cancelBlocked;
+  final bool useVehicleEnabled;
 
   const _ReservationCard({
     required this.reservation,
@@ -432,6 +438,7 @@ class _ReservationCard extends StatelessWidget {
     this.onCancelTap,
     this.showCancelButton = false,
     this.cancelBlocked = false,
+    this.useVehicleEnabled = true,
   });
 
   Color get _accentColor {
@@ -444,6 +451,20 @@ class _ReservationCard extends StatelessWidget {
         return DanjiColors.sectionFinished;
     }
   }
+
+  String? get _guideMessage {
+    if (variant == _CardVariant.finished) return null;
+    if (reservation.status == 'in_use') return null;
+    if (variant == _CardVariant.waiting || variant == _CardVariant.operating) {
+      return '사진 및 정보 등록 후 운행을 시작하세요.';
+    }
+    return null;
+  }
+
+  bool get _showStartActivationHint =>
+      variant == _CardVariant.waiting &&
+      reservation.showRentalStartButton &&
+      reservation.isTooEarlyForRentalStart;
 
   @override
   Widget build(BuildContext context) {
@@ -566,7 +587,7 @@ class _ReservationCard extends StatelessWidget {
                 if (onUseVehicle != null)
                   Expanded(
                     child: FilledButton.icon(
-                      onPressed: onUseVehicle,
+                      onPressed: useVehicleEnabled ? onUseVehicle : null,
                       icon: const Icon(Icons.directions_car_outlined, size: 18),
                       label: Text(
                         variant == _CardVariant.waiting ? '운행시작' : '차량 이용',
@@ -595,9 +616,7 @@ class _ReservationCard extends StatelessWidget {
                           EdgeInsets.symmetric(vertical: 14),
                         ),
                       ),
-                      child: Text(
-                        reservation.canEarlyReturn ? '중도반납' : '반납하기',
-                      ),
+                      child: const Text('반납하기'),
                     ),
                   ),
               ],
@@ -654,6 +673,30 @@ class _ReservationCard extends StatelessWidget {
                     ),
                   ),
                 ],
+              ),
+            ],
+          ],
+          if (_guideMessage != null) ...[
+            const SizedBox(height: 10),
+            Text(
+              _guideMessage!,
+              style: const TextStyle(
+                color: DanjiColors.sectionOperating,
+                fontSize: 12,
+                height: 1.4,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+            if (_showStartActivationHint) ...[
+              const SizedBox(height: 4),
+              Text(
+                RentalStartMessages.startButtonActivationHint,
+                style: const TextStyle(
+                  color: DanjiColors.sectionOperating,
+                  fontSize: 12,
+                  height: 1.4,
+                  fontWeight: FontWeight.w600,
+                ),
               ),
             ],
           ],

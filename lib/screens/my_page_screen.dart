@@ -8,7 +8,6 @@ import '../services/my_page_service.dart';
 import '../theme/danji_colors.dart';
 import '../widgets/danji_app_bar.dart';
 import '../widgets/section_card.dart';
-import 'booking_screen.dart';
 import 'my_reservations_screen.dart';
 import 'support_pages.dart';
 
@@ -181,14 +180,16 @@ class _MyPageScreenState extends State<MyPageScreen> {
               physics: const AlwaysScrollableScrollPhysics(),
               padding: const EdgeInsets.all(20),
               children: [
+                _ProfileHeaderTitle(title: profile.pageHeaderTitle),
                 if (!profile.isResidentComplete) ...[
+                  const SizedBox(height: 16),
                   _ResidentRequiredBanner(
                     hasRegistration: profile.hasResidentRegistration,
                     onTap: _openResidentVerification,
                   ),
-                  const SizedBox(height: 16),
                 ],
-                const _SectionTitle(title: '필수 등록'),
+                const SizedBox(height: 20),
+                const _SectionTitle(title: '내 정보'),
                 const SizedBox(height: 10),
                 _RequiredSection(
                   icon: Icons.apartment_outlined,
@@ -288,23 +289,6 @@ class _MyPageScreenState extends State<MyPageScreen> {
                   _WarningBanner(profile: profile),
                 ],
                 const SizedBox(height: 20),
-                const _SectionTitle(title: '예약'),
-                const SizedBox(height: 10),
-                _BookVehicleButton(
-                  enabled: profile.isResidentComplete,
-                  onTap: () {
-                    if (!profile.isResidentComplete) {
-                      _openResidentVerification();
-                      return;
-                    }
-                    Navigator.of(context).push(
-                      MaterialPageRoute(builder: (_) => const BookingScreen()),
-                    );
-                  },
-                ),
-                const SizedBox(height: 28),
-                const _SectionTitle(title: '선택'),
-                const SizedBox(height: 10),
                 _OptionalTile(
                   icon: Icons.assignment_outlined,
                   title: '내 예약',
@@ -436,6 +420,25 @@ extension on MyPageProfile {
       licenseExpiry != null && licenseExpiry!.trim().isNotEmpty;
 }
 
+class _ProfileHeaderTitle extends StatelessWidget {
+  final String title;
+
+  const _ProfileHeaderTitle({required this.title});
+
+  @override
+  Widget build(BuildContext context) {
+    return Text(
+      title,
+      style: const TextStyle(
+        color: DanjiColors.textPrimary,
+        fontSize: 22,
+        fontWeight: FontWeight.w800,
+        height: 1.35,
+      ),
+    );
+  }
+}
+
 class _WarningBanner extends StatelessWidget {
   final MyPageProfile profile;
 
@@ -545,79 +548,6 @@ class _ResidentRequiredBanner extends StatelessWidget {
                   foregroundColor: Colors.white,
                   minimumSize: const Size.fromHeight(44),
                 ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _BookVehicleButton extends StatelessWidget {
-  final VoidCallback onTap;
-  final bool enabled;
-
-  const _BookVehicleButton({
-    required this.onTap,
-    this.enabled = true,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Material(
-      color: enabled ? DanjiColors.rentalBlue : DanjiColors.border,
-      borderRadius: BorderRadius.circular(16),
-      child: InkWell(
-        onTap: enabled ? onTap : onTap,
-        borderRadius: BorderRadius.circular(16),
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 18),
-          child: Row(
-            children: [
-              Container(
-                padding: const EdgeInsets.all(10),
-                decoration: BoxDecoration(
-                  color: Colors.white.withValues(alpha: enabled ? 0.2 : 0.08),
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: Icon(
-                  Icons.calendar_month_outlined,
-                  color: enabled ? Colors.white : DanjiColors.textMuted,
-                  size: 28,
-                ),
-              ),
-              const SizedBox(width: 16),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      '예약하기',
-                      style: TextStyle(
-                        color: enabled ? Colors.white : DanjiColors.textMuted,
-                        fontSize: 18,
-                        fontWeight: FontWeight.w800,
-                      ),
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      enabled
-                          ? '날짜와 시간을 선택하세요'
-                          : '입주민 인증 후 예약할 수 있습니다',
-                      style: TextStyle(
-                        color: enabled
-                            ? Colors.white70
-                            : DanjiColors.textMuted,
-                        fontSize: 13,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              Icon(
-                Icons.chevron_right,
-                color: enabled ? Colors.white : DanjiColors.textMuted,
               ),
             ],
           ),

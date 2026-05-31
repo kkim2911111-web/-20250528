@@ -226,6 +226,7 @@ class _AuthGateState extends State<AuthGate> {
   @override
   void initState() {
     super.initState();
+    if (!isSupabaseInitialized) return;
     _auth.onSignedOut = (toSignUp) {
       if (mounted) setState(() => _showSignUp = toSignUp);
     };
@@ -250,6 +251,12 @@ class _AuthGateState extends State<AuthGate> {
 
   @override
   Widget build(BuildContext context) {
+    if (!isSupabaseInitialized) {
+      return const Scaffold(
+        body: Center(child: CircularProgressIndicator()),
+      );
+    }
+
     final auth = supabase.auth;
 
     return StreamBuilder<AuthState>(
@@ -308,12 +315,22 @@ class RoleGate extends StatelessWidget {
   }
 }
 
-class ResidentGate extends StatelessWidget {
+class ResidentGate extends StatefulWidget {
   const ResidentGate({super.key});
+
+  @override
+  State<ResidentGate> createState() => _ResidentGateState();
+}
+
+class _ResidentGateState extends State<ResidentGate> {
+  var _retryToken = 0;
+
+  void _retry() => setState(() => _retryToken++);
 
   @override
   Widget build(BuildContext context) {
     return StreamBuilder<ResidentProfile?>(
+      key: ValueKey(_retryToken),
       stream: ResidentRepository().watchMyProfile(),
       builder: (context, snap) {
         if (snap.connectionState == ConnectionState.waiting && !snap.hasData) {
@@ -327,7 +344,17 @@ class ResidentGate extends StatelessWidget {
             appBar: AppBar(title: const Text('오류')),
             body: Padding(
               padding: const EdgeInsets.all(16),
-              child: Text('입주민 정보 조회 실패: ${snap.error}'),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Text('입주민 정보 조회 실패: ${snap.error}'),
+                  const SizedBox(height: 16),
+                  FilledButton(
+                    onPressed: _retry,
+                    child: const Text('다시 시도'),
+                  ),
+                ],
+              ),
             ),
           );
         }

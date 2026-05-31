@@ -67,6 +67,33 @@ class MyPageProfile {
     return parts.isEmpty ? null : parts.join(' ');
   }
 
+  /// 마이페이지 상단 — 1005동 2002호 (입주민 building/unit)
+  String? get dongHoLabel {
+    final building = residentBuilding?.trim();
+    final unit = residentUnit?.trim();
+    if (building == null || building.isEmpty || unit == null || unit.isEmpty) {
+      return null;
+    }
+    return '${building}동 ${unit}호';
+  }
+
+  String get displayName {
+    if (hasName) return '${name!.trim()}님';
+    if (email != null && email!.contains('@')) {
+      return '${email!.split('@').first}님';
+    }
+    return '입주민님';
+  }
+
+  /// 마이페이지 타이틀 — "김환중님 · 1005동 2002호" 또는 "김환중님"
+  String get pageHeaderTitle {
+    final dongHo = dongHoLabel;
+    if (hasResidentRegistration && dongHo != null) {
+      return '$displayName · $dongHo';
+    }
+    return displayName;
+  }
+
   bool get canUseVehicle =>
       isResidentComplete &&
       isBasicInfoComplete &&
