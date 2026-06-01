@@ -8,7 +8,7 @@ import '../services/my_page_service.dart';
 import '../theme/danji_colors.dart';
 import '../widgets/danji_app_bar.dart';
 import '../widgets/license_registration_sheet.dart';
-import '../widgets/section_card.dart';
+import 'my_personal_info_screen.dart';
 import 'my_reservations_screen.dart';
 import 'support_pages.dart';
 
@@ -38,20 +38,10 @@ class _MyPageScreenState extends State<MyPageScreen> {
     });
   }
 
-  Future<void> _editBasicInfo(MyPageProfile profile) async {
-    final saved = await showModalBottomSheet<bool>(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: SectionCard.cardColor,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      builder: (_) => _BasicInfoSheet(
-        initialName: profile.name ?? '',
-        initialPhone: profile.phone ?? '',
-        initialAddress: profile.address ?? '',
-        email: profile.email ?? '',
-        linkedProviders: profile.linkedProviders,
+  Future<void> _openPersonalInfo(MyPageProfile profile) async {
+    final saved = await Navigator.of(context).push<bool>(
+      MaterialPageRoute(
+        builder: (_) => MyPersonalInfoScreen(profile: profile),
       ),
     );
     if (saved == true) _reload();
@@ -61,7 +51,7 @@ class _MyPageScreenState extends State<MyPageScreen> {
     final saved = await showModalBottomSheet<bool>(
       context: context,
       isScrollControlled: true,
-      backgroundColor: SectionCard.cardColor,
+      backgroundColor: DanjiColors.surface,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
@@ -77,7 +67,7 @@ class _MyPageScreenState extends State<MyPageScreen> {
     final saved = await showModalBottomSheet<bool>(
       context: context,
       isScrollControlled: true,
-      backgroundColor: SectionCard.cardColor,
+      backgroundColor: DanjiColors.surface,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
@@ -179,230 +169,159 @@ class _MyPageScreenState extends State<MyPageScreen> {
             onRefresh: () async => _reload(),
             child: ListView(
               physics: const AlwaysScrollableScrollPhysics(),
-              padding: const EdgeInsets.all(20),
+              padding: const EdgeInsets.fromLTRB(24, 12, 24, 32),
               children: [
-                _ProfileHeaderTitle(title: profile.pageHeaderTitle),
-                if (!profile.isResidentComplete) ...[
-                  const SizedBox(height: 16),
-                  _ResidentRequiredBanner(
-                    hasRegistration: profile.hasResidentRegistration,
-                    onTap: _openResidentVerification,
-                  ),
-                ],
-                const SizedBox(height: 20),
-                const _SectionTitle(title: '내 정보'),
-                const SizedBox(height: 10),
-                _RequiredSection(
-                  icon: Icons.apartment_outlined,
-                  title: '입주민 인증',
-                  isComplete: profile.isResidentComplete,
-                  onTap: _openResidentVerification,
-                  child: Column(
-                    children: [
-                      _FieldRow(
-                        label: '단지',
-                        value: profile.hasResidentRegistration
-                            ? (profile.residentComplexName ?? '등록됨')
-                            : '미등록',
-                        isMissing: !profile.hasResidentRegistration,
-                      ),
-                      _FieldRow(
-                        label: '동/호',
-                        value: profile.residentLocationLabel ??
-                            (profile.hasResidentRegistration
-                                ? '등록됨'
-                                : '미등록'),
-                        isMissing: !profile.hasResidentRegistration,
-                      ),
-                      _FieldRow(
-                        label: '승인 상태',
-                        value: profile.isResidentComplete
-                            ? '승인 완료'
-                            : profile.hasResidentRegistration
-                                ? '승인 대기'
-                                : '미등록',
-                        isMissing: !profile.isResidentComplete,
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(height: 10),
-                _RequiredSection(
-                  icon: Icons.person_outline,
-                  title: '기본정보',
-                  isComplete: profile.isBasicInfoComplete,
-                  onTap: () => _editBasicInfo(profile),
-                  child: Column(
-                    children: profile.basicInfoFields
-                        .map(
-                          (field) => _FieldRow(
-                            label: field.label,
-                            value: field.isComplete
-                                ? field.value
-                                : '미등록',
-                            isMissing: !field.isComplete,
-                          ),
-                        )
-                        .toList(),
-                  ),
-                ),
-                const SizedBox(height: 10),
-                _RequiredSection(
-                  icon: Icons.badge_outlined,
-                  title: '면허정보',
-                  isComplete: profile.isLicenseApproved,
-                  onTap: () => _editLicense(profile),
-                  child: Column(
-                    children: [
-                      _FieldRow(
-                        label: '면허번호',
-                        value: profile.hasLicenseNumber
-                            ? profile.licenseNumber
-                            : '미등록',
-                        isMissing: !profile.hasLicenseNumber,
-                      ),
-                      _FieldRow(
-                        label: '만료일',
-                        value: profile.hasLicenseExpiry
-                            ? profile.licenseExpiry
-                            : '미등록',
-                        isMissing: !profile.hasLicenseExpiry,
-                      ),
-                      _FieldRow(
-                        label: '심사 상태',
-                        value: profile.licenseStatusLabel,
-                        isMissing: !profile.isLicenseApproved,
-                      ),
-                      if (profile.licenseRejectionReason != null &&
-                          profile.licenseRejectionReason!.trim().isNotEmpty)
-                        _FieldRow(
-                          label: '거절 사유',
-                          value: profile.licenseRejectionReason!.trim(),
-                          isMissing: true,
-                        ),
-                    ],
-                  ),
-                ),
-                const SizedBox(height: 10),
-                _RequiredSection(
-                  icon: Icons.credit_card_outlined,
-                  title: '결제카드 등록',
-                  isComplete: profile.isPaymentCardComplete,
-                  onTap: () => _editPaymentCard(profile),
-                  child: _FieldRow(
-                    label: '등록 카드',
-                    value: profile.isPaymentCardComplete
-                        ? '**** ${profile.cardLast4}'
-                        : '미등록',
-                    isMissing: !profile.isPaymentCardComplete,
-                  ),
-                ),
+                _ProfileSummaryHeader(profile: profile),
                 if (!profile.canUseVehicle) ...[
                   const SizedBox(height: 16),
-                  _WarningBanner(profile: profile),
+                  _CompactSetupHint(profile: profile),
                 ],
-                const SizedBox(height: 20),
-                _OptionalTile(
-                  icon: Icons.assignment_outlined,
-                  title: '내 예약',
-                  trailing: null,
-                  onTap: () {
-                    Navigator.of(context).push(
-                      MaterialPageRoute(
-                        builder: (_) => const MyReservationsScreen(),
-                      ),
-                    );
-                  },
-                ),
-                const SizedBox(height: 8),
-                _OptionalTile(
-                  icon: Icons.stars_outlined,
-                  title: '보유 포인트',
-                  trailing: '${_formatNumber(profile.points)}P',
-                  onTap: () => _showInfo('포인트 적립·사용 내역은 준비 중입니다.'),
-                ),
-                const SizedBox(height: 8),
-                _OptionalTile(
-                  icon: Icons.local_offer_outlined,
-                  title: '쿠폰함',
-                  trailing: '${profile.couponCount}장',
-                  onTap: () => _showInfo('쿠폰함은 준비 중입니다.'),
-                ),
-                const SizedBox(height: 8),
-                _OptionalTile(
-                  icon: Icons.receipt_long_outlined,
-                  title: '이용내역',
-                  trailing: null,
-                  onTap: () {
-                    Navigator.of(context).push(
-                      MaterialPageRoute(
-                        builder: (_) =>
-                            const MyReservationsScreen(historyOnly: true),
-                      ),
-                    );
-                  },
-                ),
-                const SizedBox(height: 28),
-                const _SectionTitle(title: '고객지원'),
-                const SizedBox(height: 10),
-                _OptionalTile(
-                  icon: Icons.headset_mic_outlined,
-                  title: '고객센터',
-                  trailing: null,
-                  onTap: () {
-                    Navigator.of(context).push(
-                      MaterialPageRoute(
-                        builder: (_) => const CustomerServiceScreen(),
-                      ),
-                    );
-                  },
-                ),
-                const SizedBox(height: 8),
-                _OptionalTile(
-                  icon: Icons.help_outline,
-                  title: '자주 묻는 질문',
-                  trailing: null,
-                  onTap: () {
-                    Navigator.of(context).push(
-                      MaterialPageRoute(
-                        builder: (_) => const FaqScreen(),
-                      ),
-                    );
-                  },
-                ),
-                const SizedBox(height: 8),
-                _OptionalTile(
-                  icon: Icons.description_outlined,
-                  title: '약관 및 정책',
-                  trailing: null,
-                  onTap: () {
-                    Navigator.of(context).push(
-                      MaterialPageRoute(
-                        builder: (_) => const TermsPolicyScreen(),
-                      ),
-                    );
-                  },
-                ),
-                const SizedBox(height: 28),
-                OutlinedButton.icon(
-                  onPressed: _logout,
-                  icon: const Icon(Icons.logout, color: DanjiColors.accentRed),
-                  label: const Text(
-                    '로그아웃',
-                    style: TextStyle(
-                      color: DanjiColors.accentRed,
-                      fontWeight: FontWeight.w700,
+                const SizedBox(height: 36),
+                _ManageMenuGroup(
+                  children: [
+                    _ManageRow(
+                      icon: Icons.apartment_rounded,
+                      iconColor: const Color(0xFF5C6BC0),
+                      title: '아파트 인증 관리',
+                      status: profile.residentManageStatus,
+                      statusComplete: profile.isResidentComplete,
+                      onTap: _openResidentVerification,
                     ),
-                  ),
-                  style: OutlinedButton.styleFrom(
-                    minimumSize: const Size.fromHeight(52),
-                    side: const BorderSide(color: DanjiColors.accentRed),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(14),
+                    _ManageRow(
+                      icon: Icons.badge_outlined,
+                      iconColor: const Color(0xFF26A69A),
+                      title: '운전면허 관리',
+                      status: profile.licenseManageStatus,
+                      statusComplete: profile.isLicenseApproved,
+                      onTap: () => _editLicense(profile),
                     ),
-                  ),
+                    _ManageRow(
+                      icon: Icons.credit_card_rounded,
+                      iconColor: const Color(0xFF42A5F5),
+                      title: '결제 수단 관리',
+                      status: profile.paymentManageStatus,
+                      statusComplete: profile.isPaymentCardComplete,
+                      onTap: () => _editPaymentCard(profile),
+                    ),
+                    _ManageRow(
+                      icon: Icons.person_outline_rounded,
+                      iconColor: const Color(0xFF78909C),
+                      title: '개인정보 수정',
+                      status: profile.isBasicInfoComplete ? null : '미등록',
+                      statusComplete: profile.isBasicInfoComplete,
+                      onTap: () => _openPersonalInfo(profile),
+                      showDivider: false,
+                    ),
+                  ],
                 ),
+                const SizedBox(height: 36),
+                const _SectionLabel(title: '이용'),
                 const SizedBox(height: 12),
+                _ManageMenuGroup(
+                  children: [
+                    _ManageRow(
+                      icon: Icons.assignment_outlined,
+                      iconColor: DanjiColors.buttonBlue,
+                      title: '내 예약',
+                      onTap: () {
+                        Navigator.of(context).push(
+                          MaterialPageRoute(
+                            builder: (_) => const MyReservationsScreen(),
+                          ),
+                        );
+                      },
+                    ),
+                    _ManageRow(
+                      icon: Icons.stars_outlined,
+                      iconColor: const Color(0xFFFFB300),
+                      title: '보유 포인트',
+                      status: '${_formatNumber(profile.points)}P',
+                      statusComplete: true,
+                      onTap: () => _showInfo('포인트 적립·사용 내역은 준비 중입니다.'),
+                    ),
+                    _ManageRow(
+                      icon: Icons.local_offer_outlined,
+                      iconColor: const Color(0xFFEF5350),
+                      title: '쿠폰함',
+                      status: '${profile.couponCount}장',
+                      statusComplete: true,
+                      onTap: () => _showInfo('쿠폰함은 준비 중입니다.'),
+                    ),
+                    _ManageRow(
+                      icon: Icons.receipt_long_outlined,
+                      iconColor: const Color(0xFF8D6E63),
+                      title: '이용내역',
+                      onTap: () {
+                        Navigator.of(context).push(
+                          MaterialPageRoute(
+                            builder: (_) =>
+                                const MyReservationsScreen(historyOnly: true),
+                          ),
+                        );
+                      },
+                      showDivider: false,
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 36),
+                const _SectionLabel(title: '고객지원'),
+                const SizedBox(height: 12),
+                _ManageMenuGroup(
+                  children: [
+                    _ManageRow(
+                      icon: Icons.headset_mic_outlined,
+                      iconColor: DanjiColors.buttonBlue,
+                      title: '고객센터',
+                      onTap: () {
+                        Navigator.of(context).push(
+                          MaterialPageRoute(
+                            builder: (_) => const CustomerServiceScreen(),
+                          ),
+                        );
+                      },
+                    ),
+                    _ManageRow(
+                      icon: Icons.help_outline_rounded,
+                      iconColor: const Color(0xFF78909C),
+                      title: '자주 묻는 질문',
+                      onTap: () {
+                        Navigator.of(context).push(
+                          MaterialPageRoute(
+                            builder: (_) => const FaqScreen(),
+                          ),
+                        );
+                      },
+                    ),
+                    _ManageRow(
+                      icon: Icons.description_outlined,
+                      iconColor: const Color(0xFF78909C),
+                      title: '약관 및 정책',
+                      onTap: () {
+                        Navigator.of(context).push(
+                          MaterialPageRoute(
+                            builder: (_) => const TermsPolicyScreen(),
+                          ),
+                        );
+                      },
+                      showDivider: false,
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 40),
+                Center(
+                  child: TextButton(
+                    onPressed: _logout,
+                    child: const Text(
+                      '로그아웃',
+                      style: TextStyle(
+                        color: DanjiColors.textMuted,
+                        fontSize: 15,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 8),
               ],
             ),
           );
@@ -426,489 +345,261 @@ class _MyPageScreenState extends State<MyPageScreen> {
 }
 
 extension on MyPageProfile {
-  bool get hasLicenseNumber =>
-      licenseNumber != null && licenseNumber!.trim().isNotEmpty;
-
-  bool get hasLicenseExpiry =>
-      licenseExpiry != null && licenseExpiry!.trim().isNotEmpty;
-
-  String get licenseStatusLabel {
+  String get licenseManageStatus {
+    if (isLicenseApproved) return '승인 완료';
     if (!isLicenseComplete) return '미등록';
-    if (isLicenseApproved) return '승인';
     if (licenseRejectionReason != null &&
         licenseRejectionReason!.trim().isNotEmpty) {
       return '거절';
     }
     return '심사 중';
   }
+
+  String get residentManageStatus {
+    if (isResidentComplete) {
+      final unit = residentUnit?.trim();
+      if (unit != null && unit.isNotEmpty) return '인증 완료($unit호)';
+      return '인증 완료';
+    }
+    if (hasResidentRegistration) return '승인 대기';
+    return '미등록';
+  }
+
+  String get paymentManageStatus {
+    if (isPaymentCardComplete) return '등록 완료(**** $cardLast4)';
+    return '미등록';
+  }
+
+  String? get apartmentSummary {
+    final parts = <String>[];
+    if (residentComplexName != null && residentComplexName!.trim().isNotEmpty) {
+      parts.add(residentComplexName!.trim());
+    }
+    final dongHo = dongHoLabel;
+    if (dongHo != null) parts.add(dongHo);
+    return parts.isEmpty ? null : parts.join(' ');
+  }
 }
 
-class _ProfileHeaderTitle extends StatelessWidget {
-  final String title;
+class _ProfileSummaryHeader extends StatelessWidget {
+  final MyPageProfile profile;
 
-  const _ProfileHeaderTitle({required this.title});
+  const _ProfileSummaryHeader({required this.profile});
 
   @override
   Widget build(BuildContext context) {
-    return Text(
-      title,
-      style: const TextStyle(
-        color: DanjiColors.textPrimary,
-        fontSize: 22,
-        fontWeight: FontWeight.w800,
-        height: 1.35,
-      ),
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          profile.displayName,
+          style: const TextStyle(
+            color: Color(0xFF263238),
+            fontSize: 26,
+            fontWeight: FontWeight.w700,
+            letterSpacing: -0.6,
+            height: 1.2,
+          ),
+        ),
+        if (profile.apartmentSummary != null) ...[
+          const SizedBox(height: 6),
+          Text(
+            profile.apartmentSummary!,
+            style: const TextStyle(
+              color: DanjiColors.textMuted,
+              fontSize: 15,
+              fontWeight: FontWeight.w500,
+              letterSpacing: -0.3,
+              height: 1.4,
+            ),
+          ),
+        ] else ...[
+          const SizedBox(height: 6),
+          const Text(
+            '아파트 인증을 완료해주세요',
+            style: TextStyle(
+              color: DanjiColors.textMuted,
+              fontSize: 15,
+              fontWeight: FontWeight.w500,
+            ),
+          ),
+        ],
+      ],
     );
   }
 }
 
-class _WarningBanner extends StatelessWidget {
+class _CompactSetupHint extends StatelessWidget {
   final MyPageProfile profile;
 
-  const _WarningBanner({required this.profile});
+  const _CompactSetupHint({required this.profile});
 
   @override
   Widget build(BuildContext context) {
     final missing = <String>[];
-    if (!profile.isResidentComplete) missing.add('입주민 인증');
-    if (!profile.isBasicInfoComplete) missing.add('기본정보');
-    if (!profile.isLicenseComplete) {
-      missing.add('면허정보');
-    } else if (!profile.isLicenseApproved) {
-      if (profile.licenseRejectionReason != null &&
-          profile.licenseRejectionReason!.trim().isNotEmpty) {
-        missing.add('면허 심사(거절 — 재등록 필요)');
-      } else {
-        missing.add('면허 심사(승인 대기)');
-      }
+    if (!profile.isResidentComplete) missing.add('아파트 인증');
+    if (!profile.isBasicInfoComplete) missing.add('개인정보');
+    if (!profile.isLicenseComplete || !profile.isLicenseApproved) {
+      missing.add('운전면허');
     }
-    if (!profile.isPaymentCardComplete) missing.add('결제카드');
+    if (!profile.isPaymentCardComplete) missing.add('결제 수단');
+
+    if (missing.isEmpty) return const SizedBox.shrink();
 
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
       decoration: BoxDecoration(
-        color: DanjiColors.accentRed.withValues(alpha: 0.08),
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: DanjiColors.accentRed.withValues(alpha: 0.45)),
+        color: DanjiColors.accentRed.withValues(alpha: 0.06),
+        borderRadius: BorderRadius.circular(12),
       ),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Icon(Icons.error_outline, color: DanjiColors.accentRed, size: 22),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Text(
-              missing.isEmpty
-                  ? '현재 차량을 이용할 수 없습니다.'
-                  : '차량 이용 전 필수 등록이 필요합니다: ${missing.join(', ')}',
-              style: const TextStyle(
-                color: DanjiColors.accentRed,
-                fontWeight: FontWeight.w700,
-                height: 1.45,
-              ),
-            ),
-          ),
-        ],
+      child: Text(
+        '차량 이용을 위해 ${missing.join(' · ')}을(를) 완료해주세요',
+        style: const TextStyle(
+          color: DanjiColors.accentRed,
+          fontSize: 13,
+          fontWeight: FontWeight.w600,
+          height: 1.45,
+          letterSpacing: -0.2,
+        ),
       ),
     );
   }
 }
 
-class _ResidentRequiredBanner extends StatelessWidget {
-  final bool hasRegistration;
-  final VoidCallback onTap;
+class _SectionLabel extends StatelessWidget {
+  final String title;
 
-  const _ResidentRequiredBanner({
-    required this.hasRegistration,
+  const _SectionLabel({required this.title});
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(left: 4),
+      child: Text(
+        title,
+        style: const TextStyle(
+          color: DanjiColors.textMuted,
+          fontSize: 13,
+          fontWeight: FontWeight.w600,
+          letterSpacing: -0.2,
+        ),
+      ),
+    );
+  }
+}
+
+class _ManageMenuGroup extends StatelessWidget {
+  final List<Widget> children;
+
+  const _ManageMenuGroup({required this.children});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      decoration: BoxDecoration(
+        color: DanjiColors.surface,
+        borderRadius: BorderRadius.circular(16),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: Column(children: children),
+    );
+  }
+}
+
+class _ManageRow extends StatelessWidget {
+  final IconData icon;
+  final Color iconColor;
+  final String title;
+  final String? status;
+  final bool statusComplete;
+  final VoidCallback onTap;
+  final bool showDivider;
+
+  const _ManageRow({
+    required this.icon,
+    required this.iconColor,
+    required this.title,
+    this.status,
+    this.statusComplete = false,
     required this.onTap,
+    this.showDivider = true,
   });
 
   @override
   Widget build(BuildContext context) {
-    final message = hasRegistration
-        ? '입주민 인증 승인 대기 중입니다. 승인 후 예약·이용이 가능합니다.'
-        : '입주민 인증이 필요합니다. 초대코드와 동/호수를 등록해주세요.';
+    final statusColor = status == null
+        ? DanjiColors.textMuted
+        : statusComplete
+            ? DanjiColors.textMuted
+            : DanjiColors.accentRed;
 
-    return Material(
-      color: DanjiColors.surface,
-      borderRadius: BorderRadius.circular(16),
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(16),
-        child: Container(
-          width: double.infinity,
-          padding: const EdgeInsets.all(18),
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: DanjiColors.accentRed.withValues(alpha: 0.5)),
-            color: DanjiColors.accentRed.withValues(alpha: 0.06),
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Row(
+    return Column(
+      children: [
+        Material(
+          color: Colors.transparent,
+          child: InkWell(
+            onTap: onTap,
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 16),
+              child: Row(
                 children: [
-                  Icon(Icons.apartment, color: DanjiColors.accentRed, size: 24),
-                  SizedBox(width: 10),
-                  Text(
-                    '입주민 인증 필요',
-                    style: TextStyle(
-                      color: DanjiColors.accentRed,
-                      fontSize: 17,
-                      fontWeight: FontWeight.w800,
+                  Container(
+                    width: 40,
+                    height: 40,
+                    decoration: BoxDecoration(
+                      color: iconColor.withValues(alpha: 0.12),
+                      borderRadius: BorderRadius.circular(12),
                     ),
+                    child: Icon(icon, color: iconColor, size: 22),
+                  ),
+                  const SizedBox(width: 14),
+                  Expanded(
+                    child: Text(
+                      title,
+                      style: const TextStyle(
+                        color: Color(0xFF37474F),
+                        fontSize: 16,
+                        fontWeight: FontWeight.w600,
+                        letterSpacing: -0.3,
+                      ),
+                    ),
+                  ),
+                  if (status != null) ...[
+                    Flexible(
+                      child: Text(
+                        status!,
+                        textAlign: TextAlign.right,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          color: statusColor,
+                          fontSize: 14,
+                          fontWeight: FontWeight.w500,
+                          letterSpacing: -0.2,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 4),
+                  ],
+                  Icon(
+                    Icons.chevron_right_rounded,
+                    color: DanjiColors.textMuted.withValues(alpha: 0.7),
+                    size: 22,
                   ),
                 ],
               ),
-              const SizedBox(height: 8),
-              Text(
-                message,
-                style: const TextStyle(
-                  color: DanjiColors.textPrimary,
-                  fontWeight: FontWeight.w600,
-                  height: 1.45,
-                ),
-              ),
-              const SizedBox(height: 12),
-              FilledButton.icon(
-                onPressed: onTap,
-                icon: const Icon(Icons.arrow_forward, size: 18),
-                label: Text(hasRegistration ? '인증 상태 확인' : '입주민 인증하기'),
-                style: FilledButton.styleFrom(
-                  backgroundColor: DanjiColors.accentRed,
-                  foregroundColor: Colors.white,
-                  minimumSize: const Size.fromHeight(44),
-                ),
-              ),
-            ],
+            ),
           ),
         ),
-      ),
-    );
-  }
-}
-
-class _SectionTitle extends StatelessWidget {
-  final String title;
-
-  const _SectionTitle({required this.title});
-
-  @override
-  Widget build(BuildContext context) {
-    return Text(
-      title,
-      style: const TextStyle(
-        color: DanjiColors.textPrimary,
-        fontSize: 17,
-        fontWeight: FontWeight.w800,
-      ),
-    );
-  }
-}
-
-class _RequiredSection extends StatelessWidget {
-  final IconData icon;
-  final String title;
-  final bool isComplete;
-  final VoidCallback onTap;
-  final Widget child;
-
-  const _RequiredSection({
-    required this.icon,
-    required this.title,
-    required this.isComplete,
-    required this.onTap,
-    required this.child,
-  });
-
-  static const _success = DanjiColors.primaryBlue;
-
-  @override
-  Widget build(BuildContext context) {
-    final statusColor = isComplete ? _success : DanjiColors.accentRed;
-    final statusLabel = isComplete ? '등록완료' : '미등록';
-
-    return SectionCard(
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(12),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Icon(icon, color: statusColor, size: 22),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: Text(
-                    title,
-                    style: TextStyle(
-                      color: isComplete
-                          ? DanjiColors.textPrimary
-                          : DanjiColors.accentRed,
-                      fontSize: 16,
-                      fontWeight: FontWeight.w800,
-                    ),
-                  ),
-                ),
-                Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                  decoration: BoxDecoration(
-                    color: statusColor.withValues(alpha: 0.15),
-                    borderRadius: BorderRadius.circular(999),
-                  ),
-                  child: Text(
-                    statusLabel,
-                    style: TextStyle(
-                      color: statusColor,
-                      fontSize: 12,
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 4),
-                Icon(
-                  Icons.chevron_right,
-                  color: DanjiColors.textMuted,
-                ),
-              ],
-            ),
-            const SizedBox(height: 12),
-            const Divider(height: 1, color: DanjiColors.border),
-            const SizedBox(height: 10),
-            child,
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _FieldRow extends StatelessWidget {
-  final String label;
-  final String? value;
-  final bool isMissing;
-
-  const _FieldRow({
-    required this.label,
-    required this.value,
-    required this.isMissing,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 6),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          SizedBox(
-            width: 110,
-            child: Text(
-              label,
-              style: const TextStyle(
-                color: DanjiColors.textMuted,
-                fontSize: 13,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
+        if (showDivider)
+          Divider(
+            height: 1,
+            thickness: 1,
+            indent: 72,
+            endIndent: 18,
+            color: DanjiColors.border.withValues(alpha: 0.6),
           ),
-          Expanded(
-            child: Text(
-              value ?? '미등록',
-              style: TextStyle(
-                color: isMissing
-                    ? DanjiColors.accentRed
-                    : DanjiColors.textPrimary,
-                fontWeight: isMissing ? FontWeight.w700 : FontWeight.w600,
-                fontSize: 14,
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _OptionalTile extends StatelessWidget {
-  final IconData icon;
-  final String title;
-  final String? trailing;
-  final VoidCallback onTap;
-
-  const _OptionalTile({
-    required this.icon,
-    required this.title,
-    required this.trailing,
-    required this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return SectionCard(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-      child: ListTile(
-        contentPadding: EdgeInsets.zero,
-        leading: Icon(icon, color: DanjiColors.primaryBlue),
-        title: Text(
-          title,
-          style: const TextStyle(
-            color: DanjiColors.textPrimary,
-            fontWeight: FontWeight.w700,
-            fontSize: 15,
-          ),
-        ),
-        trailing: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            if (trailing != null)
-              Text(
-                trailing!,
-                style: const TextStyle(
-                  color: DanjiColors.textMuted,
-                  fontWeight: FontWeight.w700,
-                  fontSize: 14,
-                ),
-              ),
-            const Icon(Icons.chevron_right, color: DanjiColors.textMuted),
-          ],
-        ),
-        onTap: onTap,
-      ),
-    );
-  }
-}
-
-class _BasicInfoSheet extends StatefulWidget {
-  final String initialName;
-  final String initialPhone;
-  final String initialAddress;
-  final String email;
-  final List<String> linkedProviders;
-
-  const _BasicInfoSheet({
-    required this.initialName,
-    required this.initialPhone,
-    required this.initialAddress,
-    required this.email,
-    required this.linkedProviders,
-  });
-
-  @override
-  State<_BasicInfoSheet> createState() => _BasicInfoSheetState();
-}
-
-class _BasicInfoSheetState extends State<_BasicInfoSheet> {
-  final _service = MyPageService();
-  late final TextEditingController _name;
-  late final TextEditingController _phone;
-  late final TextEditingController _address;
-  bool _saving = false;
-  String? _error;
-
-  @override
-  void initState() {
-    super.initState();
-    _name = TextEditingController(text: widget.initialName);
-    _phone = TextEditingController(text: widget.initialPhone);
-    _address = TextEditingController(text: widget.initialAddress);
-  }
-
-  @override
-  void dispose() {
-    _name.dispose();
-    _phone.dispose();
-    _address.dispose();
-    super.dispose();
-  }
-
-  Future<void> _save() async {
-    if (_name.text.trim().isEmpty ||
-        _phone.text.trim().isEmpty ||
-        _address.text.trim().isEmpty) {
-      setState(() => _error = '이름, 휴대전화, 주소를 모두 입력해주세요.');
-      return;
-    }
-
-    setState(() {
-      _saving = true;
-      _error = null;
-    });
-
-    try {
-      await _service.saveBasicInfo(
-        name: _name.text,
-        phone: _phone.text,
-        address: _address.text,
-      );
-      if (mounted) Navigator.of(context).pop(true);
-    } catch (e) {
-      setState(() {
-        _saving = false;
-        _error = e.toString();
-      });
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final bottom = MediaQuery.of(context).viewInsets.bottom;
-    final snsLabel = widget.linkedProviders.isEmpty
-        ? '미연동'
-        : widget.linkedProviders
-            .map(MyPageProfile.providerLabel)
-            .join(', ');
-
-    return Padding(
-      padding: EdgeInsets.fromLTRB(20, 20, 20, bottom + 20),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          const Text(
-            '기본정보 등록',
-            style: TextStyle(
-              color: DanjiColors.textPrimary,
-              fontSize: 18,
-              fontWeight: FontWeight.w800,
-            ),
-          ),
-          const SizedBox(height: 16),
-          _SheetField(label: '이름', controller: _name),
-          _SheetField(
-            label: '휴대전화',
-            controller: _phone,
-            keyboardType: TextInputType.phone,
-            inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-          ),
-          _SheetReadOnlyField(label: '이메일', value: widget.email),
-          _SheetReadOnlyField(label: 'SNS 로그인 연동', value: snsLabel),
-          _SheetField(label: '주소', controller: _address),
-          if (_error != null) ...[
-            const SizedBox(height: 8),
-            Text(_error!, style: const TextStyle(color: DanjiColors.accentRed)),
-          ],
-          const SizedBox(height: 16),
-          FilledButton(
-            onPressed: _saving ? null : _save,
-            style: FilledButton.styleFrom(
-              backgroundColor: DanjiColors.rentalBlue,
-              foregroundColor: Colors.white,
-              minimumSize: const Size.fromHeight(48),
-            ),
-            child: _saving
-                ? const SizedBox(
-                    height: 20,
-                    width: 20,
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  )
-                : const Text('저장'),
-          ),
-        ],
-      ),
+      ],
     );
   }
 }
@@ -1081,47 +772,6 @@ class _SheetField extends StatelessWidget {
                 borderRadius: BorderRadius.circular(12),
                 borderSide: const BorderSide(color: DanjiColors.primaryBlue),
               ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _SheetReadOnlyField extends StatelessWidget {
-  final String label;
-  final String value;
-
-  const _SheetReadOnlyField({required this.label, required this.value});
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 12),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            label,
-            style: const TextStyle(
-              color: DanjiColors.textSecondary,
-              fontWeight: FontWeight.w600,
-              fontSize: 13,
-            ),
-          ),
-          const SizedBox(height: 6),
-          Container(
-            width: double.infinity,
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
-            decoration: BoxDecoration(
-              color: DanjiColors.skyLight,
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: DanjiColors.border),
-            ),
-            child: Text(
-              value,
-              style: const TextStyle(color: DanjiColors.textPrimary),
             ),
           ),
         ],
