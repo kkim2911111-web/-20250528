@@ -18,6 +18,7 @@ import 'my_reservations_screen.dart';
 import '../utils/accident_emergency_flow.dart';
 import '../utils/rental_extension_flow.dart';
 import '../utils/rental_navigation.dart';
+import '../utils/booking_eligibility.dart';
 import '../widgets/rental_inquiry_button.dart';
 import '../widgets/smart_key_door_buttons.dart';
 
@@ -282,10 +283,31 @@ class HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  void _openBooking(BuildContext context) {
-    Navigator.of(context).push(
+  Future<void> _openBooking(BuildContext context) async {
+    try {
+      final profile = await _myPageService.fetchProfile();
+      final block = BookingEligibility.blockReason(profile);
+      if (block != null) {
+        if (!context.mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(block)),
+        );
+        return;
+      }
+    } catch (e) {
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('예약 정보 확인 실패: $e')),
+      );
+      return;
+    }
+
+    if (!context.mounted) return;
+    Navigator.of(context)
+        .push(
       MaterialPageRoute(builder: (_) => const BookingScreen()),
-    ).then((_) => reload());
+    )
+        .then((_) => reload());
   }
 
   void _openMyReservations(BuildContext context) {

@@ -59,6 +59,8 @@ class MyPageService {
       linkedProviders: providers,
       licenseNumber: row['license_number']?.toString(),
       licenseExpiry: row['license_expiry']?.toString(),
+      licenseVerified: row['license_verified'] == true,
+      licenseRejectionReason: row['license_rejection_reason']?.toString(),
       hasPaymentCard: row['payment_card_registered'] == true,
       cardLast4: row['payment_card_last4']?.toString(),
       points: (row['points'] as num?)?.toInt() ?? 0,
@@ -135,9 +137,11 @@ class MyPageService {
     required String licenseNumber,
     required String licenseExpiry,
   }) async {
-    await _upsert({
-      'license_number': licenseNumber.trim(),
-      'license_expiry': licenseExpiry.trim(),
+    // 레거시 — submit_license_for_me RPC 사용 권장 (LicenseService)
+    await supabase.rpc('submit_license_for_me', params: {
+      'p_license_number': licenseNumber.trim(),
+      'p_license_expiry': licenseExpiry.trim(),
+      'p_license_photo_url': null,
     });
   }
 

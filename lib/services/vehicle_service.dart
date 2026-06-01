@@ -5,6 +5,8 @@ import '../models/vehicle_query_result.dart';
 import '../supabase_client.dart';
 import '../utils/network_retry.dart';
 
+/// 입주민 단지 차량 목록 — DB RLS(`vehicles_resident_select_own_complex`)가
+/// complex_id 격리를 강제하므로 클라이언트 `.eq('complex_id')` 필터는 사용하지 않음.
 class VehicleService {
   Future<VehicleQueryResult> fetchVehiclesForMyComplex() async {
     return withNetworkRetry(_fetchVehiclesForMyComplex);
@@ -40,6 +42,7 @@ class VehicleService {
     final complexName = complexMap?['name']?.toString();
     final inviteCode = complexMap?['invite_code']?.toString();
 
+    // RLS도 미승인 입주민 SELECT 를 차단하지만, 불필요한 API 호출·UX 혼선 방지
     if (!approved) {
       return VehicleQueryResult(
         vehicles: [],
@@ -59,7 +62,7 @@ class VehicleService {
       );
     }
 
-    final rows = await _selectVehicles(complexId);
+    final rows = await _selectVehiclesVisibleByRls();
     final vehicles = rows.map(Vehicle.fromMap).toList();
 
     return VehicleQueryResult(
@@ -67,12 +70,15 @@ class VehicleService {
       complexId: complexId,
       complexName: complexName,
       inviteCode: inviteCode,
-      issue: vehicles.isEmpty ? VehicleLoadIssue.emptyForComplex : VehicleLoadIssue.none,
+      issue: vehicles.isEmpty
+          ? VehicleLoadIssue.emptyForComplex
+          : VehicleLoadIssue.none,
     );
   }
 
-  Future<List<Map<String, dynamic>>> _selectVehicles(String complexId) async {
-    var query = supabase.from('vehicles').select().eq('complex_id', complexId);
+  /// RLS가 허용한 차량만 반환 (본인 단지 + 승인 입주민).
+  Future<List<Map<String, dynamic>>> _selectVehiclesVisibleByRls() async {
+    final query = supabase.from('vehicles').select();
 
     try {
       return await query.order('created_at');

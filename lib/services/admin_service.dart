@@ -1,5 +1,6 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../models/license_review_item.dart';
 import '../models/staff_profile.dart';
 import '../repositories/staff_repository.dart';
 import '../supabase_client.dart';
@@ -309,6 +310,33 @@ class AdminService {
       rows: byVehicle.values.toList()
         ..sort((a, b) => b.amount.compareTo(a.amount)),
     );
+  }
+
+  Future<List<LicenseReviewItem>> fetchLicenseReviews() async {
+    final rows = await supabase.rpc('list_license_reviews_for_staff');
+    return (rows as List)
+        .map(
+          (e) => LicenseReviewItem.fromMap(
+            Map<String, dynamic>.from(e as Map),
+          ),
+        )
+        .toList();
+  }
+
+  Future<void> reviewLicense({
+    required String userId,
+    required bool approved,
+    String? rejectionReason,
+  }) async {
+    try {
+      await supabase.rpc('review_license_for_staff', params: {
+        'p_user_id': userId,
+        'p_approved': approved,
+        'p_rejection_reason': rejectionReason,
+      });
+    } on PostgrestException catch (e) {
+      throw AdminException(mapAdminPostgrestError(e));
+    }
   }
 }
 

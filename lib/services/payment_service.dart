@@ -51,6 +51,9 @@ class PaymentService {
       if (msg.contains('not_approved')) {
         return '입주민 승인이 필요합니다.';
       }
+      if (msg.contains('license_not_verified')) {
+        return '면허 심사 승인 후 예약할 수 있습니다.\n마이페이지에서 면허 등록·심사 상태를 확인해주세요.';
+      }
       if (msg.contains('vehicle_not_in_complex')) {
         return '내 단지 차량만 예약할 수 있습니다.';
       }

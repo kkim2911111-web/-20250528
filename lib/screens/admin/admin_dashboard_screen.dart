@@ -6,6 +6,7 @@ import '../../services/admin_service.dart';
 import '../../services/auth_service.dart';
 import '../../theme/danji_colors.dart';
 import '../../widgets/section_card.dart';
+import 'admin_license_review_screen.dart';
 import 'admin_management_screens.dart';
 import 'admin_vehicle_form_screen.dart';
 
@@ -176,6 +177,12 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
               ),
             ),
             const SizedBox(height: 12),
+            _MenuTile(
+              icon: Icons.badge_outlined,
+              title: '면허 심사',
+              subtitle: '입주민 면허증 승인·거절',
+              onTap: () => _open(AdminLicenseReviewScreen(profile: profile)),
+            ),
             _MenuTile(
               icon: Icons.fact_check_outlined,
               title: '반납 검수',

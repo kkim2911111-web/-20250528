@@ -32,7 +32,7 @@ class VehicleQueryResult {
       case VehicleLoadIssue.notResident:
         return '입주민 인증(초대코드·동/호)을 먼저 완료해주세요.';
       case VehicleLoadIssue.notApproved:
-        return '입주민 승인 대기 중입니다.\nSupabase에서 approved = true 로 승인해주세요.';
+        return '입주민 승인 대기 중입니다.\n관리자 승인 후 차량 목록을 볼 수 있습니다.';
       case VehicleLoadIssue.emptyForComplex:
         final label = complexName ?? inviteCode ?? '내 단지';
         return '$label에 등록된 차량이 없습니다.\n'

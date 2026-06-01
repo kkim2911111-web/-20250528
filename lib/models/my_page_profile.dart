@@ -7,6 +7,8 @@ class MyPageProfile {
   final List<String> linkedProviders;
   final String? licenseNumber;
   final String? licenseExpiry;
+  final bool licenseVerified;
+  final String? licenseRejectionReason;
   final bool hasPaymentCard;
   final String? cardLast4;
   final int points;
@@ -25,6 +27,8 @@ class MyPageProfile {
     this.linkedProviders = const [],
     this.licenseNumber,
     this.licenseExpiry,
+    this.licenseVerified = false,
+    this.licenseRejectionReason,
     this.hasPaymentCard = false,
     this.cardLast4,
     this.points = 0,
@@ -48,6 +52,8 @@ class MyPageProfile {
       hasName && hasPhone && hasEmail && hasAddress && hasSnsLinked;
 
   bool get isLicenseComplete => _filled(licenseNumber) && _filled(licenseExpiry);
+
+  bool get isLicenseApproved => licenseVerified;
 
   bool get isPaymentCardComplete => hasPaymentCard;
 
@@ -98,7 +104,10 @@ class MyPageProfile {
       isResidentComplete &&
       isBasicInfoComplete &&
       isLicenseComplete &&
+      isLicenseApproved &&
       isPaymentCardComplete;
+
+  bool get canBookVehicle => canUseVehicle;
 
   List<BasicInfoField> get basicInfoFields => [
         BasicInfoField('이름', name, hasName),

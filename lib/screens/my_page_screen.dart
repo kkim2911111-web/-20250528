@@ -7,6 +7,7 @@ import '../services/auth_service.dart';
 import '../services/my_page_service.dart';
 import '../theme/danji_colors.dart';
 import '../widgets/danji_app_bar.dart';
+import '../widgets/license_registration_sheet.dart';
 import '../widgets/section_card.dart';
 import 'my_reservations_screen.dart';
 import 'support_pages.dart';
@@ -64,7 +65,7 @@ class _MyPageScreenState extends State<MyPageScreen> {
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
-      builder: (_) => _LicenseSheet(
+      builder: (_) => LicenseRegistrationSheet(
         initialNumber: profile.licenseNumber ?? '',
         initialExpiry: profile.licenseExpiry ?? '',
       ),
@@ -249,7 +250,7 @@ class _MyPageScreenState extends State<MyPageScreen> {
                 _RequiredSection(
                   icon: Icons.badge_outlined,
                   title: '면허정보',
-                  isComplete: profile.isLicenseComplete,
+                  isComplete: profile.isLicenseApproved,
                   onTap: () => _editLicense(profile),
                   child: Column(
                     children: [
@@ -267,6 +268,18 @@ class _MyPageScreenState extends State<MyPageScreen> {
                             : '미등록',
                         isMissing: !profile.hasLicenseExpiry,
                       ),
+                      _FieldRow(
+                        label: '심사 상태',
+                        value: profile.licenseStatusLabel,
+                        isMissing: !profile.isLicenseApproved,
+                      ),
+                      if (profile.licenseRejectionReason != null &&
+                          profile.licenseRejectionReason!.trim().isNotEmpty)
+                        _FieldRow(
+                          label: '거절 사유',
+                          value: profile.licenseRejectionReason!.trim(),
+                          isMissing: true,
+                        ),
                     ],
                   ),
                 ),
@@ -418,6 +431,16 @@ extension on MyPageProfile {
 
   bool get hasLicenseExpiry =>
       licenseExpiry != null && licenseExpiry!.trim().isNotEmpty;
+
+  String get licenseStatusLabel {
+    if (!isLicenseComplete) return '미등록';
+    if (isLicenseApproved) return '승인';
+    if (licenseRejectionReason != null &&
+        licenseRejectionReason!.trim().isNotEmpty) {
+      return '거절';
+    }
+    return '심사 중';
+  }
 }
 
 class _ProfileHeaderTitle extends StatelessWidget {
@@ -449,7 +472,16 @@ class _WarningBanner extends StatelessWidget {
     final missing = <String>[];
     if (!profile.isResidentComplete) missing.add('입주민 인증');
     if (!profile.isBasicInfoComplete) missing.add('기본정보');
-    if (!profile.isLicenseComplete) missing.add('면허정보');
+    if (!profile.isLicenseComplete) {
+      missing.add('면허정보');
+    } else if (!profile.isLicenseApproved) {
+      if (profile.licenseRejectionReason != null &&
+          profile.licenseRejectionReason!.trim().isNotEmpty) {
+        missing.add('면허 심사(거절 — 재등록 필요)');
+      } else {
+        missing.add('면허 심사(승인 대기)');
+      }
+    }
     if (!profile.isPaymentCardComplete) missing.add('결제카드');
 
     return Container(
@@ -855,116 +887,6 @@ class _BasicInfoSheetState extends State<_BasicInfoSheet> {
           _SheetReadOnlyField(label: '이메일', value: widget.email),
           _SheetReadOnlyField(label: 'SNS 로그인 연동', value: snsLabel),
           _SheetField(label: '주소', controller: _address),
-          if (_error != null) ...[
-            const SizedBox(height: 8),
-            Text(_error!, style: const TextStyle(color: DanjiColors.accentRed)),
-          ],
-          const SizedBox(height: 16),
-          FilledButton(
-            onPressed: _saving ? null : _save,
-            style: FilledButton.styleFrom(
-              backgroundColor: DanjiColors.rentalBlue,
-              foregroundColor: Colors.white,
-              minimumSize: const Size.fromHeight(48),
-            ),
-            child: _saving
-                ? const SizedBox(
-                    height: 20,
-                    width: 20,
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  )
-                : const Text('저장'),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _LicenseSheet extends StatefulWidget {
-  final String initialNumber;
-  final String initialExpiry;
-
-  const _LicenseSheet({
-    required this.initialNumber,
-    required this.initialExpiry,
-  });
-
-  @override
-  State<_LicenseSheet> createState() => _LicenseSheetState();
-}
-
-class _LicenseSheetState extends State<_LicenseSheet> {
-  final _service = MyPageService();
-  late final TextEditingController _number;
-  late final TextEditingController _expiry;
-  bool _saving = false;
-  String? _error;
-
-  @override
-  void initState() {
-    super.initState();
-    _number = TextEditingController(text: widget.initialNumber);
-    _expiry = TextEditingController(text: widget.initialExpiry);
-  }
-
-  @override
-  void dispose() {
-    _number.dispose();
-    _expiry.dispose();
-    super.dispose();
-  }
-
-  Future<void> _save() async {
-    if (_number.text.trim().isEmpty || _expiry.text.trim().isEmpty) {
-      setState(() => _error = '면허번호와 만료일을 입력해주세요.');
-      return;
-    }
-
-    setState(() {
-      _saving = true;
-      _error = null;
-    });
-
-    try {
-      await _service.saveLicense(
-        licenseNumber: _number.text,
-        licenseExpiry: _expiry.text,
-      );
-      if (mounted) Navigator.of(context).pop(true);
-    } catch (e) {
-      setState(() {
-        _saving = false;
-        _error = e.toString();
-      });
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final bottom = MediaQuery.of(context).viewInsets.bottom;
-
-    return Padding(
-      padding: EdgeInsets.fromLTRB(20, 20, 20, bottom + 20),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          const Text(
-            '면허정보 등록',
-            style: TextStyle(
-              color: DanjiColors.textPrimary,
-              fontSize: 18,
-              fontWeight: FontWeight.w800,
-            ),
-          ),
-          const SizedBox(height: 16),
-          _SheetField(label: '면허번호', controller: _number),
-          _SheetField(
-            label: '만료일',
-            controller: _expiry,
-            hint: '예: 2030-12-31',
-          ),
           if (_error != null) ...[
             const SizedBox(height: 8),
             Text(_error!, style: const TextStyle(color: DanjiColors.accentRed)),

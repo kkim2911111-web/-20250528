@@ -2,6 +2,8 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../supabase_client.dart';
 import '../constants/payment_order_status.dart';
+import '../utils/booking_eligibility.dart';
+import 'my_page_service.dart';
 
 class ReservationOverlapException implements Exception {
   final String message;
@@ -79,6 +81,12 @@ class ReservationService {
         '입주민 complex_id와 차량 complex_id가 일치해야 예약할 수 있습니다.',
       );
     }
+
+    final profile = await MyPageService().fetchProfile();
+    final block = BookingEligibility.blockReason(profile);
+    if (block != null) {
+      throw ReservationPermissionException(block);
+    }
   }
 
   Future<bool> hasOverlappingReservation({
@@ -88,6 +96,24 @@ class ReservationService {
   }) async {
     final startUtc = startAt.toUtc().toIso8601String();
     final endUtc = endAt.toUtc().toIso8601String();
+
+    try {
+      final result = await supabase.rpc(
+        'check_vehicle_time_overlap_for_me',
+        params: {
+          'p_vehicle_id': vehicleId,
+          'p_start_time': startUtc,
+          'p_end_time': endUtc,
+        },
+      );
+      if (result is bool) return result;
+    } on PostgrestException catch (e) {
+      final msg = e.message.toLowerCase();
+      if (!msg.contains('could not find') &&
+          !msg.contains('check_vehicle_time_overlap_for_me')) {
+        rethrow;
+      }
+    }
 
     for (final startCol in _startCols) {
       for (final endCol in _endCols) {
@@ -209,6 +235,11 @@ class ReservationService {
       if (msg.contains('not_approved')) {
         throw const ReservationPermissionException(
           '입주민 승인이 필요합니다. Supabase에서 approved = true 확인.',
+        );
+      }
+      if (msg.contains('license_not_verified')) {
+        throw const ReservationPermissionException(
+          '면허 심사 승인 후 예약할 수 있습니다.\n마이페이지에서 면허 등록·심사 상태를 확인해주세요.',
         );
       }
       if (msg.contains('vehicle_not_in_complex')) {
