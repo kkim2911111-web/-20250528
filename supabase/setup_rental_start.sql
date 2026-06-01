@@ -98,13 +98,15 @@ alter table public.reservations
   check (return_photos is null or cardinality(return_photos) <= 10);
 
 -- 5) 대여 시작 RPC (reservations.id = bigint → text ID)
+-- 기존 오버로드·default 시그니처 모두 제거 후 재생성 (42P13 방지)
 drop function if exists public.start_rental_for_me(uuid, text[], integer, text);
+drop function if exists public.start_rental_for_me(text, text[], integer, text);
 
 create or replace function public.start_rental_for_me(
   p_reservation_id text,
   p_pickup_photos text[],
-  p_mileage_start integer,
-  p_fuel_level_start text
+  p_mileage_start integer default null,
+  p_fuel_level_start text default null
 )
 returns jsonb
 language plpgsql
@@ -116,6 +118,8 @@ declare
   v_id text := nullif(trim(p_reservation_id), '');
   v_row public.reservations%rowtype;
   v_now timestamptz := now();
+  v_start timestamptz;
+  v_end timestamptz;
 begin
   if v_user is null then
     raise exception 'not_authenticated';
@@ -125,7 +129,7 @@ begin
     raise exception 'invalid_reservation_id';
   end if;
 
-  if p_pickup_photos is null or cardinality(p_pickup_photos) < 1 then
+  if p_pickup_photos is null or cardinality(p_pickup_photos) < 6 then
     raise exception 'photos_required';
   end if;
 
@@ -133,12 +137,12 @@ begin
     raise exception 'too_many_photos';
   end if;
 
-  if p_mileage_start is null or p_mileage_start < 0 then
+  if p_mileage_start is not null and p_mileage_start < 0 then
     raise exception 'invalid_mileage';
   end if;
 
-  if p_fuel_level_start is null
-    or p_fuel_level_start not in ('full', '3quarter', 'half', 'quarter', 'empty') then
+  if p_fuel_level_start is not null
+    and p_fuel_level_start not in ('full', '3quarter', 'half', 'quarter', 'empty') then
     raise exception 'invalid_fuel_level';
   end if;
 
@@ -157,11 +161,18 @@ begin
     raise exception 'invalid_status';
   end if;
 
-  if v_now < coalesce(v_row.start_at, v_row.start_time) - interval '30 minutes' then
+  v_start := coalesce(v_row.start_at, v_row.start_time);
+  v_end := coalesce(v_row.end_at, v_row.end_time);
+
+  if v_start is null then
+    raise exception 'invalid_start_time';
+  end if;
+
+  if v_now < v_start - interval '30 minutes' then
     raise exception 'too_early';
   end if;
 
-  if v_now > coalesce(v_row.end_at, v_row.end_time) then
+  if v_end is not null and v_now > v_end then
     raise exception 'expired';
   end if;
 
@@ -171,13 +182,15 @@ begin
     rental_started_at = v_now,
     pickup_photos = p_pickup_photos,
     mileage_start = p_mileage_start,
-    fuel_level_start = p_fuel_level_start
+    fuel_level_start = p_fuel_level_start,
+    updated_at = v_now
   where id::text = v_id;
 
   return jsonb_build_object(
     'reservationId', v_id,
     'status', 'in_use',
-    'rentalStartedAt', v_now
+    'rentalStartedAt', v_now,
+    'photoCount', cardinality(p_pickup_photos)
   );
 end;
 $$;

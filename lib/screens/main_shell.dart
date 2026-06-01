@@ -21,7 +21,7 @@ class _MainShellState extends State<MainShell> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: DanjiColors.background,
+      backgroundColor: DanjiColors.pageGray,
       body: IndexedStack(
         index: _index,
         children: [
@@ -40,18 +40,13 @@ class _MainShellState extends State<MainShell> {
         decoration: const BoxDecoration(
           color: DanjiColors.surface,
           border: Border(top: BorderSide(color: DanjiColors.border)),
-          boxShadow: [
-            BoxShadow(
-              color: Color(0x14000000),
-              blurRadius: 8,
-              offset: Offset(0, -2),
-            ),
-          ],
         ),
         child: NavigationBar(
           backgroundColor: DanjiColors.surface,
-          indicatorColor: DanjiColors.primaryBlue.withValues(alpha: 0.12),
+          indicatorColor: DanjiColors.brandBlue.withValues(alpha: 0.1),
           elevation: 0,
+          shadowColor: Colors.transparent,
+          surfaceTintColor: Colors.transparent,
           height: 64,
           selectedIndex: _index,
           onDestinationSelected: (i) {
@@ -64,18 +59,19 @@ class _MainShellState extends State<MainShell> {
           labelBehavior: NavigationDestinationLabelBehavior.alwaysShow,
           destinations: [
             NavigationDestination(
-              icon: Icon(Icons.home_outlined, color: DanjiColors.textMuted),
-              selectedIcon: const Icon(Icons.home, color: DanjiColors.navSelected),
+              icon: Icon(Icons.home_outlined, color: DanjiColors.navUnselected),
+              selectedIcon:
+                  const Icon(Icons.home, color: DanjiColors.navSelected),
               label: '홈',
             ),
             NavigationDestination(
-              icon: Icon(Icons.vpn_key_outlined, color: DanjiColors.textMuted),
+              icon: Icon(Icons.vpn_key_outlined, color: DanjiColors.navUnselected),
               selectedIcon:
                   const Icon(Icons.vpn_key, color: DanjiColors.navSelected),
               label: '스마트키',
             ),
             NavigationDestination(
-              icon: Icon(Icons.person_outline, color: DanjiColors.textMuted),
+              icon: Icon(Icons.person_outline, color: DanjiColors.navUnselected),
               selectedIcon:
                   const Icon(Icons.person, color: DanjiColors.navSelected),
               label: '마이페이지',

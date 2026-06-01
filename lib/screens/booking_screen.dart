@@ -11,6 +11,7 @@ import '../services/vehicle_service.dart';
 import '../supabase_client.dart';
 import '../theme/danji_colors.dart';
 import '../theme/danji_theme.dart';
+import '../theme/danji_typography.dart';
 import '../widgets/danji_app_bar.dart';
 import '../widgets/payment_method_sheet.dart';
 
@@ -308,33 +309,22 @@ class _BookingScreenState extends State<BookingScreen> {
               if (result?.complexName != null) ...[
                 Text(
                   '${result!.complexName} 공용차',
-                  style: const TextStyle(
-                    color: DanjiColors.textPrimary,
-                    fontSize: 20,
-                    fontWeight: FontWeight.w700,
-                  ),
+                  style: DanjiTypography.headline,
                 ),
                 if (result.inviteCode != null)
                   Padding(
                     padding: const EdgeInsets.only(top: 4, bottom: 12),
                     child: Text(
                       '초대코드 ${result.inviteCode} · 다른 단지 차량은 표시되지 않습니다',
-                      style: TextStyle(
-                        color: DanjiColors.textSecondary.withValues(alpha: 0.9),
-                        fontSize: 13,
-                      ),
+                      style: DanjiTypography.secondary,
                     ),
                   )
                 else
                   const SizedBox(height: 12),
               ] else ...[
-                const Text(
+                Text(
                   '차량 선택',
-                  style: TextStyle(
-                    color: DanjiColors.textPrimary,
-                    fontSize: 18,
-                    fontWeight: FontWeight.w700,
-                  ),
+                  style: DanjiTypography.subtitleLarge,
                 ),
                 const SizedBox(height: 12),
               ],
@@ -458,11 +448,7 @@ class _BookingScreenState extends State<BookingScreen> {
                   const SizedBox(height: 8),
                   Text(
                     '총 요금: ₩${_formatWon(_totalPrice!)}',
-                    style: const TextStyle(
-                      color: DanjiColors.textPrimary,
-                      fontSize: 18,
-                      fontWeight: FontWeight.w800,
-                    ),
+                    style: DanjiTypography.subtitleLarge,
                   ),
                 ],
                 if (_error != null) ...[
@@ -485,11 +471,10 @@ class _BookingScreenState extends State<BookingScreen> {
                             width: 20,
                             child: CircularProgressIndicator(strokeWidth: 2),
                           )
-                        : const Text(
+                        : Text(
                             '예약하기',
-                            style: TextStyle(
-                              fontSize: 16,
-                              fontWeight: FontWeight.w800,
+                            style: DanjiTypography.buttonPrimary.copyWith(
+                              color: Colors.white,
                             ),
                           ),
                   ),
@@ -594,11 +579,7 @@ class _VehicleDetailCard extends StatelessWidget {
         children: [
           Text(
             vehicle.name,
-            style: const TextStyle(
-              color: DanjiColors.textPrimary,
-              fontSize: 20,
-              fontWeight: FontWeight.w800,
-            ),
+            style: DanjiTypography.subtitleLarge,
           ),
           const SizedBox(height: 8),
           _DetailRow(label: '종류', value: vehicle.vehicleType),

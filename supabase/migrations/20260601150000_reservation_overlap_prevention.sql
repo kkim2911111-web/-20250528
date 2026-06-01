@@ -211,7 +211,7 @@ begin
     raise exception 'time_overlap';
   end if;
 
-  select coalesce(p_vehicle_name, v.model_name, v.name, '단지카') into v_vehicle_name
+  select coalesce(p_vehicle_name, v.model_name, '단지카') into v_vehicle_name
   from public.vehicles v
   where v.id::text = p_vehicle_id;
 

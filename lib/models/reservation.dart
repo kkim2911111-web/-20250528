@@ -28,6 +28,8 @@ class Reservation {
   final bool isAccident;
   final String? accidentNote;
   final bool doorUnlocked;
+  final bool photosUploaded;
+  final bool licenseVerified;
   final Vehicle? vehicle;
 
   const Reservation({
@@ -55,6 +57,8 @@ class Reservation {
     this.isAccident = false,
     this.accidentNote,
     this.doorUnlocked = false,
+    this.photosUploaded = false,
+    this.licenseVerified = false,
     this.vehicle,
   });
 
@@ -90,6 +94,8 @@ class Reservation {
       isAccident: map['is_accident'] == true,
       accidentNote: map['accident_note']?.toString(),
       doorUnlocked: map['door_unlocked'] == true,
+      photosUploaded: map['photos_uploaded'] == true,
+      licenseVerified: map['license_verified'] == true,
       vehicle: vehicle,
     );
   }

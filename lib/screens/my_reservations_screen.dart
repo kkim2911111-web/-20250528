@@ -7,6 +7,7 @@ import '../services/rental_service.dart';
 import '../services/reservation_refresh_bus.dart';
 import '../theme/danji_colors.dart';
 import '../theme/danji_theme.dart';
+import '../theme/danji_typography.dart';
 import '../widgets/danji_app_bar.dart';
 import '../utils/rental_navigation.dart';
 import 'vehicle_use_screen.dart';
@@ -169,17 +170,23 @@ class _MyReservationsScreenState extends State<MyReservationsScreen> {
     );
 
     try {
-      setState(() => _hiddenIds.add(reservation.id));
+      setState(() {
+        _hiddenIds.add(reservation.id);
+      });
       await _service.cancelReservation(reservation.id);
       if (!mounted) return;
       Navigator.of(context).pop();
       await _reloadAndWait();
       if (!mounted) return;
-      setState(() => _hiddenIds.remove(reservation.id));
+      setState(() {
+        _hiddenIds.remove(reservation.id);
+      });
       _showCancelSnack(ReservationCancelMessages.success);
     } catch (e) {
       if (mounted) {
-        setState(() => _hiddenIds.remove(reservation.id));
+        setState(() {
+          _hiddenIds.remove(reservation.id);
+        });
       }
       if (!mounted) return;
       Navigator.of(context).pop();
@@ -197,7 +204,7 @@ class _MyReservationsScreenState extends State<MyReservationsScreen> {
       ),
       body: RefreshIndicator(
         color: DanjiColors.buttonBlue,
-        onRefresh: () async => _reload(),
+        onRefresh: _reloadAndWait,
         child: FutureBuilder<GroupedReservations>(
           key: ValueKey(_listKey),
           future: _future,
@@ -398,11 +405,7 @@ class _SectionHeader extends StatelessWidget {
         const SizedBox(width: 10),
         Text(
           title,
-          style: TextStyle(
-            color: color,
-            fontSize: 16,
-            fontWeight: FontWeight.w800,
-          ),
+          style: DanjiTypography.subtitle.copyWith(color: color),
         ),
         const SizedBox(width: 8),
         Expanded(
@@ -515,11 +518,7 @@ class _ReservationCard extends StatelessWidget {
               Expanded(
                 child: Text(
                   vehicle?.name ?? '차량',
-                  style: const TextStyle(
-                    color: DanjiColors.textPrimary,
-                    fontSize: 17,
-                    fontWeight: FontWeight.w800,
-                  ),
+                  style: DanjiTypography.subtitle,
                 ),
               ),
               Container(
@@ -530,10 +529,9 @@ class _ReservationCard extends StatelessWidget {
                 ),
                 child: Text(
                   reservation.displayStatusLabel,
-                  style: TextStyle(
+                  style: DanjiTypography.caption.copyWith(
                     color: _accentColor,
-                    fontWeight: FontWeight.w700,
-                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
                   ),
                 ),
               ),
@@ -543,19 +541,15 @@ class _ReservationCard extends StatelessWidget {
             const SizedBox(height: 8),
             Text(
               '${dateFormat.format(start)} ~ ${dateFormat.format(end)}',
-              style: const TextStyle(
-                color: DanjiColors.textSecondary,
-                height: 1.4,
-              ),
+              style: DanjiTypography.secondary.copyWith(height: 1.4),
             ),
             if (variant == _CardVariant.waiting) ...[
               const SizedBox(height: 4),
               Text(
                 reservation.timeUntilStartLabel,
-                style: TextStyle(
+                style: DanjiTypography.caption.copyWith(
                   color: DanjiColors.buttonBlue,
-                  fontSize: 12,
-                  fontWeight: FontWeight.w700,
+                  fontWeight: FontWeight.w600,
                 ),
               ),
             ],
@@ -564,18 +558,14 @@ class _ReservationCard extends StatelessWidget {
             const SizedBox(height: 4),
             Text(
               '주차: ${vehicle!.parkingLocation}',
-              style: const TextStyle(
-                color: DanjiColors.textSecondary,
-                fontSize: 13,
-              ),
+              style: DanjiTypography.secondary,
             ),
           ],
           if (reservation.totalPrice > 0) ...[
             const SizedBox(height: 4),
             Text(
               '₩${won.format(reservation.totalPrice)}',
-              style: const TextStyle(
-                color: DanjiColors.textPrimary,
+              style: DanjiTypography.body.copyWith(
                 fontWeight: FontWeight.w600,
               ),
             ),

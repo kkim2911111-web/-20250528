@@ -11,6 +11,7 @@ import '../screens/admin/admin_dashboard_screen.dart';
 import '../screens/admin/admin_pending_screen.dart';
 import '../screens/admin/admin_sign_up_screen.dart';
 import '../screens/login_screen.dart';
+import '../screens/splash_screen.dart';
 import '../repositories/staff_repository.dart';
 import '../models/staff_profile.dart';
 import '../services/auth_service.dart';
@@ -207,7 +208,7 @@ class AppEntry extends StatelessWidget {
         );
       }
     }
-    return const AuthGate();
+    return const SplashScreen(child: AuthGate());
   }
 }
 

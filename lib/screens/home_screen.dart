@@ -6,6 +6,7 @@ import '../models/home_banner.dart';
 import '../models/reservation.dart';
 import '../supabase_client.dart';
 import '../theme/danji_colors.dart';
+import '../theme/danji_typography.dart';
 import '../resident_profile_screen.dart';
 import '../services/banner_service.dart';
 import '../services/my_page_service.dart';
@@ -19,6 +20,7 @@ import '../utils/accident_emergency_flow.dart';
 import '../utils/rental_extension_flow.dart';
 import '../utils/rental_navigation.dart';
 import '../utils/booking_eligibility.dart';
+import '../widgets/danji_brand_title.dart';
 import '../widgets/rental_inquiry_button.dart';
 import '../widgets/smart_key_door_buttons.dart';
 
@@ -171,41 +173,10 @@ class HomeScreenState extends State<HomeScreen> {
     return Scaffold(
       backgroundColor: DanjiColors.background,
       appBar: AppBar(
-        backgroundColor: DanjiColors.background,
+        backgroundColor: DanjiColors.pageGray,
         elevation: 0,
         scrolledUnderElevation: 0,
-        title: Row(
-          children: [
-            const Text(
-              '단지카',
-              style: TextStyle(
-                color: DanjiColors.textPrimary,
-                fontWeight: FontWeight.w800,
-                fontSize: 22,
-              ),
-            ),
-            const SizedBox(width: 6),
-            Icon(
-              Icons.apartment_rounded,
-              color: DanjiColors.buttonBlue,
-              size: 24,
-            ),
-            const SizedBox(width: 10),
-            Expanded(
-              child: Text(
-                '우리 아파트 단지의 두번째 차',
-                style: TextStyle(
-                  color: DanjiColors.textMuted,
-                  fontWeight: FontWeight.w600,
-                  fontSize: 13,
-                  height: 1.3,
-                ),
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-              ),
-            ),
-          ],
-        ),
+        title: const DanjiBrandTitle(),
         actions: [
           IconButton(
             icon: const Icon(Icons.notifications_outlined),
@@ -238,7 +209,7 @@ class HomeScreenState extends State<HomeScreen> {
 
             return ListView(
               physics: const AlwaysScrollableScrollPhysics(),
-              padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
+              padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
               children: [
                 _GreetingCard(
                   name: data.userName,
@@ -247,10 +218,10 @@ class HomeScreenState extends State<HomeScreen> {
                   hasResidentRegistration: data.hasResidentRegistration,
                   onResidentTap: _openResidentVerification,
                 ),
-                const SizedBox(height: 20),
+                const SizedBox(height: 12),
                 if (data.error != null) ...[
                   _ErrorBanner(message: data.error.toString()),
-                  const SizedBox(height: 16),
+                  const SizedBox(height: 12),
                 ],
                 if (reservations.isEmpty)
                   _EmptyHomeBody(
@@ -271,7 +242,7 @@ class HomeScreenState extends State<HomeScreen> {
                     onRefresh: reload,
                     modeFor: _homeMode,
                   ),
-                const SizedBox(height: 24),
+                const SizedBox(height: 12),
                 _HomeEventBannerSection(future: _bannerFuture),
                 const SizedBox(height: 16),
                 const RentalInquiryButton(),
@@ -359,16 +330,13 @@ class HomeScreenState extends State<HomeScreen> {
       builder: (ctx) => AlertDialog(
         backgroundColor: DanjiColors.surface,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        title: const Text(
-          '예약 취소',
-          style: TextStyle(
-            color: DanjiColors.textPrimary,
-            fontWeight: FontWeight.w800,
-          ),
-        ),
-        content: const Text(
+        title: Text('예약 취소', style: DanjiTypography.subtitleLarge),
+        content: Text(
           '정말 취소하시겠습니까? 결제하신 금액은 전액 환불됩니다.',
-          style: TextStyle(color: DanjiColors.textSecondary, height: 1.5),
+          style: DanjiTypography.bodyRegular.copyWith(
+            color: DanjiColors.textSecondary,
+            height: 1.5,
+          ),
         ),
         actions: [
           TextButton(
@@ -433,12 +401,14 @@ class _HomeCardPresentation {
   final String badge;
   final Color badgeColor;
   final String? footer;
+  final bool footerIsCountdown;
 
   const _HomeCardPresentation({
     required this.title,
     required this.badge,
     required this.badgeColor,
     this.footer,
+    this.footerIsCountdown = false,
   });
 }
 
@@ -451,27 +421,34 @@ _HomeCardPresentation _homeCardPresentation({
     final end = reservation.endAt;
     return _HomeCardPresentation(
       title: '지금 타는 차',
-      badge: '대여 중',
+      badge: '대여중',
       badgeColor: DanjiColors.sectionOperating,
       footer: end != null
-          ? '반납 마감 ${timeFormat.format(end)} · ${_formatTimeRemaining(end)}'
+          ? '${_formatTimeRemaining(end)} 남음'
           : null,
+      footerIsCountdown: true,
     );
   }
 
   final inWindow = reservation.isWithinUsageWindow;
+  final isConfirmed =
+      reservation.status == 'confirmed' || reservation.status == 'pending';
   return _HomeCardPresentation(
     title: index > 0
         ? '다음 예약'
         : (inWindow ? '이용 시간대' : '가장 임박한 예약'),
     badge: inWindow
-        ? reservation.statusLabel
+        ? (isConfirmed ? '예약확정' : reservation.statusLabel)
         : reservation.timeUntilStartLabel,
-    badgeColor:
-        inWindow ? DanjiColors.sectionOperating : DanjiColors.buttonBlue,
+    badgeColor: inWindow && isConfirmed
+        ? DanjiColors.brandBlue
+        : (inWindow
+            ? DanjiColors.sectionOperating
+            : DanjiColors.brandBlue),
     footer: reservation.startAt != null
         ? '${DateFormat('M월 d일 (E)', 'ko_KR').format(reservation.startAt!)} '
             '${timeFormat.format(reservation.startAt!)} 시작'
+            '${reservation.vehicle?.parkingLocation != null ? ' · ${reservation.vehicle!.parkingLocation}' : ''}'
         : null,
   );
 }
@@ -577,6 +554,7 @@ class _HomeReservationSectionState extends State<_HomeReservationSection> {
                 badge: meta.badge,
                 badgeColor: meta.badgeColor,
                 footer: meta.footer,
+                footerIsCountdown: meta.footerIsCountdown,
               );
             },
           ),
@@ -588,7 +566,7 @@ class _HomeReservationSectionState extends State<_HomeReservationSection> {
             index: _currentPage,
           ),
         ],
-        const SizedBox(height: 16),
+        const SizedBox(height: 12),
         ...switch (mode) {
           _HomeReservationMode.inUse => [
               if (_current.status == 'in_use') ...[
@@ -597,48 +575,50 @@ class _HomeReservationSectionState extends State<_HomeReservationSection> {
                   reservation: _current,
                   onChanged: widget.onRefresh,
                 ),
-                const SizedBox(height: 16),
+                const SizedBox(height: 12),
               ],
               _MainActionCard(
-                color: DanjiColors.rentalBlue,
-                icon: Icons.local_parking_outlined,
+                color: DanjiColors.brandBlue,
+                icon: Icons.local_parking_rounded,
                 title: '반납하기',
                 onTap: () => widget.onReturn(_current),
               ),
-              const SizedBox(height: 16),
-              Row(
-                children: [
-                  Expanded(
-                    child: _QuickTile(
-                      icon: Icons.schedule_outlined,
-                      label: '연장하기',
-                      iconColor: DanjiColors.primaryBlue,
-                      onTap: () => widget.onExtend(_current),
-                    ),
+              const SizedBox(height: 12),
+              _QuickGrid2x2(
+                tiles: [
+                  _QuickTileData(
+                    icon: Icons.schedule_outlined,
+                    label: '연장하기',
+                    iconColor: DanjiColors.brandBlue,
+                    onTap: () => widget.onExtend(_current),
                   ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: _QuickTile(
-                      icon: Icons.warning_amber_rounded,
-                      label: '사고신고',
-                      iconColor: DanjiColors.accentRed,
-                      labelColor: DanjiColors.accentRed,
-                      onTap: () => widget.onAccident(_current),
-                    ),
+                  _QuickTileData(
+                    icon: Icons.warning_amber_rounded,
+                    label: '사고신고',
+                    iconColor: DanjiColors.accentRed,
+                    labelColor: DanjiColors.accentRed,
+                    onTap: () => widget.onAccident(_current),
+                  ),
+                  _QuickTileData(
+                    icon: Icons.calendar_month_outlined,
+                    label: '예약하기',
+                    iconColor: DanjiColors.brandBlue,
+                    onTap: widget.onBook,
+                  ),
+                  _QuickTileData(
+                    icon: Icons.assignment_outlined,
+                    label: '내 예약',
+                    iconColor: DanjiColors.brandBlue,
+                    onTap: widget.onReservations,
                   ),
                 ],
-              ),
-              const SizedBox(height: 12),
-              _BookAndReservationsRow(
-                onBook: widget.onBook,
-                onReservations: widget.onReservations,
               ),
             ],
           _HomeReservationMode.confirmedBeforeWindow ||
           _HomeReservationMode.confirmedInWindow =>
             [
               _MainActionCard(
-                color: DanjiColors.rentalBlue,
+                color: DanjiColors.brandBlue,
                 icon: Icons.directions_car_outlined,
                 title: '차량 이용 시작',
                 subtitle: _current.canStartRental
@@ -647,16 +627,81 @@ class _HomeReservationSectionState extends State<_HomeReservationSection> {
                 enabled: _current.canStartRental,
                 onTap: () => widget.onStart(_current),
               ),
-              const SizedBox(height: 16),
-              _BookAndReservationsRow(
-                onBook: widget.onBook,
-                onReservations: widget.onReservations,
-                showCancel: _current.shouldShowCancelButton,
-                onCancel: () => widget.onCancel(_current),
+              const SizedBox(height: 12),
+              _QuickGrid2x2(
+                tiles: [
+                  _QuickTileData(
+                    icon: Icons.calendar_month_outlined,
+                    label: '예약하기',
+                    iconColor: DanjiColors.brandBlue,
+                    onTap: widget.onBook,
+                  ),
+                  _QuickTileData(
+                    icon: Icons.assignment_outlined,
+                    label: '내 예약',
+                    iconColor: DanjiColors.brandBlue,
+                    onTap: widget.onReservations,
+                  ),
+                  if (_current.shouldShowCancelButton)
+                    _QuickTileData(
+                      icon: Icons.event_busy_outlined,
+                      label: '예약취소',
+                      iconColor: DanjiColors.accentRed,
+                      labelColor: DanjiColors.accentRed,
+                      onTap: () => widget.onCancel(_current),
+                    ),
+                ],
               ),
             ],
         },
       ],
+    );
+  }
+}
+
+class _QuickTileData {
+  final IconData icon;
+  final String label;
+  final VoidCallback onTap;
+  final Color? iconColor;
+  final Color? labelColor;
+
+  const _QuickTileData({
+    required this.icon,
+    required this.label,
+    required this.onTap,
+    this.iconColor,
+    this.labelColor,
+  });
+}
+
+class _QuickGrid2x2 extends StatelessWidget {
+  final List<_QuickTileData> tiles;
+
+  const _QuickGrid2x2({required this.tiles});
+
+  @override
+  Widget build(BuildContext context) {
+    return GridView.builder(
+      shrinkWrap: true,
+      physics: const NeverScrollableScrollPhysics(),
+      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+        crossAxisCount: 2,
+        mainAxisSpacing: 12,
+        crossAxisSpacing: 12,
+        childAspectRatio: 1.55,
+      ),
+      itemCount: tiles.length,
+      itemBuilder: (context, index) {
+        final tile = tiles[index];
+        return _QuickTile(
+          icon: tile.icon,
+          label: tile.label,
+          iconColor: tile.iconColor,
+          labelColor: tile.labelColor,
+          onTap: tile.onTap,
+        );
+      },
     );
   }
 }
@@ -684,61 +729,11 @@ class _PageDots extends StatelessWidget {
           decoration: BoxDecoration(
             shape: BoxShape.circle,
             color: active
-                ? DanjiColors.primaryBlue
-                : DanjiColors.primaryBlue.withValues(alpha: 0.25),
+                ? DanjiColors.brandBlue
+                : DanjiColors.brandBlue.withValues(alpha: 0.25),
           ),
         );
       }),
-    );
-  }
-}
-
-class _BookAndReservationsRow extends StatelessWidget {
-  final VoidCallback onBook;
-  final VoidCallback onReservations;
-  final bool showCancel;
-  final VoidCallback? onCancel;
-
-  const _BookAndReservationsRow({
-    required this.onBook,
-    required this.onReservations,
-    this.showCancel = false,
-    this.onCancel,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Row(
-      children: [
-        Expanded(
-          child: _QuickTile(
-            icon: Icons.calendar_month_outlined,
-            label: '예약하기',
-            iconColor: DanjiColors.primaryBlue,
-            onTap: onBook,
-          ),
-        ),
-        const SizedBox(width: 12),
-        Expanded(
-          child: _QuickTile(
-            icon: Icons.assignment_outlined,
-            label: '내 예약',
-            onTap: onReservations,
-          ),
-        ),
-        if (showCancel) ...[
-          const SizedBox(width: 12),
-          Expanded(
-            child: _QuickTile(
-              icon: Icons.event_busy_outlined,
-              label: '예약취소',
-              iconColor: DanjiColors.accentRed,
-              labelColor: DanjiColors.accentRed,
-              onTap: onCancel ?? () {},
-            ),
-          ),
-        ],
-      ],
     );
   }
 }
@@ -803,56 +798,46 @@ class _EventBannerCard extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.fromLTRB(20, 18, 20, 20),
+      padding: const EdgeInsets.fromLTRB(20, 20, 20, 20),
       decoration: BoxDecoration(
-        gradient: LinearGradient(
-          colors: [
-            DanjiColors.buttonBlue.withValues(alpha: 0.92),
-            DanjiColors.badgeBlue.withValues(alpha: 0.88),
-          ],
+        gradient: const LinearGradient(
+          colors: [DanjiColors.brandBlue, DanjiColors.brandBlueDark],
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
         ),
         borderRadius: BorderRadius.circular(16),
-        boxShadow: [
-          BoxShadow(
-            color: DanjiColors.buttonBlue.withValues(alpha: 0.18),
-            blurRadius: 14,
-            offset: const Offset(0, 6),
-          ),
-        ],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          if (banner.subTitle.isNotEmpty)
-            Text(
-              banner.subTitle,
-              style: const TextStyle(
-                color: Color(0xE6FFFFFF),
-                fontSize: 13,
-                fontWeight: FontWeight.w600,
-                height: 1.4,
-              ),
-            ),
-          if (banner.subTitle.isNotEmpty && banner.mainTitle.isNotEmpty)
-            const SizedBox(height: 8),
           if (banner.mainTitle.isNotEmpty)
             Text(
               banner.mainTitle,
               style: const TextStyle(
                 color: Colors.white,
-                fontSize: 20,
-                fontWeight: FontWeight.w800,
+                fontSize: 18,
+                fontWeight: FontWeight.w700,
                 height: 1.35,
               ),
             ),
+          if (banner.subTitle.isNotEmpty) ...[
+            const SizedBox(height: 6),
+            Text(
+              banner.subTitle,
+              style: const TextStyle(
+                color: Color(0xB3FFFFFF),
+                fontSize: 13,
+                fontWeight: FontWeight.w400,
+                height: 1.45,
+              ),
+            ),
+          ],
           if (banner.description.isNotEmpty) ...[
-            const SizedBox(height: 10),
+            const SizedBox(height: 8),
             Text(
               banner.description,
               style: const TextStyle(
-                color: Color(0xCCFFFFFF),
+                color: Color(0xB3FFFFFF),
                 fontSize: 13,
                 height: 1.45,
               ),
@@ -883,11 +868,10 @@ class _GreetingCard extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 18),
+      padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
-        color: DanjiColors.skyLight,
+        color: DanjiColors.surface,
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: DanjiColors.skySoft),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -899,9 +883,10 @@ class _GreetingCard extends StatelessWidget {
                 child: Text(
                   '안녕하세요, $name 님',
                   style: const TextStyle(
-                    color: DanjiColors.textPrimary,
                     fontSize: 20,
-                    fontWeight: FontWeight.w800,
+                    fontWeight: FontWeight.w700,
+                    color: DanjiColors.textPrimary,
+                    letterSpacing: -0.3,
                   ),
                 ),
               ),
@@ -912,30 +897,14 @@ class _GreetingCard extends StatelessWidget {
               ),
             ],
           ),
-          const SizedBox(height: 10),
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Icon(
-                residentApproved
-                    ? Icons.apartment_outlined
-                    : Icons.location_on_outlined,
-                size: 16,
-                color: DanjiColors.textMuted,
-              ),
-              const SizedBox(width: 6),
-              Expanded(
-                child: Text(
-                  location,
-                  style: const TextStyle(
-                    color: DanjiColors.textMuted,
-                    fontSize: 14,
-                    fontWeight: FontWeight.w500,
-                    height: 1.4,
-                  ),
-                ),
-              ),
-            ],
+          const SizedBox(height: 8),
+          Text(
+            location,
+            style: const TextStyle(
+              fontSize: 13,
+              color: DanjiColors.textSecondary,
+              height: 1.4,
+            ),
           ),
         ],
       ),
@@ -963,8 +932,8 @@ class _ResidentVerificationBadge extends StatelessWidget {
     final bool tappable = !approved && onTap != null;
 
     if (approved) {
-      bg = DanjiColors.buttonBlue.withValues(alpha: 0.12);
-      fg = DanjiColors.buttonBlue;
+      bg = DanjiColors.brandBlue;
+      fg = Colors.white;
       icon = Icons.verified_outlined;
       label = '입주민 인증';
     } else if (hasRegistration) {
@@ -980,11 +949,11 @@ class _ResidentVerificationBadge extends StatelessWidget {
     }
 
     final badge = Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
       decoration: BoxDecoration(
         color: bg,
-        borderRadius: BorderRadius.circular(999),
-        border: Border.all(color: fg.withValues(alpha: 0.35)),
+        borderRadius: BorderRadius.circular(20),
+        border: approved ? null : Border.all(color: fg.withValues(alpha: 0.35)),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
@@ -995,8 +964,8 @@ class _ResidentVerificationBadge extends StatelessWidget {
             label,
             style: TextStyle(
               color: fg,
-              fontSize: 11,
-              fontWeight: FontWeight.w800,
+              fontSize: 12,
+              fontWeight: FontWeight.w700,
             ),
           ),
         ],
@@ -1052,21 +1021,20 @@ class _EmptyHomeBody extends StatelessWidget {
     return Column(
       children: [
         _MainActionCard(
-          color: DanjiColors.rentalBlue,
+          color: DanjiColors.brandBlue,
           icon: Icons.calendar_month_outlined,
           title: '예약하기',
           subtitle: '날짜와 시간을 선택하세요',
           onTap: onBook,
         ),
-        const SizedBox(height: 16),
-        Row(
-          children: [
-            Expanded(
-              child: _QuickTile(
-                icon: Icons.assignment_outlined,
-                label: '내 예약',
-                onTap: onReservations,
-              ),
+        const SizedBox(height: 12),
+        _QuickGrid2x2(
+          tiles: [
+            _QuickTileData(
+              icon: Icons.assignment_outlined,
+              label: '내 예약',
+              iconColor: DanjiColors.brandBlue,
+              onTap: onReservations,
             ),
           ],
         ),
@@ -1082,6 +1050,7 @@ class _ReservationInfoCard extends StatelessWidget {
   final String badge;
   final Color badgeColor;
   final String? footer;
+  final bool footerIsCountdown;
 
   const _ReservationInfoCard({
     required this.reservation,
@@ -1090,6 +1059,7 @@ class _ReservationInfoCard extends StatelessWidget {
     required this.badge,
     this.badgeColor = DanjiColors.badgeBlue,
     this.footer,
+    this.footerIsCountdown = false,
   });
 
   @override
@@ -1102,18 +1072,10 @@ class _ReservationInfoCard extends StatelessWidget {
 
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.all(18),
+      padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: DanjiColors.surface,
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: DanjiColors.skySoft),
-        boxShadow: [
-          BoxShadow(
-            color: DanjiColors.buttonBlue.withValues(alpha: 0.06),
-            blurRadius: 12,
-            offset: const Offset(0, 4),
-          ),
-        ],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -1123,18 +1085,18 @@ class _ReservationInfoCard extends StatelessWidget {
               Text(
                 title,
                 style: const TextStyle(
-                  color: DanjiColors.textMuted,
                   fontSize: 13,
-                  fontWeight: FontWeight.w700,
+                  color: DanjiColors.textSecondary,
+                  fontWeight: FontWeight.w500,
                 ),
               ),
               const Spacer(),
               Container(
                 padding:
-                    const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                    const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
                 decoration: BoxDecoration(
-                  color: badgeColor.withValues(alpha: 0.15),
-                  borderRadius: BorderRadius.circular(999),
+                  color: badgeColor.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(20),
                 ),
                 child: Text(
                   badge,
@@ -1151,20 +1113,20 @@ class _ReservationInfoCard extends StatelessWidget {
           Text(
             carLine,
             style: const TextStyle(
-              color: DanjiColors.textPrimary,
               fontSize: 18,
-              fontWeight: FontWeight.w800,
+              fontWeight: FontWeight.w700,
+              color: DanjiColors.textPrimary,
+              letterSpacing: -0.3,
             ),
           ),
           if (reservation.usagePeriodLabel != null) ...[
             const SizedBox(height: 6),
             Text(
               '${reservation.usagePeriodLabel}'
-              '${vehicle?.parkingLocation != null ? ' · ${vehicle!.parkingLocation}' : ''}',
+              '${vehicle?.parkingLocation != null && !footerIsCountdown ? ' · ${vehicle!.parkingLocation}' : ''}',
               style: const TextStyle(
-                color: DanjiColors.textMuted,
-                fontSize: 14,
-                fontWeight: FontWeight.w600,
+                fontSize: 13,
+                color: DanjiColors.textSecondary,
                 height: 1.4,
               ),
             ),
@@ -1174,9 +1136,12 @@ class _ReservationInfoCard extends StatelessWidget {
             Text(
               footer!,
               style: TextStyle(
-                color: badgeColor,
+                color: footerIsCountdown
+                    ? DanjiColors.sectionOperating
+                    : DanjiColors.textSecondary,
                 fontSize: 13,
-                fontWeight: FontWeight.w700,
+                fontWeight:
+                    footerIsCountdown ? FontWeight.w700 : FontWeight.w400,
               ),
             ),
           ],
@@ -1208,43 +1173,49 @@ class _MainActionCard extends StatelessWidget {
     return Material(
       color: cardColor,
       borderRadius: BorderRadius.circular(16),
-      elevation: 0,
       child: InkWell(
         onTap: enabled ? onTap : null,
         borderRadius: BorderRadius.circular(16),
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 28),
-          child: Row(
-            children: [
-              Icon(icon, color: Colors.white, size: 36),
-              const SizedBox(width: 16),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      title,
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 20,
-                        fontWeight: FontWeight.w800,
-                      ),
-                    ),
-                    if (subtitle != null) ...[
-                      const SizedBox(height: 4),
+        child: SizedBox(
+          height: 60,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 20),
+            child: Row(
+              children: [
+                Icon(icon, color: Colors.white, size: 28),
+                const SizedBox(width: 14),
+                Expanded(
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
                       Text(
-                        subtitle!,
+                        title,
                         style: const TextStyle(
-                          color: Color(0xCCFFFFFF),
-                          fontSize: 14,
+                          color: Colors.white,
+                          fontSize: 17,
+                          fontWeight: FontWeight.w700,
                         ),
                       ),
+                      if (subtitle != null) ...[
+                        const SizedBox(height: 2),
+                        Text(
+                          subtitle!,
+                          style: const TextStyle(
+                            color: Color(0xB3FFFFFF),
+                            fontSize: 13,
+                          ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ],
                     ],
-                  ],
+                  ),
                 ),
-              ),
-              const Icon(Icons.chevron_right, color: Colors.white70),
-            ],
+                const Icon(Icons.arrow_forward_ios_rounded,
+                    color: Colors.white70, size: 18),
+              ],
+            ),
           ),
         ),
       ),
@@ -1271,31 +1242,28 @@ class _QuickTile extends StatelessWidget {
   Widget build(BuildContext context) {
     return Material(
       color: DanjiColors.surface,
-      borderRadius: BorderRadius.circular(16),
+      borderRadius: BorderRadius.circular(12),
       child: InkWell(
         onTap: onTap,
-        borderRadius: BorderRadius.circular(16),
-        child: Container(
-          padding: const EdgeInsets.symmetric(vertical: 22),
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: DanjiColors.border),
-          ),
+        borderRadius: BorderRadius.circular(12),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 18, horizontal: 8),
           child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
             mainAxisSize: MainAxisSize.min,
             children: [
               Icon(
                 icon,
-                size: 28,
-                color: iconColor ?? DanjiColors.textPrimary,
+                size: 26,
+                color: iconColor ?? DanjiColors.brandBlue,
               ),
               const SizedBox(height: 8),
               Text(
                 label,
                 style: TextStyle(
-                  color: labelColor ?? DanjiColors.textPrimary,
-                  fontWeight: FontWeight.w700,
                   fontSize: 14,
+                  fontWeight: FontWeight.w600,
+                  color: labelColor ?? DanjiColors.textPrimary,
                 ),
               ),
             ],

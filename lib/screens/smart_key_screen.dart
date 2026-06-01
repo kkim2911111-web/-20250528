@@ -4,6 +4,7 @@ import 'package:intl/intl.dart';
 import '../models/reservation.dart';
 import '../services/rental_service.dart';
 import '../theme/danji_colors.dart';
+import '../theme/danji_typography.dart';
 import '../utils/rental_navigation.dart';
 import '../widgets/smart_key_door_buttons.dart';
 
@@ -59,11 +60,10 @@ class SmartKeyScreenState extends State<SmartKeyScreen> {
         backgroundColor: DanjiColors.background,
         elevation: 0,
         scrolledUnderElevation: 0,
-        title: const Text(
+        title: Text(
           '스마트키',
-          style: TextStyle(
-            color: DanjiColors.textPrimary,
-            fontWeight: FontWeight.w800,
+          style: DanjiTypography.subtitleLarge.copyWith(
+            fontWeight: FontWeight.w700,
           ),
         ),
         actions: [
@@ -160,11 +160,7 @@ class _SectionTitle extends StatelessWidget {
         const SizedBox(width: 8),
         Text(
           title,
-          style: TextStyle(
-            color: color,
-            fontSize: 16,
-            fontWeight: FontWeight.w800,
-          ),
+          style: DanjiTypography.buttonPrimary.copyWith(color: color),
         ),
       ],
     );
@@ -188,14 +184,10 @@ class _EmptyState extends StatelessWidget {
               color: DanjiColors.textSecondary.withValues(alpha: 0.5),
             ),
             const SizedBox(height: 20),
-            const Text(
+            Text(
               '현재 대여 중인 차량이 없습니다',
               textAlign: TextAlign.center,
-              style: TextStyle(
-                color: DanjiColors.textPrimary,
-                fontSize: 18,
-                fontWeight: FontWeight.w700,
-              ),
+              style: DanjiTypography.subtitleLarge,
             ),
           ],
         ),
@@ -223,7 +215,6 @@ class _SmartKeyCard extends StatelessWidget {
 
   static const _unlockBlue = DanjiColors.rentalBlue;
   static const _badgeOrange = Color(0xFFFFB84D);
-  static const _textPrimary = DanjiColors.textPrimary;
   static const _textSecondary = DanjiColors.textSecondary;
 
   @override
@@ -271,11 +262,7 @@ class _SmartKeyCard extends StatelessWidget {
                             Expanded(
                               child: Text(
                                 vehicle?.name ?? '차량',
-                                style: const TextStyle(
-                                  color: _textPrimary,
-                                  fontSize: 17,
-                                  fontWeight: FontWeight.w800,
-                                ),
+                                style: DanjiTypography.subtitle,
                               ),
                             ),
                             Container(
@@ -301,18 +288,14 @@ class _SmartKeyCard extends StatelessWidget {
                         const SizedBox(height: 2),
                         Text(
                           vehicle?.vehicleType ?? '-',
-                          style: const TextStyle(
-                            color: _textSecondary,
-                            fontSize: 13,
-                          ),
+                          style: DanjiTypography.secondary,
                         ),
                         if (start != null && end != null) ...[
                           const SizedBox(height: 4),
                           Text(
                             '${dateFormat.format(start)} ~ ${dateFormat.format(end)}',
-                            style: const TextStyle(
+                            style: DanjiTypography.caption.copyWith(
                               color: _textSecondary,
-                              fontSize: 12,
                             ),
                           ),
                         ],
@@ -320,9 +303,8 @@ class _SmartKeyCard extends StatelessWidget {
                           const SizedBox(height: 2),
                           Text(
                             '주차: ${vehicle!.parkingLocation}',
-                            style: const TextStyle(
+                            style: DanjiTypography.caption.copyWith(
                               color: _textSecondary,
-                              fontSize: 12,
                             ),
                           ),
                         ],

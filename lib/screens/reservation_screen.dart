@@ -5,7 +5,7 @@ import 'package:table_calendar/table_calendar.dart';
 import '../models/vehicle.dart';
 import '../services/reservation_service.dart';
 import '../theme/danji_colors.dart';
-import '../theme/danji_theme.dart';
+import '../theme/danji_typography.dart';
 import '../widgets/danji_app_bar.dart';
 
 class ReservationScreen extends StatefulWidget {
@@ -141,16 +141,12 @@ class _ReservationScreenState extends State<ReservationScreen> {
               children: [
                 Text(
                   vehicle.name,
-                  style: const TextStyle(
-                    color: DanjiColors.textPrimary,
-                    fontSize: 20,
-                    fontWeight: FontWeight.w800,
-                  ),
+                  style: DanjiTypography.subtitleLarge,
                 ),
                 const SizedBox(height: 4),
                 Text(
                   '${vehicle.vehicleType} · ${vehicle.priceLabel}',
-                  style: const TextStyle(color: DanjiColors.textSecondary),
+                  style: DanjiTypography.secondary,
                 ),
               ],
             ),

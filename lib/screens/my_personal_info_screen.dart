@@ -44,7 +44,9 @@ class _MyPersonalInfoScreenState extends State<MyPersonalInfoScreen> {
     if (_name.text.trim().isEmpty ||
         _phone.text.trim().isEmpty ||
         _address.text.trim().isEmpty) {
-      setState(() => _error = '이름, 휴대전화, 주소를 모두 입력해주세요.');
+      setState(() {
+        _error = '이름, 휴대전화, 주소를 모두 입력해주세요.';
+      });
       return;
     }
 
@@ -61,6 +63,7 @@ class _MyPersonalInfoScreenState extends State<MyPersonalInfoScreen> {
       );
       if (mounted) Navigator.of(context).pop(true);
     } catch (e) {
+      if (!mounted) return;
       setState(() {
         _saving = false;
         _error = e.toString();

@@ -220,15 +220,16 @@ class SmartKeyDoorButton extends StatelessWidget {
             : Icon(icon, size: 22),
         label: Text(
           label,
-          style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 15),
+          style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 16),
         ),
         style: FilledButton.styleFrom(
           backgroundColor: enabled ? color : DanjiColors.textMuted,
           disabledBackgroundColor: DanjiColors.textMuted,
           foregroundColor: Colors.white,
           disabledForegroundColor: Colors.white70,
+          minimumSize: const Size.fromHeight(52),
           shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(14),
+            borderRadius: BorderRadius.circular(12),
           ),
         ),
       ),

@@ -1,24 +1,12 @@
 import 'package:flutter/material.dart';
 
 import 'danji_colors.dart';
+import 'danji_typography.dart';
 
-/// 단지카 공통 라이트 테마 — 흰/연하늘 배경 · 그레이 글씨 · 파랑 버튼
+/// 단지카 공통 라이트 테마 — 토스 스타일 타이포그래피
 abstract final class DanjiTheme {
   static ThemeData get light {
-    const textTheme = TextTheme(
-      bodyLarge: TextStyle(color: DanjiColors.textPrimary),
-      bodyMedium: TextStyle(color: DanjiColors.textPrimary),
-      bodySmall: TextStyle(color: DanjiColors.textSecondary),
-      titleLarge: TextStyle(
-        color: DanjiColors.textPrimary,
-        fontWeight: FontWeight.w800,
-      ),
-      titleMedium: TextStyle(
-        color: DanjiColors.textPrimary,
-        fontWeight: FontWeight.w700,
-      ),
-      labelLarge: TextStyle(color: DanjiColors.textSecondary),
-    );
+    final textTheme = DanjiTypography.materialTextTheme;
 
     return ThemeData(
       useMaterial3: true,
@@ -34,16 +22,16 @@ abstract final class DanjiTheme {
         outline: DanjiColors.border,
       ),
       textTheme: textTheme,
-      appBarTheme: const AppBarTheme(
+      primaryTextTheme: textTheme,
+      appBarTheme: AppBarTheme(
         backgroundColor: DanjiColors.background,
         foregroundColor: DanjiColors.textPrimary,
         elevation: 0,
         scrolledUnderElevation: 0,
-        titleTextStyle: TextStyle(
-          color: DanjiColors.textPrimary,
-          fontSize: 18,
-          fontWeight: FontWeight.w800,
+        titleTextStyle: DanjiTypography.subtitleLarge.copyWith(
+          fontWeight: FontWeight.w700,
         ),
+        toolbarTextStyle: DanjiTypography.body,
       ),
       cardTheme: CardThemeData(
         color: DanjiColors.surface,
@@ -57,8 +45,10 @@ abstract final class DanjiTheme {
       inputDecorationTheme: InputDecorationTheme(
         filled: true,
         fillColor: DanjiColors.skyLight,
-        hintStyle: const TextStyle(color: DanjiColors.textMuted),
-        labelStyle: const TextStyle(color: DanjiColors.textSecondary),
+        hintStyle: DanjiTypography.secondary.copyWith(
+          color: DanjiColors.textMuted,
+        ),
+        labelStyle: DanjiTypography.secondary,
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),
           borderSide: const BorderSide(color: DanjiColors.border),
@@ -82,9 +72,8 @@ abstract final class DanjiTheme {
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(14),
           ),
-          textStyle: const TextStyle(
-            fontWeight: FontWeight.w800,
-            fontSize: 15,
+          textStyle: DanjiTypography.buttonPrimary.copyWith(
+            color: Colors.white,
           ),
         ),
       ),
@@ -95,40 +84,45 @@ abstract final class DanjiTheme {
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(14),
           ),
+          textStyle: DanjiTypography.buttonSecondary.copyWith(
+            color: DanjiColors.buttonBlue,
+          ),
         ),
       ),
       textButtonTheme: TextButtonThemeData(
         style: TextButton.styleFrom(
           foregroundColor: DanjiColors.buttonBlue,
+          textStyle: DanjiTypography.buttonSecondary.copyWith(
+            color: DanjiColors.buttonBlue,
+          ),
         ),
       ),
       navigationBarTheme: NavigationBarThemeData(
         backgroundColor: DanjiColors.surface,
-        indicatorColor: DanjiColors.buttonBlue.withValues(alpha: 0.12),
+        indicatorColor: DanjiColors.brandBlue.withValues(alpha: 0.1),
+        elevation: 0,
         labelTextStyle: WidgetStateProperty.resolveWith((states) {
           final selected = states.contains(WidgetState.selected);
-          return TextStyle(
-            fontSize: 12,
-            fontWeight: selected ? FontWeight.w700 : FontWeight.w600,
+          return DanjiTypography.caption.copyWith(
+            fontWeight: selected ? FontWeight.w600 : FontWeight.w500,
             color: selected
-                ? DanjiColors.buttonBlue
-                : DanjiColors.textSecondary,
+                ? DanjiColors.navSelected
+                : DanjiColors.navUnselected,
           );
         }),
       ),
       snackBarTheme: SnackBarThemeData(
         behavior: SnackBarBehavior.floating,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        contentTextStyle: DanjiTypography.body,
       ),
       dialogTheme: DialogThemeData(
         backgroundColor: DanjiColors.surface,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        titleTextStyle: const TextStyle(
-          color: DanjiColors.textPrimary,
-          fontSize: 18,
-          fontWeight: FontWeight.w800,
+        titleTextStyle: DanjiTypography.subtitleLarge.copyWith(
+          fontWeight: FontWeight.w700,
         ),
-        contentTextStyle: const TextStyle(
+        contentTextStyle: DanjiTypography.bodyRegular.copyWith(
           color: DanjiColors.textSecondary,
           height: 1.5,
         ),
@@ -136,12 +130,14 @@ abstract final class DanjiTheme {
       progressIndicatorTheme: const ProgressIndicatorThemeData(
         color: DanjiColors.buttonBlue,
       ),
-      listTileTheme: const ListTileThemeData(
+      listTileTheme: ListTileThemeData(
         tileColor: DanjiColors.surface,
         selectedTileColor: DanjiColors.skyLight,
         iconColor: DanjiColors.buttonBlue,
         textColor: DanjiColors.textPrimary,
-        contentPadding: EdgeInsets.symmetric(horizontal: 16),
+        titleTextStyle: DanjiTypography.body,
+        subtitleTextStyle: DanjiTypography.secondary,
+        contentPadding: const EdgeInsets.symmetric(horizontal: 16),
       ),
     );
   }
@@ -149,6 +145,7 @@ abstract final class DanjiTheme {
   static ButtonStyle get primaryButton => FilledButton.styleFrom(
         backgroundColor: DanjiColors.buttonBlue,
         foregroundColor: Colors.white,
+        textStyle: DanjiTypography.buttonPrimary.copyWith(color: Colors.white),
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(14),
         ),
@@ -157,6 +154,7 @@ abstract final class DanjiTheme {
   static ButtonStyle get dangerButton => FilledButton.styleFrom(
         backgroundColor: DanjiColors.accentRed,
         foregroundColor: Colors.white,
+        textStyle: DanjiTypography.buttonPrimary.copyWith(color: Colors.white),
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(14),
         ),

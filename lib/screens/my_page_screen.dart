@@ -2,16 +2,23 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../models/my_page_profile.dart';
-import '../resident_profile_screen.dart';
 import '../services/auth_service.dart';
 import '../services/my_page_service.dart';
 import '../theme/danji_colors.dart';
+import '../theme/danji_typography.dart';
 import '../widgets/danji_app_bar.dart';
-import '../widgets/license_registration_sheet.dart';
+import 'license_info_readonly_screen.dart';
 import 'my_personal_info_screen.dart';
 import 'my_reservations_screen.dart';
+import 'resident_info_readonly_screen.dart';
 import 'support_pages.dart';
 
+const _pageBg = Color(0xFFEBF2FF);
+const _sectionTitle = Color(0xFF5B8DEF);
+const _trailingComplete = Color(0xFF2D6AE0);
+const _trailingDefault = Color(0xFF8B95A1);
+
+/// 마이페이지 — 토스 스타일
 class MyPageScreen extends StatefulWidget {
   final bool embedded;
 
@@ -38,29 +45,13 @@ class _MyPageScreenState extends State<MyPageScreen> {
     });
   }
 
-  Future<void> _openPersonalInfo(MyPageProfile profile) async {
-    final saved = await Navigator.of(context).push<bool>(
-      MaterialPageRoute(
-        builder: (_) => MyPersonalInfoScreen(profile: profile),
-      ),
-    );
-    if (saved == true) _reload();
-  }
-
-  Future<void> _editLicense(MyPageProfile profile) async {
-    final saved = await showModalBottomSheet<bool>(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: DanjiColors.surface,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      builder: (_) => LicenseRegistrationSheet(
-        initialNumber: profile.licenseNumber ?? '',
-        initialExpiry: profile.licenseExpiry ?? '',
-      ),
-    );
-    if (saved == true) _reload();
+  Future<void> _refresh() async {
+    final next = _service.fetchProfile();
+    if (!mounted) return;
+    setState(() {
+      _future = next;
+    });
+    await next;
   }
 
   Future<void> _editPaymentCard(MyPageProfile profile) async {
@@ -71,20 +62,18 @@ class _MyPageScreenState extends State<MyPageScreen> {
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
-      builder: (_) => _PaymentCardSheet(
-        initialLast4: profile.cardLast4 ?? '',
-      ),
+      builder: (_) => _PaymentCardSheet(initialLast4: profile.cardLast4 ?? ''),
     );
     if (saved == true) _reload();
   }
 
-  Future<void> _openResidentVerification() async {
-    await Navigator.of(context).push(
+  Future<void> _openPersonalInfo(MyPageProfile profile) async {
+    final saved = await Navigator.of(context).push<bool>(
       MaterialPageRoute(
-        builder: (_) => const ResidentProfileScreen(embedded: true),
+        builder: (_) => MyPersonalInfoScreen(profile: profile),
       ),
     );
-    _reload();
+    if (saved == true) _reload();
   }
 
   Future<void> _logout() async {
@@ -124,16 +113,28 @@ class _MyPageScreenState extends State<MyPageScreen> {
     await _auth.signOut(toSignUp: true);
   }
 
+  void _showInfo(String message) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(message)),
+    );
+  }
+
+  String _formatPoints(int n) {
+    return n.toString().replaceAllMapped(
+          RegExp(r'(\d{1,3})(?=(\d{3})+(?!\d))'),
+          (m) => '${m[1]},',
+        );
+  }
+
   @override
   Widget build(BuildContext context) {
+    final topPad = widget.embedded ? MediaQuery.of(context).padding.top : 0.0;
+
     return Scaffold(
-      backgroundColor: DanjiColors.background,
-      appBar: DanjiAppBar(
-        title: '마이페이지',
-        showBack: !widget.embedded,
-        showHome: !widget.embedded,
-        light: true,
-      ),
+      backgroundColor: _pageBg,
+      appBar: widget.embedded
+          ? null
+          : const DanjiAppBar(title: '마이페이지', showBack: true, light: true),
       body: FutureBuilder<MyPageProfile>(
         future: _future,
         builder: (context, snap) {
@@ -153,7 +154,10 @@ class _MyPageScreenState extends State<MyPageScreen> {
                       style: const TextStyle(color: DanjiColors.accentRed),
                     ),
                     const SizedBox(height: 12),
-                    FilledButton(onPressed: _reload, child: const Text('다시 시도')),
+                    FilledButton(
+                      onPressed: _reload,
+                      child: const Text('다시 시도'),
+                    ),
                   ],
                 ),
               ),
@@ -166,62 +170,76 @@ class _MyPageScreenState extends State<MyPageScreen> {
           }
 
           return RefreshIndicator(
-            onRefresh: () async => _reload(),
+            onRefresh: _refresh,
             child: ListView(
               physics: const AlwaysScrollableScrollPhysics(),
-              padding: const EdgeInsets.fromLTRB(24, 12, 24, 32),
+              padding: EdgeInsets.fromLTRB(20, 16 + topPad, 20, 32),
               children: [
-                _ProfileSummaryHeader(profile: profile),
-                if (!profile.canUseVehicle) ...[
-                  const SizedBox(height: 16),
-                  _CompactSetupHint(profile: profile),
-                ],
-                const SizedBox(height: 36),
-                _ManageMenuGroup(
-                  children: [
-                    _ManageRow(
-                      icon: Icons.apartment_rounded,
-                      iconColor: const Color(0xFF5C6BC0),
-                      title: '아파트 인증 관리',
-                      status: profile.residentManageStatus,
-                      statusComplete: profile.isResidentComplete,
-                      onTap: _openResidentVerification,
+                _ProfileHeader(profile: profile),
+                const SizedBox(height: 28),
+                const _SectionLabel(title: '내 정보'),
+                const SizedBox(height: 8),
+                _MenuCard(
+                  items: [
+                    _MenuItem(
+                      icon: Icons.apartment_outlined,
+                      iconColor: Color(0xFF4CAF50),
+                      title: '주민인증',
+                      trailing: profile.isResidentComplete
+                          ? '인증 완료'
+                          : profile.hasResidentRegistration
+                              ? '승인 대기'
+                              : '미등록',
+                      onTap: () {
+                        Navigator.of(context).push(
+                          MaterialPageRoute(
+                            builder: (_) =>
+                                ResidentInfoReadOnlyScreen(profile: profile),
+                          ),
+                        );
+                      },
                     ),
-                    _ManageRow(
+                    _MenuItem(
                       icon: Icons.badge_outlined,
-                      iconColor: const Color(0xFF26A69A),
-                      title: '운전면허 관리',
-                      status: profile.licenseManageStatus,
-                      statusComplete: profile.isLicenseApproved,
-                      onTap: () => _editLicense(profile),
+                      iconColor: Color(0xFF2196F3),
+                      title: '운전면허',
+                      trailing: profile.isLicenseApproved
+                          ? '승인 완료'
+                          : !profile.isLicenseComplete
+                              ? '미등록'
+                              : '심사 중',
+                      onTap: () {
+                        Navigator.of(context).push(
+                          MaterialPageRoute(
+                            builder: (_) =>
+                                LicenseInfoReadOnlyScreen(profile: profile),
+                          ),
+                        );
+                      },
                     ),
-                    _ManageRow(
-                      icon: Icons.credit_card_rounded,
-                      iconColor: const Color(0xFF42A5F5),
-                      title: '결제 수단 관리',
-                      status: profile.paymentManageStatus,
-                      statusComplete: profile.isPaymentCardComplete,
+                    _MenuItem(
+                      icon: Icons.credit_card_outlined,
+                      iconColor: Color(0xFF9C27B0),
+                      title: '결제수단',
+                      trailing: profile.isPaymentCardComplete ? '등록 완료' : '미등록',
                       onTap: () => _editPaymentCard(profile),
                     ),
-                    _ManageRow(
-                      icon: Icons.person_outline_rounded,
-                      iconColor: const Color(0xFF78909C),
-                      title: '개인정보 수정',
-                      status: profile.isBasicInfoComplete ? null : '미등록',
-                      statusComplete: profile.isBasicInfoComplete,
+                    _MenuItem(
+                      icon: Icons.person_outline,
+                      iconColor: Color(0xFFFF9800),
+                      title: '개인정보',
                       onTap: () => _openPersonalInfo(profile),
-                      showDivider: false,
                     ),
                   ],
                 ),
-                const SizedBox(height: 36),
+                const SizedBox(height: 24),
                 const _SectionLabel(title: '이용'),
-                const SizedBox(height: 12),
-                _ManageMenuGroup(
-                  children: [
-                    _ManageRow(
-                      icon: Icons.assignment_outlined,
-                      iconColor: DanjiColors.buttonBlue,
+                const SizedBox(height: 8),
+                _MenuCard(
+                  items: [
+                    _MenuItem(
+                      icon: Icons.calendar_month_outlined,
+                      iconColor: Color(0xFF2196F3),
                       title: '내 예약',
                       onTap: () {
                         Navigator.of(context).push(
@@ -231,46 +249,45 @@ class _MyPageScreenState extends State<MyPageScreen> {
                         );
                       },
                     ),
-                    _ManageRow(
-                      icon: Icons.stars_outlined,
-                      iconColor: const Color(0xFFFFB300),
+                    _MenuItem(
+                      icon: Icons.monetization_on_outlined,
+                      iconColor: Color(0xFFFFC107),
                       title: '보유 포인트',
-                      status: '${_formatNumber(profile.points)}P',
-                      statusComplete: true,
-                      onTap: () => _showInfo('포인트 적립·사용 내역은 준비 중입니다.'),
+                      trailing: '${_formatPoints(profile.points)}P',
+                      onTap: () =>
+                          _showInfo('포인트 적립·사용 내역은 준비 중입니다.'),
                     ),
-                    _ManageRow(
+                    _MenuItem(
                       icon: Icons.local_offer_outlined,
-                      iconColor: const Color(0xFFEF5350),
+                      iconColor: Color(0xFFF44336),
                       title: '쿠폰함',
-                      status: '${profile.couponCount}장',
-                      statusComplete: true,
+                      trailing: '${profile.couponCount}장',
                       onTap: () => _showInfo('쿠폰함은 준비 중입니다.'),
                     ),
-                    _ManageRow(
+                    _MenuItem(
                       icon: Icons.receipt_long_outlined,
-                      iconColor: const Color(0xFF8D6E63),
+                      iconColor: Color(0xFF607D8B),
                       title: '이용내역',
                       onTap: () {
                         Navigator.of(context).push(
                           MaterialPageRoute(
-                            builder: (_) =>
-                                const MyReservationsScreen(historyOnly: true),
+                            builder: (_) => const MyReservationsScreen(
+                              historyOnly: true,
+                            ),
                           ),
                         );
                       },
-                      showDivider: false,
                     ),
                   ],
                 ),
-                const SizedBox(height: 36),
+                const SizedBox(height: 24),
                 const _SectionLabel(title: '고객지원'),
-                const SizedBox(height: 12),
-                _ManageMenuGroup(
-                  children: [
-                    _ManageRow(
+                const SizedBox(height: 8),
+                _MenuCard(
+                  items: [
+                    _MenuItem(
                       icon: Icons.headset_mic_outlined,
-                      iconColor: DanjiColors.buttonBlue,
+                      iconColor: Color(0xFF00BCD4),
                       title: '고객센터',
                       onTap: () {
                         Navigator.of(context).push(
@@ -280,9 +297,9 @@ class _MyPageScreenState extends State<MyPageScreen> {
                         );
                       },
                     ),
-                    _ManageRow(
-                      icon: Icons.help_outline_rounded,
-                      iconColor: const Color(0xFF78909C),
+                    _MenuItem(
+                      icon: Icons.help_outline,
+                      iconColor: Color(0xFFFF9800),
                       title: '자주 묻는 질문',
                       onTap: () {
                         Navigator.of(context).push(
@@ -292,9 +309,9 @@ class _MyPageScreenState extends State<MyPageScreen> {
                         );
                       },
                     ),
-                    _ManageRow(
+                    _MenuItem(
                       icon: Icons.description_outlined,
-                      iconColor: const Color(0xFF78909C),
+                      iconColor: Color(0xFF9E9E9E),
                       title: '약관 및 정책',
                       onTap: () {
                         Navigator.of(context).push(
@@ -303,25 +320,29 @@ class _MyPageScreenState extends State<MyPageScreen> {
                           ),
                         );
                       },
-                      showDivider: false,
                     ),
                   ],
                 ),
-                const SizedBox(height: 40),
-                Center(
-                  child: TextButton(
-                    onPressed: _logout,
-                    child: const Text(
-                      '로그아웃',
-                      style: TextStyle(
-                        color: DanjiColors.textMuted,
-                        fontSize: 15,
-                        fontWeight: FontWeight.w600,
-                      ),
+                const SizedBox(height: 28),
+                OutlinedButton(
+                  onPressed: _logout,
+                  style: OutlinedButton.styleFrom(
+                    minimumSize: const Size.fromHeight(52),
+                    foregroundColor: DanjiColors.accentRed,
+                    side: const BorderSide(color: DanjiColors.accentRed),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    backgroundColor: Colors.white,
+                  ),
+                  child: const Text(
+                    '로그아웃',
+                    style: TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w700,
                     ),
                   ),
                 ),
-                const SizedBox(height: 8),
               ],
             ),
           );
@@ -329,62 +350,12 @@ class _MyPageScreenState extends State<MyPageScreen> {
       ),
     );
   }
-
-  void _showInfo(String message) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(message)),
-    );
-  }
-
-  String _formatNumber(int n) {
-    return n.toString().replaceAllMapped(
-          RegExp(r'(\d{1,3})(?=(\d{3})+(?!\d))'),
-          (m) => '${m[1]},',
-        );
-  }
 }
 
-extension on MyPageProfile {
-  String get licenseManageStatus {
-    if (isLicenseApproved) return '승인 완료';
-    if (!isLicenseComplete) return '미등록';
-    if (licenseRejectionReason != null &&
-        licenseRejectionReason!.trim().isNotEmpty) {
-      return '거절';
-    }
-    return '심사 중';
-  }
-
-  String get residentManageStatus {
-    if (isResidentComplete) {
-      final unit = residentUnit?.trim();
-      if (unit != null && unit.isNotEmpty) return '인증 완료($unit호)';
-      return '인증 완료';
-    }
-    if (hasResidentRegistration) return '승인 대기';
-    return '미등록';
-  }
-
-  String get paymentManageStatus {
-    if (isPaymentCardComplete) return '등록 완료(**** $cardLast4)';
-    return '미등록';
-  }
-
-  String? get apartmentSummary {
-    final parts = <String>[];
-    if (residentComplexName != null && residentComplexName!.trim().isNotEmpty) {
-      parts.add(residentComplexName!.trim());
-    }
-    final dongHo = dongHoLabel;
-    if (dongHo != null) parts.add(dongHo);
-    return parts.isEmpty ? null : parts.join(' ');
-  }
-}
-
-class _ProfileSummaryHeader extends StatelessWidget {
+class _ProfileHeader extends StatelessWidget {
   final MyPageProfile profile;
 
-  const _ProfileSummaryHeader({required this.profile});
+  const _ProfileHeader({required this.profile});
 
   @override
   Widget build(BuildContext context) {
@@ -393,76 +364,16 @@ class _ProfileSummaryHeader extends StatelessWidget {
       children: [
         Text(
           profile.displayName,
-          style: const TextStyle(
-            color: Color(0xFF263238),
-            fontSize: 26,
-            fontWeight: FontWeight.w700,
-            letterSpacing: -0.6,
-            height: 1.2,
-          ),
+          style: DanjiTypography.headline,
         ),
-        if (profile.apartmentSummary != null) ...[
+        if (profile.dongHoLabel != null) ...[
           const SizedBox(height: 6),
           Text(
-            profile.apartmentSummary!,
-            style: const TextStyle(
-              color: DanjiColors.textMuted,
-              fontSize: 15,
-              fontWeight: FontWeight.w500,
-              letterSpacing: -0.3,
-              height: 1.4,
-            ),
-          ),
-        ] else ...[
-          const SizedBox(height: 6),
-          const Text(
-            '아파트 인증을 완료해주세요',
-            style: TextStyle(
-              color: DanjiColors.textMuted,
-              fontSize: 15,
-              fontWeight: FontWeight.w500,
-            ),
+            profile.dongHoLabel!,
+            style: DanjiTypography.secondary,
           ),
         ],
       ],
-    );
-  }
-}
-
-class _CompactSetupHint extends StatelessWidget {
-  final MyPageProfile profile;
-
-  const _CompactSetupHint({required this.profile});
-
-  @override
-  Widget build(BuildContext context) {
-    final missing = <String>[];
-    if (!profile.isResidentComplete) missing.add('아파트 인증');
-    if (!profile.isBasicInfoComplete) missing.add('개인정보');
-    if (!profile.isLicenseComplete || !profile.isLicenseApproved) {
-      missing.add('운전면허');
-    }
-    if (!profile.isPaymentCardComplete) missing.add('결제 수단');
-
-    if (missing.isEmpty) return const SizedBox.shrink();
-
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-      decoration: BoxDecoration(
-        color: DanjiColors.accentRed.withValues(alpha: 0.06),
-        borderRadius: BorderRadius.circular(12),
-      ),
-      child: Text(
-        '차량 이용을 위해 ${missing.join(' · ')}을(를) 완료해주세요',
-        style: const TextStyle(
-          color: DanjiColors.accentRed,
-          fontSize: 13,
-          fontWeight: FontWeight.w600,
-          height: 1.45,
-          letterSpacing: -0.2,
-        ),
-      ),
     );
   }
 }
@@ -479,9 +390,9 @@ class _SectionLabel extends StatelessWidget {
       child: Text(
         title,
         style: const TextStyle(
-          color: DanjiColors.textMuted,
           fontSize: 13,
-          fontWeight: FontWeight.w600,
+          fontWeight: FontWeight.w500,
+          color: _sectionTitle,
           letterSpacing: -0.2,
         ),
       ),
@@ -489,117 +400,110 @@ class _SectionLabel extends StatelessWidget {
   }
 }
 
-class _ManageMenuGroup extends StatelessWidget {
-  final List<Widget> children;
+class _MenuItem {
+  final IconData icon;
+  final Color iconColor;
+  final String title;
+  final String? trailing;
+  final VoidCallback onTap;
 
-  const _ManageMenuGroup({required this.children});
+  const _MenuItem({
+    required this.icon,
+    required this.iconColor,
+    required this.title,
+    this.trailing,
+    required this.onTap,
+  });
+}
+
+class _MenuCard extends StatelessWidget {
+  final List<_MenuItem> items;
+
+  const _MenuCard({required this.items});
 
   @override
   Widget build(BuildContext context) {
     return Container(
       decoration: BoxDecoration(
-        color: DanjiColors.surface,
-        borderRadius: BorderRadius.circular(16),
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
       ),
       clipBehavior: Clip.antiAlias,
-      child: Column(children: children),
+      child: Column(
+        children: [
+          for (var i = 0; i < items.length; i++) ...[
+            if (i > 0)
+              const Divider(
+                height: 1,
+                thickness: 1,
+                color: Color(0xFFF2F4F6),
+                indent: 56,
+              ),
+            _MenuRow(item: items[i]),
+          ],
+        ],
+      ),
     );
   }
 }
 
-class _ManageRow extends StatelessWidget {
-  final IconData icon;
-  final Color iconColor;
-  final String title;
-  final String? status;
-  final bool statusComplete;
-  final VoidCallback onTap;
-  final bool showDivider;
+class _MenuRow extends StatelessWidget {
+  final _MenuItem item;
 
-  const _ManageRow({
-    required this.icon,
-    required this.iconColor,
-    required this.title,
-    this.status,
-    this.statusComplete = false,
-    required this.onTap,
-    this.showDivider = true,
-  });
+  const _MenuRow({required this.item});
+
+  static const _completeStatuses = {'인증 완료', '승인 완료', '등록 완료'};
+
+  Color get _trailingColor {
+    final t = item.trailing;
+    if (t != null && _completeStatuses.contains(t)) {
+      return _trailingComplete;
+    }
+    return _trailingDefault;
+  }
 
   @override
   Widget build(BuildContext context) {
-    final statusColor = status == null
-        ? DanjiColors.textMuted
-        : statusComplete
-            ? DanjiColors.textMuted
-            : DanjiColors.accentRed;
-
-    return Column(
-      children: [
-        Material(
-          color: Colors.transparent,
-          child: InkWell(
-            onTap: onTap,
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 16),
-              child: Row(
-                children: [
-                  Container(
-                    width: 40,
-                    height: 40,
-                    decoration: BoxDecoration(
-                      color: iconColor.withValues(alpha: 0.12),
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: Icon(icon, color: iconColor, size: 22),
-                  ),
-                  const SizedBox(width: 14),
-                  Expanded(
-                    child: Text(
-                      title,
-                      style: const TextStyle(
-                        color: Color(0xFF37474F),
-                        fontSize: 16,
-                        fontWeight: FontWeight.w600,
-                        letterSpacing: -0.3,
-                      ),
-                    ),
-                  ),
-                  if (status != null) ...[
-                    Flexible(
-                      child: Text(
-                        status!,
-                        textAlign: TextAlign.right,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
-                          color: statusColor,
-                          fontSize: 14,
-                          fontWeight: FontWeight.w500,
-                          letterSpacing: -0.2,
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 4),
-                  ],
-                  Icon(
-                    Icons.chevron_right_rounded,
-                    color: DanjiColors.textMuted.withValues(alpha: 0.7),
-                    size: 22,
-                  ),
-                ],
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: item.onTap,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 15),
+          child: Row(
+            children: [
+              Icon(
+                item.icon,
+                size: 22,
+                color: item.iconColor,
               ),
-            ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Text(
+                  item.title,
+                  style: DanjiTypography.body,
+                ),
+              ),
+              if (item.trailing != null) ...[
+                Text(
+                  item.trailing!,
+                  style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w400,
+                    color: _trailingColor,
+                  ),
+                ),
+                const SizedBox(width: 2),
+              ],
+              const Icon(
+                Icons.chevron_right,
+                size: 20,
+                color: Color(0xFFB0B8C1),
+              ),
+            ],
           ),
         ),
-        if (showDivider)
-          Divider(
-            height: 1,
-            thickness: 1,
-            indent: 72,
-            endIndent: 18,
-            color: DanjiColors.border.withValues(alpha: 0.6),
-          ),
-      ],
+      ),
     );
   }
 }
@@ -634,7 +538,9 @@ class _PaymentCardSheetState extends State<_PaymentCardSheet> {
   Future<void> _save() async {
     final last4 = _last4.text.trim();
     if (last4.length != 4) {
-      setState(() => _error = '카드 번호 뒤 4자리를 입력해주세요.');
+      setState(() {
+        _error = '카드 번호 뒤 4자리를 입력해주세요.';
+      });
       return;
     }
 
@@ -647,6 +553,7 @@ class _PaymentCardSheetState extends State<_PaymentCardSheet> {
       await _service.savePaymentCard(cardLast4: last4);
       if (mounted) Navigator.of(context).pop(true);
     } catch (e) {
+      if (!mounted) return;
       setState(() {
         _saving = false;
         _error = e.toString();
@@ -665,31 +572,27 @@ class _PaymentCardSheetState extends State<_PaymentCardSheet> {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           const Text(
-            '결제카드 등록',
+            '결제수단 등록',
             style: TextStyle(
               color: DanjiColors.textPrimary,
               fontSize: 18,
               fontWeight: FontWeight.w800,
             ),
           ),
-          const SizedBox(height: 8),
-          const Text(
-            '테스트용 등록입니다. 실제 카드 결제는 토스페이먼츠 연동 후 적용됩니다.',
-            style: TextStyle(
-              color: DanjiColors.textSecondary,
-              fontSize: 13,
-              height: 1.4,
-            ),
-          ),
           const SizedBox(height: 16),
-          _SheetField(
-            label: '카드 뒤 4자리',
+          TextField(
             controller: _last4,
             keyboardType: TextInputType.number,
             inputFormatters: [
               FilteringTextInputFormatter.digitsOnly,
               LengthLimitingTextInputFormatter(4),
             ],
+            decoration: const InputDecoration(
+              labelText: '카드 뒤 4자리',
+              filled: true,
+              fillColor: Color(0xFFF2F4F6),
+              border: OutlineInputBorder(borderSide: BorderSide.none),
+            ),
           ),
           if (_error != null) ...[
             const SizedBox(height: 8),
@@ -699,7 +602,7 @@ class _PaymentCardSheetState extends State<_PaymentCardSheet> {
           FilledButton(
             onPressed: _saving ? null : _save,
             style: FilledButton.styleFrom(
-              backgroundColor: DanjiColors.rentalBlue,
+              backgroundColor: DanjiColors.buttonBlue,
               foregroundColor: Colors.white,
               minimumSize: const Size.fromHeight(48),
             ),
@@ -709,70 +612,7 @@ class _PaymentCardSheetState extends State<_PaymentCardSheet> {
                     width: 20,
                     child: CircularProgressIndicator(strokeWidth: 2),
                   )
-                : const Text('등록'),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _SheetField extends StatelessWidget {
-  final String label;
-  final TextEditingController controller;
-  final String? hint;
-  final TextInputType? keyboardType;
-  final List<TextInputFormatter>? inputFormatters;
-
-  const _SheetField({
-    required this.label,
-    required this.controller,
-    this.hint,
-    this.keyboardType,
-    this.inputFormatters,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 12),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            label,
-            style: const TextStyle(
-              color: DanjiColors.textSecondary,
-              fontWeight: FontWeight.w600,
-              fontSize: 13,
-            ),
-          ),
-          const SizedBox(height: 6),
-          TextField(
-            controller: controller,
-            keyboardType: keyboardType,
-            inputFormatters: inputFormatters,
-            style: const TextStyle(color: DanjiColors.textPrimary),
-            decoration: InputDecoration(
-              hintText: hint,
-              hintStyle: TextStyle(
-                color: DanjiColors.textSecondary.withValues(alpha: 0.7),
-              ),
-              filled: true,
-              fillColor: DanjiColors.skyLight,
-              border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(12),
-                borderSide: const BorderSide(color: DanjiColors.border),
-              ),
-              enabledBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(12),
-                borderSide: const BorderSide(color: DanjiColors.border),
-              ),
-              focusedBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(12),
-                borderSide: const BorderSide(color: DanjiColors.primaryBlue),
-              ),
-            ),
+                : const Text('저장'),
           ),
         ],
       ),

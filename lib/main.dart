@@ -11,6 +11,7 @@ import 'services/supabase_bootstrap.dart';
 import 'supabase_client.dart';
 import 'theme/danji_colors.dart';
 import 'theme/danji_theme.dart';
+import 'theme/danji_typography.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -123,6 +124,10 @@ class _BootstrapAppState extends State<BootstrapApp> {
       onGenerateInitialRoutes: kIsWeb ? generateInitialRoutes : null,
       builder: (context, child) {
         Widget content = child ?? const SizedBox.shrink();
+        content = DefaultTextStyle(
+          style: DanjiTypography.bodyRegular,
+          child: content,
+        );
 
         if (_initWarning != null && isSupabaseInitialized) {
           content = Stack(
@@ -205,7 +210,7 @@ class _BootstrapLoadingScreen extends StatelessWidget {
             SizedBox(height: 16),
             Text(
               '단지카 시작 중...',
-              style: TextStyle(color: DanjiColors.textSecondary),
+              style: DanjiTypography.secondary,
             ),
           ],
         ),
@@ -235,19 +240,17 @@ class _BootstrapErrorScreen extends StatelessWidget {
                 color: DanjiColors.accentRed,
               ),
               const SizedBox(height: 16),
-              const Text(
+              Text(
                 '서버 연결 실패',
-                style: TextStyle(
-                  color: DanjiColors.textPrimary,
-                  fontSize: 18,
-                  fontWeight: FontWeight.w800,
+                style: DanjiTypography.subtitleLarge.copyWith(
+                  fontWeight: FontWeight.w700,
                 ),
               ),
               const SizedBox(height: 12),
               Text(
                 message,
                 textAlign: TextAlign.center,
-                style: const TextStyle(
+                style: DanjiTypography.bodyRegular.copyWith(
                   color: DanjiColors.textSecondary,
                   height: 1.5,
                 ),

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../theme/danji_colors.dart';
+import '../theme/danji_typography.dart';
 
 class DanjiAppBar extends StatelessWidget implements PreferredSizeWidget {
   final String title;
@@ -48,9 +49,8 @@ class DanjiAppBar extends StatelessWidget implements PreferredSizeWidget {
           : null,
       title: Text(
         title,
-        style: const TextStyle(
-          color: DanjiColors.textPrimary,
-          fontWeight: FontWeight.w800,
+        style: DanjiTypography.subtitleLarge.copyWith(
+          fontWeight: FontWeight.w700,
         ),
       ),
       actions: [
