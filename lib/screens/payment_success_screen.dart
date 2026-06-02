@@ -465,7 +465,7 @@ class _PaymentSuccessScreenState extends State<PaymentSuccessScreen> {
                               backgroundColor: DanjiColors.buttonBlue,
                               foregroundColor: Colors.white,
                             ),
-                            child: const Text('운행시작'),
+                            child: const Text('대여하기'),
                           ),
                         if (_result != null &&
                             _result!.reservationId.isNotEmpty)

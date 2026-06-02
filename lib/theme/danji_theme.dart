@@ -112,9 +112,18 @@ abstract final class DanjiTheme {
         }),
       ),
       snackBarTheme: SnackBarThemeData(
+        backgroundColor: DanjiColors.toastBackground,
         behavior: SnackBarBehavior.floating,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-        contentTextStyle: DanjiTypography.body,
+        elevation: 0,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+        contentTextStyle: const TextStyle(
+          color: Colors.white,
+          fontSize: 14,
+          fontWeight: FontWeight.w400,
+          height: 1.35,
+        ),
+        insetPadding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
+        actionTextColor: Colors.white,
       ),
       dialogTheme: DialogThemeData(
         backgroundColor: DanjiColors.surface,

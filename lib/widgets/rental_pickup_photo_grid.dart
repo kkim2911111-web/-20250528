@@ -19,10 +19,14 @@ class RentalPickupPhotoGrid extends StatelessWidget {
   final VoidCallback? onCamera;
   final VoidCallback? onRetryUpload;
   final ValueChanged<int>? onRemove;
+  final String sectionTitle;
+  final String guideLine;
 
   const RentalPickupPhotoGrid({
     super.key,
     required this.photos,
+    this.sectionTitle = '차량 사진',
+    this.guideLine = '앞·뒤·좌·우·실내·계기판 순으로 최소 6장, 최대 10장 등록해 주세요.',
     this.locked = false,
     this.uploading = false,
     this.uploadProgress = 0,
@@ -41,7 +45,7 @@ class RentalPickupPhotoGrid extends StatelessWidget {
         Row(
           children: [
             Text(
-              '차량 사진',
+              sectionTitle,
               style: DanjiTypography.subtitle,
             ),
             const Spacer(),
@@ -57,7 +61,7 @@ class RentalPickupPhotoGrid extends StatelessWidget {
         ),
         const SizedBox(height: 8),
         Text(
-          '앞·뒤·좌·우·실내·계기판 순으로 최소 6장, 최대 10장 등록해 주세요.',
+          guideLine,
           style: DanjiTypography.secondary.copyWith(height: 1.45),
         ),
         const SizedBox(height: 6),

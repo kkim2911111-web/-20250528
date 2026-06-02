@@ -6,6 +6,7 @@ import '../models/reservation.dart';
 import '../theme/danji_colors.dart';
 import '../theme/danji_theme.dart';
 import '../theme/danji_typography.dart';
+import '../widgets/smart_key_door_buttons.dart';
 
 /// 홈·내 예약 공통 예약 카드
 class ReservationCard extends StatelessWidget {
@@ -460,26 +461,18 @@ class _DoorActionButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return SizedBox(
-      height: 44,
-      child: FilledButton.icon(
-        onPressed: enabled ? onPressed : null,
-        icon: Icon(icon, size: 18),
-        label: Text(label),
-        style: FilledButton.styleFrom(
-          backgroundColor: enabled ? color : color.withValues(alpha: 0.35),
-          foregroundColor: Colors.white,
-          disabledBackgroundColor: color.withValues(alpha: 0.25),
-          disabledForegroundColor: Colors.white54,
-          textStyle: const TextStyle(
-            fontSize: 14,
-            fontWeight: FontWeight.w700,
-          ),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(12),
-          ),
-        ),
-      ),
+    final isUnlock = color == DanjiColors.rentalBlue ||
+        color == DanjiColors.brandBlue ||
+        color == DanjiColors.buttonBlue;
+
+    return SmartKeyDoorButton(
+      label: label,
+      icon: icon,
+      variant: isUnlock
+          ? SmartKeyDoorButtonVariant.unlock
+          : SmartKeyDoorButtonVariant.lock,
+      enabled: enabled,
+      onPressed: onPressed,
     );
   }
 }

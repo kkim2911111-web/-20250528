@@ -116,7 +116,7 @@ class SmartKeyScreenState extends State<SmartKeyScreen> {
                 const _SectionTitle(
                   title: '대여 중',
                   icon: Icons.local_shipping_outlined,
-                  color: Color(0xFFFFB84D),
+                  color: DanjiColors.toneRed,
                 ),
                 const SizedBox(height: 10),
                 ...reservations.map(
@@ -213,8 +213,7 @@ class _SmartKeyCard extends StatelessWidget {
     required this.service,
   });
 
-  static const _unlockBlue = DanjiColors.rentalBlue;
-  static const _badgeOrange = Color(0xFFFFB84D);
+  static const _unlockBlue = DanjiColors.brandBlue;
   static const _textSecondary = DanjiColors.textSecondary;
 
   @override
@@ -271,13 +270,13 @@ class _SmartKeyCard extends StatelessWidget {
                                 vertical: 3,
                               ),
                               decoration: BoxDecoration(
-                                color: _badgeOrange.withValues(alpha: 0.18),
+                                color: DanjiColors.tagRentingBg,
                                 borderRadius: BorderRadius.circular(999),
                               ),
                               child: const Text(
                                 '대여 중',
                                 style: TextStyle(
-                                  color: _badgeOrange,
+                                  color: DanjiColors.tagRentingText,
                                   fontSize: 11,
                                   fontWeight: FontWeight.w700,
                                 ),

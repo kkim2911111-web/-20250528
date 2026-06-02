@@ -21,7 +21,7 @@ class _MainShellState extends State<MainShell> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: DanjiColors.pageGray,
+      backgroundColor: DanjiColors.background,
       body: IndexedStack(
         index: _index,
         children: [

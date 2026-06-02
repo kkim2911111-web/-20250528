@@ -13,10 +13,9 @@ import 'my_reservations_screen.dart';
 import 'resident_info_readonly_screen.dart';
 import 'support_pages.dart';
 
-const _pageBg = Color(0xFFEBF2FF);
-const _sectionTitle = Color(0xFF5B8DEF);
-const _trailingComplete = Color(0xFF2D6AE0);
-const _trailingDefault = Color(0xFF8B95A1);
+const _sectionTitle = DanjiColors.brandBlue;
+const _trailingComplete = DanjiColors.brandBlue;
+const _trailingDefault = DanjiColors.textSecondary;
 
 /// 마이페이지 — 토스 스타일
 class MyPageScreen extends StatefulWidget {
@@ -131,7 +130,7 @@ class _MyPageScreenState extends State<MyPageScreen> {
     final topPad = widget.embedded ? MediaQuery.of(context).padding.top : 0.0;
 
     return Scaffold(
-      backgroundColor: _pageBg,
+      backgroundColor: DanjiColors.background,
       appBar: widget.embedded
           ? null
           : const DanjiAppBar(title: '마이페이지', showBack: true, light: true),
@@ -201,7 +200,7 @@ class _MyPageScreenState extends State<MyPageScreen> {
                     ),
                     _MenuItem(
                       icon: Icons.badge_outlined,
-                      iconColor: Color(0xFF2196F3),
+                      iconColor: DanjiColors.brandBlue,
                       title: '운전면허',
                       trailing: profile.isLicenseApproved
                           ? '승인 완료'
@@ -226,7 +225,7 @@ class _MyPageScreenState extends State<MyPageScreen> {
                     ),
                     _MenuItem(
                       icon: Icons.person_outline,
-                      iconColor: Color(0xFFFF9800),
+                      iconColor: DanjiColors.toneRed,
                       title: '개인정보',
                       onTap: () => _openPersonalInfo(profile),
                     ),
@@ -239,7 +238,7 @@ class _MyPageScreenState extends State<MyPageScreen> {
                   items: [
                     _MenuItem(
                       icon: Icons.calendar_month_outlined,
-                      iconColor: Color(0xFF2196F3),
+                      iconColor: DanjiColors.brandBlue,
                       title: '내 예약',
                       onTap: () {
                         Navigator.of(context).push(
@@ -251,7 +250,7 @@ class _MyPageScreenState extends State<MyPageScreen> {
                     ),
                     _MenuItem(
                       icon: Icons.monetization_on_outlined,
-                      iconColor: Color(0xFFFFC107),
+                      iconColor: DanjiColors.toneRed,
                       title: '보유 포인트',
                       trailing: '${_formatPoints(profile.points)}P',
                       onTap: () =>
@@ -259,14 +258,14 @@ class _MyPageScreenState extends State<MyPageScreen> {
                     ),
                     _MenuItem(
                       icon: Icons.local_offer_outlined,
-                      iconColor: Color(0xFFF44336),
+                      iconColor: DanjiColors.toneRed,
                       title: '쿠폰함',
                       trailing: '${profile.couponCount}장',
                       onTap: () => _showInfo('쿠폰함은 준비 중입니다.'),
                     ),
                     _MenuItem(
                       icon: Icons.receipt_long_outlined,
-                      iconColor: Color(0xFF607D8B),
+                      iconColor: DanjiColors.brandBlue,
                       title: '이용내역',
                       onTap: () {
                         Navigator.of(context).push(
@@ -287,7 +286,7 @@ class _MyPageScreenState extends State<MyPageScreen> {
                   items: [
                     _MenuItem(
                       icon: Icons.headset_mic_outlined,
-                      iconColor: Color(0xFF00BCD4),
+                      iconColor: DanjiColors.brandBlue,
                       title: '고객센터',
                       onTap: () {
                         Navigator.of(context).push(
@@ -299,7 +298,7 @@ class _MyPageScreenState extends State<MyPageScreen> {
                     ),
                     _MenuItem(
                       icon: Icons.help_outline,
-                      iconColor: Color(0xFFFF9800),
+                      iconColor: DanjiColors.toneRed,
                       title: '자주 묻는 질문',
                       onTap: () {
                         Navigator.of(context).push(
@@ -436,7 +435,7 @@ class _MenuCard extends StatelessWidget {
               const Divider(
                 height: 1,
                 thickness: 1,
-                color: Color(0xFFF2F4F6),
+                color: DanjiColors.skyLight,
                 indent: 56,
               ),
             _MenuRow(item: items[i]),
@@ -590,7 +589,7 @@ class _PaymentCardSheetState extends State<_PaymentCardSheet> {
             decoration: const InputDecoration(
               labelText: '카드 뒤 4자리',
               filled: true,
-              fillColor: Color(0xFFF2F4F6),
+              fillColor: DanjiColors.skyLight,
               border: OutlineInputBorder(borderSide: BorderSide.none),
             ),
           ),

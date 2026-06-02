@@ -2,6 +2,8 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
+import '../theme/danji_colors.dart';
+
 /// 앱 시작 스플래시 — 2초 후 child 로 전환
 class SplashScreen extends StatefulWidget {
   final Widget child;
@@ -13,7 +15,6 @@ class SplashScreen extends StatefulWidget {
 }
 
 class _SplashScreenState extends State<SplashScreen> {
-  static const _brandBlue = Color(0xFF1A6DFF);
   bool _done = false;
 
   @override
@@ -29,7 +30,7 @@ class _SplashScreenState extends State<SplashScreen> {
     if (_done) return widget.child;
 
     return Scaffold(
-      backgroundColor: _brandBlue,
+      backgroundColor: DanjiColors.brandBlue,
       body: SafeArea(
         child: Column(
           children: [

@@ -10,7 +10,6 @@ import '../theme/danji_theme.dart';
 import '../theme/danji_typography.dart';
 import '../widgets/danji_app_bar.dart';
 import '../utils/rental_navigation.dart';
-import 'vehicle_use_screen.dart';
 
 class MyReservationsScreen extends StatefulWidget {
   /// true: 마이페이지 이용내역 (종료된 예약만)
@@ -89,7 +88,7 @@ class _MyReservationsScreenState extends State<MyReservationsScreen> {
   }
 
   Future<void> _openStartRental(Reservation reservation) async {
-    if (reservation.isTooEarlyForRentalStart) {
+    if (reservation.status != 'in_use' && reservation.isTooEarlyForRentalStart) {
       _showCancelSnack(RentalStartMessages.tooEarly);
       return;
     }
@@ -97,14 +96,8 @@ class _MyReservationsScreenState extends State<MyReservationsScreen> {
     if (result == true) _reload();
   }
 
-  Future<void> _openVehicleUse(Reservation reservation) async {
-    final result = await Navigator.of(context).push<bool>(
-      MaterialPageRoute(
-        builder: (_) => VehicleUseScreen(reservationId: reservation.id),
-      ),
-    );
-    if (result == true) _reload();
-  }
+  bool _showsRentalStartButton(Reservation item) =>
+      item.showRentalStartButton || item.canUseVehicle;
 
   Future<void> _openReturn(Reservation reservation) async {
     final result = await openRentalReturn<bool>(context, reservation);
@@ -282,7 +275,7 @@ class _MyReservationsScreenState extends State<MyReservationsScreen> {
               children: [
                 if (grouped.operating.isNotEmpty) ...[
                   const _SectionHeader(
-                    title: '운행 중',
+                    title: '대여 중',
                     icon: Icons.local_shipping_outlined,
                     color: DanjiColors.sectionOperating,
                   ),
@@ -295,8 +288,8 @@ class _MyReservationsScreenState extends State<MyReservationsScreen> {
                         dateFormat: _dateFormat,
                         won: _won,
                         variant: _CardVariant.operating,
-                        onUseVehicle: item.canUseVehicle && item.isOperating
-                            ? () => _openVehicleUse(item)
+                        onUseVehicle: _showsRentalStartButton(item)
+                            ? () => _openStartRental(item)
                             : null,
                         onReturn: item.canReturn && item.isOperating
                             ? () => _openReturn(item)
@@ -332,12 +325,12 @@ class _MyReservationsScreenState extends State<MyReservationsScreen> {
                         dateFormat: _dateFormat,
                         won: _won,
                         variant: _CardVariant.waiting,
-                        onUseVehicle: item.showRentalStartButton
+                        onUseVehicle: _showsRentalStartButton(item)
                             ? () => _openStartRental(item)
-                            : item.canUseVehicle
-                                ? () => _openVehicleUse(item)
-                                : null,
-                        useVehicleEnabled: item.canStartRental || item.canUseVehicle,
+                            : null,
+                        useVehicleEnabled: item.canStartRental ||
+                            item.canUseVehicle ||
+                            item.status == 'in_use',
                         onReturn: null,
                         showCancelButton: item.shouldShowCancelButton,
                         cancelBlocked: false,
@@ -459,7 +452,7 @@ class _ReservationCard extends StatelessWidget {
     if (variant == _CardVariant.finished) return null;
     if (reservation.status == 'in_use') return null;
     if (variant == _CardVariant.waiting || variant == _CardVariant.operating) {
-      return '사진 및 정보 등록 후 운행을 시작하세요.';
+      return '사진 등록 후 대여를 시작하세요.';
     }
     return null;
   }
@@ -580,7 +573,7 @@ class _ReservationCard extends StatelessWidget {
                       onPressed: useVehicleEnabled ? onUseVehicle : null,
                       icon: const Icon(Icons.directions_car_outlined, size: 18),
                       label: Text(
-                        variant == _CardVariant.waiting ? '운행시작' : '차량 이용',
+                        '대여하기',
                       ),
                       style: DanjiTheme.primaryButton.copyWith(
                         minimumSize: const WidgetStatePropertyAll(

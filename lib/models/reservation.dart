@@ -17,8 +17,6 @@ class Reservation {
   final DateTime? rentalStartedAt;
   final DateTime? returnedAt;
   final DateTime? actualEndAt;
-  final String? returnType;
-  final DateTime? earlyReturnConfirmedAt;
   final List<String> pickupPhotos;
   final List<String> returnPhotos;
   final int? mileageStart;
@@ -46,8 +44,6 @@ class Reservation {
     this.rentalStartedAt,
     this.returnedAt,
     this.actualEndAt,
-    this.returnType,
-    this.earlyReturnConfirmedAt,
     this.pickupPhotos = const [],
     this.returnPhotos = const [],
     this.mileageStart,
@@ -83,8 +79,6 @@ class Reservation {
       rentalStartedAt: _parseDate(map['rental_started_at']),
       returnedAt: _parseDate(map['returned_at']),
       actualEndAt: _parseDate(map['actual_end_at']),
-      returnType: map['return_type']?.toString(),
-      earlyReturnConfirmedAt: _parseDate(map['early_return_confirmed_at']),
       pickupPhotos: _parseStringList(map['pickup_photos']),
       returnPhotos: _parseStringList(map['return_photos']),
       mileageStart: (map['mileage_start'] as num?)?.toInt(),
@@ -113,6 +107,16 @@ class Reservation {
     return const [];
   }
 
+  /// 대여 전 필수 사진(6장) 업로드 완료 여부
+  static const minPickupPhotos = 6;
+
+  bool get hasPickupPhotosComplete =>
+      pickupPhotos.length >= minPickupPhotos;
+
+  /// 사진·면허 플래그 + 실제 pickup_photos 일치
+  bool get isRentalPhotosReady =>
+      photosUploaded && hasPickupPhotosComplete;
+
   /// 운행시작 버튼 활성화 — 예약 시작 30분 전부터
   static const rentalStartLeadTime = Duration(minutes: 30);
 
@@ -140,16 +144,6 @@ class Reservation {
   bool get canUseVehicle => status == 'in_use';
 
   bool get canReturn => status == 'in_use';
-
-  /// 예약 종료 시각 전 중도반납 가능
-  bool get canEarlyReturn {
-    if (status != 'in_use') return false;
-    final end = _end;
-    if (end == null) return false;
-    return DateTime.now().isBefore(end);
-  }
-
-  bool get isEarlyReturnType => returnType == 'early';
 
   bool get isFinished => status == 'returned' || status == 'completed';
 
@@ -302,7 +296,7 @@ class Reservation {
   String get displayStatusLabel {
     if (isCancelled) return '예약 취소';
     if (isEffectivelyFinished && !isFinished) return '이용 종료';
-    if (isOperating) return '운행 중';
+    if (isOperating) return '대여 중';
     if (isWaiting) return '이용 대기';
     if (isFinished) return '이용 완료';
     return statusLabel;
@@ -317,7 +311,7 @@ class Reservation {
       case 'in_use':
         return '대여 중';
       case 'returned':
-        return isEarlyReturnType ? '중도반납 완료' : '반납 완료';
+        return '반납 완료';
       case 'completed':
         return '이용 완료';
       case 'cancelled':
@@ -334,16 +328,6 @@ abstract final class RentalStartMessages {
   static const subtitleWhenTooEarly = '예약 시작 30분 전부터 이용 가능';
   static const subtitleReady = '사진 등록 후 출발하세요';
   static const startButtonActivationHint = '(30분전 활성화됩니다)';
-}
-
-/// 중도반납 안내
-abstract final class EarlyReturnMessages {
-  static const confirmTitle = '중도반납';
-  static const confirmBody =
-      '중도반납 하시겠습니까?\n남은 시간에 대한 환불은 불가합니다.';
-  static const needStartRental =
-      '대여 시작 후 반납할 수 있습니다.\n차량 이용 화면에서 대여를 시작해주세요.';
-  static const success = '중도반납이 완료되었습니다.';
 }
 
 /// 예약 취소 안내 문구

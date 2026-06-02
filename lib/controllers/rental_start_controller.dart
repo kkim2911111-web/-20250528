@@ -41,10 +41,11 @@ class RentalStartController extends ChangeNotifier {
   int uploadTotal = RentalStartService.minPhotos;
   String? error;
 
-  /// DB photos_uploaded=true 일 때만 완료
-  bool get photosUploaded => reservation?.photosUploaded == true;
+  /// DB 플래그 + 실제 pickup_photos 6장 이상일 때만 완료
+  bool get photosUploaded => reservation?.isRentalPhotosReady == true;
 
-  bool get licenseVerified => reservation?.licenseVerified == true;
+  bool get licenseVerified =>
+      photosUploaded && reservation?.licenseVerified == true;
 
   bool get step1Complete => photosUploaded;
 
@@ -90,13 +91,8 @@ class RentalStartController extends ChangeNotifier {
     notifyListeners();
 
     try {
-      final results = await Future.wait([
-        _service.fetchReservation(reservationId),
-        _profileService.fetchProfile(),
-      ]);
-      final r = results[0] as Reservation;
-      profile = results[1] as MyPageProfile;
-      reservation = r;
+      profile = await _profileService.fetchProfile();
+      var r = await _service.prepareRentalStartSession(reservationId);
 
       if (r.status != 'confirmed' &&
           r.status != 'pending' &&
@@ -114,7 +110,12 @@ class RentalStartController extends ChangeNotifier {
         return;
       }
 
-      if (r.photosUploaded && r.pickupPhotos.isNotEmpty) {
+      reservation = r;
+      localPhotos = [];
+      uploadedPhotoUrls = [];
+
+      // 이미 대여 중이면 기존 사진 URL만 표시(재진입)
+      if (r.status == 'in_use' && r.isRentalPhotosReady) {
         uploadedPhotoUrls = r.pickupPhotos;
       }
 
@@ -232,10 +233,11 @@ class RentalStartController extends ChangeNotifier {
       uploadedPhotoUrls = urls;
       reservation = await _service.fetchReservation(reservationId);
 
-      if (reservation?.photosUploaded != true) {
+      if (reservation?.isRentalPhotosReady != true) {
         debugPrint(
           '[rental-start] 컨트롤러 업로드 실패 reservationId=$reservationId '
-          'photos_uploaded=${reservation?.photosUploaded}',
+          'photos_uploaded=${reservation?.photosUploaded} '
+          'pickup=${reservation?.pickupPhotos.length}',
         );
         throw const RentalException(
           '사진 업로드 후 photos_uploaded=true 가 DB에 저장되지 않았습니다.',
@@ -269,7 +271,7 @@ class RentalStartController extends ChangeNotifier {
 
     try {
       reservation = await _service.fetchReservation(reservationId);
-      if (reservation?.photosUploaded != true) {
+      if (reservation?.isRentalPhotosReady != true) {
         throw const RentalException(
           '사진 등록이 완료되지 않았습니다. 업로드 완료 후 다시 시도해주세요.',
         );

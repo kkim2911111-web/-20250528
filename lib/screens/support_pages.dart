@@ -30,7 +30,7 @@ class CustomerServiceScreen extends StatelessWidget {
             icon: Icons.info_outline,
             title: '안내',
             body:
-                '예약·결제·환불·차량 이용 관련 문의는 '
+                '예약·결제·환불·대여하기 관련 문의는 '
                 '예약 ID 또는 주문 ID를 함께 알려주시면 '
                 '더 빠르게 도와드릴 수 있습니다.',
           ),
@@ -55,8 +55,8 @@ class FaqScreen extends StatelessWidget {
           '결제 금액은 전액 환불됩니다.',
     ),
     (
-      '운행 시작은 어떻게 하나요?',
-      '내 예약에서 해당 예약의「운행시작」을 누르고 '
+      '대여 시작은 어떻게 하나요?',
+      '내 예약에서 해당 예약의「대여하기」를 누르고 '
           '차량 사진·주행거리·주유 상태를 입력하면 됩니다.',
     ),
     (

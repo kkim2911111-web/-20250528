@@ -21,6 +21,7 @@ import '../utils/rental_extension_flow.dart';
 import '../utils/rental_navigation.dart';
 import '../utils/booking_eligibility.dart';
 import '../widgets/danji_brand_title.dart';
+import '../utils/danji_snackbar.dart';
 import '../widgets/rental_inquiry_button.dart';
 import '../widgets/smart_key_door_buttons.dart';
 
@@ -173,7 +174,7 @@ class HomeScreenState extends State<HomeScreen> {
     return Scaffold(
       backgroundColor: DanjiColors.background,
       appBar: AppBar(
-        backgroundColor: DanjiColors.pageGray,
+        backgroundColor: DanjiColors.background,
         elevation: 0,
         scrolledUnderElevation: 0,
         title: const DanjiBrandTitle(),
@@ -183,9 +184,7 @@ class HomeScreenState extends State<HomeScreen> {
             color: DanjiColors.textPrimary,
             tooltip: '알림',
             onPressed: () {
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('알림 기능은 준비 중입니다.')),
-              );
+              DanjiSnackBar.show(context, '알림 기능은 준비 중입니다.');
             },
           ),
         ],
@@ -260,16 +259,12 @@ class HomeScreenState extends State<HomeScreen> {
       final block = BookingEligibility.blockReason(profile);
       if (block != null) {
         if (!context.mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(block)),
-        );
+        DanjiSnackBar.show(context, block);
         return;
       }
     } catch (e) {
       if (!context.mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('예약 정보 확인 실패: $e')),
-      );
+      DanjiSnackBar.show(context, '예약 정보 확인 실패: $e');
       return;
     }
 
@@ -288,10 +283,9 @@ class HomeScreenState extends State<HomeScreen> {
   }
 
   void _openStartRental(Reservation reservation) {
-    if (reservation.isTooEarlyForRentalStart) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text(RentalStartMessages.tooEarly)),
-      );
+    if (reservation.status != 'in_use' &&
+        reservation.isTooEarlyForRentalStart) {
+      DanjiSnackBar.show(context, RentalStartMessages.tooEarly);
       return;
     }
     openRentalOrUseScreen(context, reservation).then((_) => reload());
@@ -313,15 +307,11 @@ class HomeScreenState extends State<HomeScreen> {
 
   Future<void> _onCancelReservation(Reservation reservation) async {
     if (reservation.isCancelBlocked) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text(ReservationCancelMessages.tooLate)),
-      );
+      DanjiSnackBar.show(context, ReservationCancelMessages.tooLate);
       return;
     }
     if (!reservation.canCancel) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('취소할 수 없는 예약입니다.')),
-      );
+      DanjiSnackBar.show(context, '취소할 수 없는 예약입니다.');
       return;
     }
 
@@ -363,19 +353,14 @@ class HomeScreenState extends State<HomeScreen> {
       await _rentalService.cancelReservation(reservation.id);
       if (!mounted) return;
       Navigator.of(context).pop();
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text(ReservationCancelMessages.success)),
-      );
+      DanjiSnackBar.show(context, ReservationCancelMessages.success);
       reload();
     } catch (e) {
       if (!mounted) return;
       Navigator.of(context).pop();
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            e.toString().replaceFirst('RentalException: ', ''),
-          ),
-        ),
+      DanjiSnackBar.show(
+        context,
+        e.toString().replaceFirst('RentalException: ', ''),
       );
     }
   }
@@ -399,14 +384,16 @@ enum _HomeReservationMode {
 class _HomeCardPresentation {
   final String title;
   final String badge;
-  final Color badgeColor;
+  final Color badgeBackground;
+  final Color badgeText;
   final String? footer;
   final bool footerIsCountdown;
 
   const _HomeCardPresentation({
     required this.title,
     required this.badge,
-    required this.badgeColor,
+    required this.badgeBackground,
+    required this.badgeText,
     this.footer,
     this.footerIsCountdown = false,
   });
@@ -422,10 +409,9 @@ _HomeCardPresentation _homeCardPresentation({
     return _HomeCardPresentation(
       title: '지금 타는 차',
       badge: '대여중',
-      badgeColor: DanjiColors.sectionOperating,
-      footer: end != null
-          ? '${_formatTimeRemaining(end)} 남음'
-          : null,
+      badgeBackground: DanjiColors.tagRentingBg,
+      badgeText: DanjiColors.tagRentingText,
+      footer: end != null ? _formatTimeRemaining(end) : null,
       footerIsCountdown: true,
     );
   }
@@ -440,11 +426,16 @@ _HomeCardPresentation _homeCardPresentation({
     badge: inWindow
         ? (isConfirmed ? '예약확정' : reservation.statusLabel)
         : reservation.timeUntilStartLabel,
-    badgeColor: inWindow && isConfirmed
-        ? DanjiColors.brandBlue
+    badgeBackground: inWindow && isConfirmed
+        ? DanjiColors.tagConfirmedBg
         : (inWindow
-            ? DanjiColors.sectionOperating
-            : DanjiColors.brandBlue),
+            ? DanjiColors.tagRentingBg
+            : DanjiColors.tagConfirmedBg),
+    badgeText: inWindow && isConfirmed
+        ? DanjiColors.tagConfirmedText
+        : (inWindow
+            ? DanjiColors.tagRentingText
+            : DanjiColors.tagConfirmedText),
     footer: reservation.startAt != null
         ? '${DateFormat('M월 d일 (E)', 'ko_KR').format(reservation.startAt!)} '
             '${timeFormat.format(reservation.startAt!)} 시작'
@@ -552,7 +543,8 @@ class _HomeReservationSectionState extends State<_HomeReservationSection> {
                 timeFormat: widget.timeFormat,
                 title: meta.title,
                 badge: meta.badge,
-                badgeColor: meta.badgeColor,
+                badgeBackground: meta.badgeBackground,
+                badgeText: meta.badgeText,
                 footer: meta.footer,
                 footerIsCountdown: meta.footerIsCountdown,
               );
@@ -578,7 +570,6 @@ class _HomeReservationSectionState extends State<_HomeReservationSection> {
                 const SizedBox(height: 12),
               ],
               _MainActionCard(
-                color: DanjiColors.brandBlue,
                 icon: Icons.local_parking_rounded,
                 title: '반납하기',
                 onTap: () => widget.onReturn(_current),
@@ -589,26 +580,22 @@ class _HomeReservationSectionState extends State<_HomeReservationSection> {
                   _QuickTileData(
                     icon: Icons.schedule_outlined,
                     label: '연장하기',
-                    iconColor: DanjiColors.brandBlue,
                     onTap: () => widget.onExtend(_current),
                   ),
                   _QuickTileData(
                     icon: Icons.warning_amber_rounded,
                     label: '사고신고',
-                    iconColor: DanjiColors.accentRed,
-                    labelColor: DanjiColors.accentRed,
+                    isAccident: true,
                     onTap: () => widget.onAccident(_current),
                   ),
                   _QuickTileData(
                     icon: Icons.calendar_month_outlined,
                     label: '예약하기',
-                    iconColor: DanjiColors.brandBlue,
                     onTap: widget.onBook,
                   ),
                   _QuickTileData(
                     icon: Icons.assignment_outlined,
                     label: '내 예약',
-                    iconColor: DanjiColors.brandBlue,
                     onTap: widget.onReservations,
                   ),
                 ],
@@ -618,9 +605,8 @@ class _HomeReservationSectionState extends State<_HomeReservationSection> {
           _HomeReservationMode.confirmedInWindow =>
             [
               _MainActionCard(
-                color: DanjiColors.brandBlue,
                 icon: Icons.directions_car_outlined,
-                title: '차량 이용 시작',
+                title: '대여하기',
                 subtitle: _current.canStartRental
                     ? RentalStartMessages.subtitleReady
                     : RentalStartMessages.subtitleWhenTooEarly,
@@ -633,21 +619,17 @@ class _HomeReservationSectionState extends State<_HomeReservationSection> {
                   _QuickTileData(
                     icon: Icons.calendar_month_outlined,
                     label: '예약하기',
-                    iconColor: DanjiColors.brandBlue,
                     onTap: widget.onBook,
                   ),
                   _QuickTileData(
                     icon: Icons.assignment_outlined,
                     label: '내 예약',
-                    iconColor: DanjiColors.brandBlue,
                     onTap: widget.onReservations,
                   ),
                   if (_current.shouldShowCancelButton)
                     _QuickTileData(
                       icon: Icons.event_busy_outlined,
                       label: '예약취소',
-                      iconColor: DanjiColors.accentRed,
-                      labelColor: DanjiColors.accentRed,
                       onTap: () => widget.onCancel(_current),
                     ),
                 ],
@@ -663,15 +645,13 @@ class _QuickTileData {
   final IconData icon;
   final String label;
   final VoidCallback onTap;
-  final Color? iconColor;
-  final Color? labelColor;
+  final bool isAccident;
 
   const _QuickTileData({
     required this.icon,
     required this.label,
     required this.onTap,
-    this.iconColor,
-    this.labelColor,
+    this.isAccident = false,
   });
 }
 
@@ -697,8 +677,7 @@ class _QuickGrid2x2 extends StatelessWidget {
         return _QuickTile(
           icon: tile.icon,
           label: tile.label,
-          iconColor: tile.iconColor,
-          labelColor: tile.labelColor,
+          isAccident: tile.isAccident,
           onTap: tile.onTap,
         );
       },
@@ -800,11 +779,7 @@ class _EventBannerCard extends StatelessWidget {
       width: double.infinity,
       padding: const EdgeInsets.fromLTRB(20, 20, 20, 20),
       decoration: BoxDecoration(
-        gradient: const LinearGradient(
-          colors: [DanjiColors.brandBlue, DanjiColors.brandBlueDark],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-        ),
+        color: DanjiColors.bannerBackground,
         borderRadius: BorderRadius.circular(16),
       ),
       child: Column(
@@ -814,7 +789,7 @@ class _EventBannerCard extends StatelessWidget {
             Text(
               banner.mainTitle,
               style: const TextStyle(
-                color: Colors.white,
+                color: DanjiColors.bannerText,
                 fontSize: 18,
                 fontWeight: FontWeight.w700,
                 height: 1.35,
@@ -825,9 +800,9 @@ class _EventBannerCard extends StatelessWidget {
             Text(
               banner.subTitle,
               style: const TextStyle(
-                color: Color(0xB3FFFFFF),
+                color: DanjiColors.bannerTextMuted,
                 fontSize: 13,
-                fontWeight: FontWeight.w400,
+                fontWeight: FontWeight.w500,
                 height: 1.45,
               ),
             ),
@@ -837,7 +812,7 @@ class _EventBannerCard extends StatelessWidget {
             Text(
               banner.description,
               style: const TextStyle(
-                color: Color(0xB3FFFFFF),
+                color: DanjiColors.bannerTextMuted,
                 fontSize: 13,
                 height: 1.45,
               ),
@@ -937,8 +912,8 @@ class _ResidentVerificationBadge extends StatelessWidget {
       icon = Icons.verified_outlined;
       label = '입주민 인증';
     } else if (hasRegistration) {
-      bg = DanjiColors.sectionOperating.withValues(alpha: 0.15);
-      fg = DanjiColors.sectionOperating;
+      bg = DanjiColors.tagRentingBg;
+      fg = DanjiColors.tagRentingText;
       icon = Icons.hourglass_top_outlined;
       label = '승인 대기';
     } else {
@@ -1021,7 +996,6 @@ class _EmptyHomeBody extends StatelessWidget {
     return Column(
       children: [
         _MainActionCard(
-          color: DanjiColors.brandBlue,
           icon: Icons.calendar_month_outlined,
           title: '예약하기',
           subtitle: '날짜와 시간을 선택하세요',
@@ -1033,7 +1007,6 @@ class _EmptyHomeBody extends StatelessWidget {
             _QuickTileData(
               icon: Icons.assignment_outlined,
               label: '내 예약',
-              iconColor: DanjiColors.brandBlue,
               onTap: onReservations,
             ),
           ],
@@ -1048,7 +1021,8 @@ class _ReservationInfoCard extends StatelessWidget {
   final DateFormat timeFormat;
   final String title;
   final String badge;
-  final Color badgeColor;
+  final Color badgeBackground;
+  final Color badgeText;
   final String? footer;
   final bool footerIsCountdown;
 
@@ -1057,7 +1031,8 @@ class _ReservationInfoCard extends StatelessWidget {
     required this.timeFormat,
     required this.title,
     required this.badge,
-    this.badgeColor = DanjiColors.badgeBlue,
+    this.badgeBackground = DanjiColors.tagConfirmedBg,
+    this.badgeText = DanjiColors.tagConfirmedText,
     this.footer,
     this.footerIsCountdown = false,
   });
@@ -1095,13 +1070,13 @@ class _ReservationInfoCard extends StatelessWidget {
                 padding:
                     const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
                 decoration: BoxDecoration(
-                  color: badgeColor.withValues(alpha: 0.12),
+                  color: badgeBackground,
                   borderRadius: BorderRadius.circular(20),
                 ),
                 child: Text(
                   badge,
                   style: TextStyle(
-                    color: badgeColor,
+                    color: badgeText,
                     fontSize: 12,
                     fontWeight: FontWeight.w700,
                   ),
@@ -1137,7 +1112,7 @@ class _ReservationInfoCard extends StatelessWidget {
               footer!,
               style: TextStyle(
                 color: footerIsCountdown
-                    ? DanjiColors.sectionOperating
+                    ? DanjiColors.toneRed
                     : DanjiColors.textSecondary,
                 fontSize: 13,
                 fontWeight:
@@ -1151,7 +1126,6 @@ class _ReservationInfoCard extends StatelessWidget {
   }
 }
 class _MainActionCard extends StatelessWidget {
-  final Color color;
   final IconData icon;
   final String title;
   final String? subtitle;
@@ -1159,7 +1133,6 @@ class _MainActionCard extends StatelessWidget {
   final bool enabled;
 
   const _MainActionCard({
-    required this.color,
     required this.icon,
     required this.title,
     this.subtitle,
@@ -1167,56 +1140,62 @@ class _MainActionCard extends StatelessWidget {
     this.enabled = true,
   });
 
-  @override
-  Widget build(BuildContext context) {
-    final cardColor = enabled ? color : DanjiColors.textMuted;
-    return Material(
-      color: cardColor,
-      borderRadius: BorderRadius.circular(16),
-      child: InkWell(
-        onTap: enabled ? onTap : null,
-        borderRadius: BorderRadius.circular(16),
-        child: SizedBox(
-          height: 60,
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 20),
-            child: Row(
+  Widget _rowContent() {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 20),
+      child: Row(
+        children: [
+          Icon(icon, color: Colors.white, size: 28),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Icon(icon, color: Colors.white, size: 28),
-                const SizedBox(width: 14),
-                Expanded(
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        title,
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 17,
-                          fontWeight: FontWeight.w700,
-                        ),
-                      ),
-                      if (subtitle != null) ...[
-                        const SizedBox(height: 2),
-                        Text(
-                          subtitle!,
-                          style: const TextStyle(
-                            color: Color(0xB3FFFFFF),
-                            fontSize: 13,
-                          ),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      ],
-                    ],
+                Text(
+                  title,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 17,
+                    fontWeight: FontWeight.w700,
                   ),
                 ),
-                const Icon(Icons.arrow_forward_ios_rounded,
-                    color: Colors.white70, size: 18),
+                if (subtitle != null) ...[
+                  const SizedBox(height: 2),
+                  Text(
+                    subtitle!,
+                    style: const TextStyle(
+                      color: Color(0xCCFFFFFF),
+                      fontSize: 13,
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ],
               ],
             ),
           ),
+          const Icon(Icons.arrow_forward_ios_rounded,
+              color: Colors.white70, size: 18),
+        ],
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: Colors.transparent,
+      borderRadius: BorderRadius.circular(14),
+      child: InkWell(
+        onTap: enabled ? onTap : null,
+        borderRadius: BorderRadius.circular(14),
+        child: Ink(
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(14),
+            color: enabled ? DanjiColors.brandBlue : DanjiColors.textMuted,
+          ),
+          child: SizedBox(height: 60, child: _rowContent()),
         ),
       ),
     );
@@ -1227,46 +1206,58 @@ class _QuickTile extends StatelessWidget {
   final IconData icon;
   final String label;
   final VoidCallback onTap;
-  final Color? iconColor;
-  final Color? labelColor;
+  final bool isAccident;
 
   const _QuickTile({
     required this.icon,
     required this.label,
     required this.onTap,
-    this.iconColor,
-    this.labelColor,
+    this.isAccident = false,
   });
 
   @override
   Widget build(BuildContext context) {
+    final iconColor = isAccident ? DanjiColors.toneRed : DanjiColors.brandBlue;
+    final textColor = isAccident ? DanjiColors.toneRed : DanjiColors.brandBlue;
+
     return Material(
-      color: DanjiColors.surface,
-      borderRadius: BorderRadius.circular(12),
+      color: Colors.transparent,
+      borderRadius: BorderRadius.circular(14),
       child: InkWell(
         onTap: onTap,
-        borderRadius: BorderRadius.circular(12),
-        child: Padding(
-          padding: const EdgeInsets.symmetric(vertical: 18, horizontal: 8),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(
-                icon,
-                size: 26,
-                color: iconColor ?? DanjiColors.brandBlue,
-              ),
-              const SizedBox(height: 8),
-              Text(
-                label,
-                style: TextStyle(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w600,
-                  color: labelColor ?? DanjiColors.textPrimary,
-                ),
+        borderRadius: BorderRadius.circular(14),
+        splashColor: Colors.black.withValues(alpha: 0.06),
+        highlightColor: Colors.black.withValues(alpha: 0.04),
+        child: Ink(
+          decoration: BoxDecoration(
+            color: DanjiColors.surface,
+            borderRadius: BorderRadius.circular(14),
+            boxShadow: const [
+              BoxShadow(
+                color: DanjiColors.cardShadow,
+                blurRadius: 8,
+                offset: Offset(0, 2),
               ),
             ],
+          ),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 18, horizontal: 8),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(icon, size: 26, color: iconColor),
+                const SizedBox(height: 8),
+                Text(
+                  label,
+                  style: TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w500,
+                    color: textColor,
+                  ),
+                ),
+              ],
+            ),
           ),
         ),
       ),

@@ -115,7 +115,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                       color: const Color(0xFF43A047),
                     ),
                     _StatCard(
-                      label: '운행 중',
+                      label: '대여 중',
                       value: '${stats.inOperation}',
                       icon: Icons.navigation_outlined,
                       color: const Color(0xFFFB8C00),
@@ -194,7 +194,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
             _MenuTile(
               icon: Icons.map_outlined,
               title: '차량 위치',
-              subtitle: '운행 중인 차량 실시간 위치 확인',
+              subtitle: '대여 중인 차량 실시간 위치 확인',
               onTap: () => _open(AdminVehicleLocationScreen(profile: profile)),
             ),
             _MenuTile(

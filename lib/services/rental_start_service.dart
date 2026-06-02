@@ -19,6 +19,71 @@ id,user_id,vehicle_id,start_at,end_at,start_time,end_time,total_price,status,
 pickup_photos,photos_uploaded,license_verified,rental_started_at
 ''';
 
+  /// 대여하기 진입 시 — confirmed/pending 예약의 이전 준비 상태 초기화
+  Future<Reservation> prepareRentalStartSession(String reservationId) async {
+    final user = supabase.auth.currentUser;
+    if (user == null) {
+      throw const AuthException('로그인이 필요합니다.');
+    }
+
+    final current = await fetchReservation(reservationId);
+    if (current.status == 'in_use') {
+      debugPrint(
+        '[rental-start] prepare skip (already in_use) reservationId=$reservationId',
+      );
+      return current;
+    }
+    if (current.status != 'confirmed' && current.status != 'pending') {
+      return current;
+    }
+
+    if (!current.photosUploaded &&
+        !current.licenseVerified &&
+        current.pickupPhotos.isEmpty) {
+      return current;
+    }
+
+    final idFilter = _idFilter(reservationId);
+    debugPrint(
+      '[rental-start] prepare reset reservationId=$reservationId '
+      'was photos_uploaded=${current.photosUploaded} '
+      'license_verified=${current.licenseVerified} '
+      'pickup_photos=${current.pickupPhotos.length}',
+    );
+
+    try {
+      final row = await supabase
+          .from('reservations')
+          .update({
+            'photos_uploaded': false,
+            'license_verified': false,
+            'pickup_photos': <String>[],
+          })
+          .eq('id', idFilter)
+          .eq('user_id', user.id)
+          .inFilter('status', ['confirmed', 'pending'])
+          .select('id, photos_uploaded, license_verified, pickup_photos, status')
+          .maybeSingle();
+
+      if (row == null) {
+        debugPrint(
+          '[rental-start] prepare reset: 0 rows (status changed or RLS)',
+        );
+        return fetchReservation(reservationId);
+      }
+
+      debugPrint(
+        '[rental-start] prepare reset OK reservationId=$reservationId row=$row',
+      );
+      RentalService.signalListRefresh();
+      return fetchReservation(reservationId);
+    } on PostgrestException catch (e) {
+      _logPostgrestError('prepareRentalStartSession', e,
+          reservationId: reservationId);
+      rethrow;
+    }
+  }
+
   Future<Reservation> fetchReservation(String reservationId) async {
     final user = supabase.auth.currentUser;
     if (user == null) {
@@ -138,11 +203,11 @@ pickup_photos,photos_uploaded,license_verified,rental_started_at
       );
 
       final verified = await fetchReservation(reservationId);
-      if (!verified.photosUploaded) {
+      if (!verified.isRentalPhotosReady) {
         await _diagnosePhotosUploadedUpdate(
           reservationId: reservationId,
           userId: user.id,
-          reason: 'fetchReservation.photosUploaded still false after update',
+          reason: 'isRentalPhotosReady still false after update',
         );
         throw const RentalException(
           '사진 업로드는 완료됐지만 photos_uploaded 저장에 실패했습니다.\n'
@@ -176,7 +241,7 @@ pickup_photos,photos_uploaded,license_verified,rental_started_at
   /// STEP 2 — confirm_rental_license_for_me (photos_uploaded 확인 후)
   Future<void> confirmLicense(String reservationId) async {
     final reservation = await fetchReservation(reservationId);
-    if (!reservation.photosUploaded) {
+    if (!reservation.isRentalPhotosReady) {
       throw const RentalException(
         '사진 등록이 완료되지 않았습니다. 갤러리에서 6장 이상 선택 후 업로드가 끝난 뒤 다시 시도해주세요.',
       );

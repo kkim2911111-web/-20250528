@@ -229,8 +229,6 @@ fuel_level_start,fuel_level_end,is_accident,accident_note,door_unlocked
                     rentalStartedAt: r.rentalStartedAt,
                     returnedAt: r.returnedAt,
                     actualEndAt: r.actualEndAt,
-                    returnType: r.returnType,
-                    earlyReturnConfirmedAt: r.earlyReturnConfirmedAt,
                     pickupPhotos: r.pickupPhotos,
                     returnPhotos: r.returnPhotos,
                     mileageStart: r.mileageStart,
@@ -942,8 +940,6 @@ fuel_level_start,fuel_level_end,is_accident,accident_note,door_unlocked
     required FuelLevel fuelLevelEnd,
     required bool isAccident,
     String? accidentNote,
-    bool isEarlyReturn = false,
-    bool earlyReturnAcknowledged = false,
   }) async {
     final photoUrls = await uploadPhotos(
       reservationId: reservationId,
@@ -959,8 +955,6 @@ fuel_level_start,fuel_level_end,is_accident,accident_note,door_unlocked
         'p_fuel_level_end': fuelLevelEnd.value,
         'p_is_accident': isAccident,
         'p_accident_note': accidentNote,
-        'p_is_early_return': isEarlyReturn,
-        'p_early_return_acknowledged': earlyReturnAcknowledged,
       });
       RentalService.signalListRefresh();
       return _asMap(data);
@@ -980,7 +974,7 @@ String friendlyRentalError(PostgrestException error) {
   final msg = error.message.toLowerCase();
 
   if (msg.contains('photos_required')) {
-    return '차량 사진 등록이 필요합니다. (문열림: 운행 전 사진 10장)';
+    return '차량 사진 등록이 필요합니다. (문열림: 대여 전 사진 10장)';
   }
   if (msg.contains('set_door_lock_for_me') &&
       msg.contains('could not find')) {
@@ -1004,12 +998,6 @@ String friendlyRentalError(PostgrestException error) {
   }
   if (msg.contains('invalid_status')) {
     return '현재 상태에서는 진행할 수 없습니다. 대여 시작(in_use) 후 반납해주세요.';
-  }
-  if (msg.contains('early_return_not_acknowledged')) {
-    return '중도반납 환불 불가 안내에 동의해주세요.';
-  }
-  if (msg.contains('not_early_return')) {
-    return '예약 종료 시각이 지나 정상 반납으로 진행해주세요.';
   }
   if (msg.contains('invalid_end_time')) {
     return '예약 종료 시간 정보가 없습니다.';

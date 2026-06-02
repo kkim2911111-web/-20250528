@@ -401,7 +401,7 @@ class _AdminVehicleLocationScreenState extends State<AdminVehicleLocationScreen>
                   padding: const EdgeInsets.all(20),
                   children: [
                     const Text(
-                      '운행 중 차량',
+                      '대여 중 차량',
                       style: TextStyle(
                         fontWeight: FontWeight.w800,
                         fontSize: 16,
@@ -411,7 +411,7 @@ class _AdminVehicleLocationScreenState extends State<AdminVehicleLocationScreen>
                     const SizedBox(height: 10),
                     if (operating.isEmpty)
                       const SectionCard(
-                        child: Text('현재 운행 중인 차량이 없습니다.'),
+                        child: Text('현재 대여 중인 차량이 없습니다.'),
                       )
                     else
                       ...operating.map((r) {
