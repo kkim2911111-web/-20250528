@@ -401,10 +401,19 @@ class _EmailLoginScreenState extends State<EmailLoginScreen> {
   }
 }
 
+/// 입주민 이메일 가입 — 이메일·비밀번호만. `register_staff_for_me` / staff_users 미사용.
 class SignUpScreen extends StatefulWidget {
   final VoidCallback? onGoLogin;
+  /// 온보딩 새로고침 후 — 이미 로그인된 상태에서 위저드로 이어가기
+  final VoidCallback? onContinue;
+  final String? continueLabel;
 
-  const SignUpScreen({super.key, this.onGoLogin});
+  const SignUpScreen({
+    super.key,
+    this.onGoLogin,
+    this.onContinue,
+    this.continueLabel,
+  });
 
   @override
   State<SignUpScreen> createState() => _SignUpScreenState();
@@ -466,6 +475,8 @@ class _SignUpScreenState extends State<SignUpScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final restartMode = widget.onContinue != null;
+
     return Scaffold(
       backgroundColor: DanjiColors.background,
       appBar: const DanjiAppBar(title: '회원가입'),
@@ -486,59 +497,83 @@ class _SignUpScreenState extends State<SignUpScreen> {
                   mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    TextField(
-                      controller: _email,
-                      keyboardType: TextInputType.emailAddress,
-                      style: const TextStyle(color: DanjiColors.textPrimary),
-                      decoration: _inputDecoration('이메일'),
-                    ),
-                    const SizedBox(height: 12),
-                    TextField(
-                      controller: _password,
-                      obscureText: true,
-                      style: const TextStyle(color: DanjiColors.textPrimary),
-                      decoration: _inputDecoration('비밀번호'),
-                    ),
-                    const SizedBox(height: 14),
-                    if (_error != null)
-                      Padding(
-                        padding: const EdgeInsets.only(bottom: 10),
-                        child: Text(
-                          _error!,
-                          style: const TextStyle(color: DanjiColors.accentRed),
+                    if (restartMode) ...[
+                      const Text(
+                        '가입이 완료되지 않았습니다.\n'
+                        '아래 버튼을 눌러 회원가입 단계를 이어서 진행해주세요.',
+                        style: TextStyle(
+                          color: DanjiColors.textSecondary,
+                          height: 1.5,
                         ),
                       ),
-                    SizedBox(
-                      height: 52,
-                      child: FilledButton(
-                        onPressed: _loading ? null : _submit,
-                        style: DanjiTheme.primaryButton,
-                        child: _loading
-                            ? const SizedBox(
-                                height: 18,
-                                width: 18,
-                                child: CircularProgressIndicator(strokeWidth: 2),
-                              )
-                            : const Text('가입하기'),
+                      const SizedBox(height: 20),
+                      SizedBox(
+                        height: 52,
+                        child: FilledButton(
+                          onPressed: widget.onContinue,
+                          style: DanjiTheme.primaryButton,
+                          child: Text(
+                            widget.continueLabel ?? '회원가입 계속하기',
+                          ),
+                        ),
                       ),
-                    ),
-                    const SizedBox(height: 10),
-                    TextButton(
-                      onPressed: _loading
-                          ? null
-                          : () {
-                              if (widget.onGoLogin != null) {
-                                widget.onGoLogin!();
-                                return;
-                              }
-                              Navigator.of(context).pushReplacement(
-                                MaterialPageRoute(
-                                  builder: (_) => const EmailLoginScreen(),
-                                ),
-                              );
-                            },
-                      child: const Text('이미 계정이 있으신가요? 로그인'),
-                    ),
+                    ] else ...[
+                      TextField(
+                        controller: _email,
+                        keyboardType: TextInputType.emailAddress,
+                        style: const TextStyle(color: DanjiColors.textPrimary),
+                        decoration: _inputDecoration('이메일'),
+                      ),
+                      const SizedBox(height: 12),
+                      TextField(
+                        controller: _password,
+                        obscureText: true,
+                        style: const TextStyle(color: DanjiColors.textPrimary),
+                        decoration: _inputDecoration('비밀번호'),
+                      ),
+                      const SizedBox(height: 14),
+                      if (_error != null)
+                        Padding(
+                          padding: const EdgeInsets.only(bottom: 10),
+                          child: Text(
+                            _error!,
+                            style: const TextStyle(color: DanjiColors.accentRed),
+                          ),
+                        ),
+                      SizedBox(
+                        height: 52,
+                        child: FilledButton(
+                          onPressed: _loading ? null : _submit,
+                          style: DanjiTheme.primaryButton,
+                          child: _loading
+                              ? const SizedBox(
+                                  height: 18,
+                                  width: 18,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                  ),
+                                )
+                              : const Text('가입하기'),
+                        ),
+                      ),
+                      const SizedBox(height: 10),
+                      TextButton(
+                        onPressed: _loading
+                            ? null
+                            : () {
+                                if (widget.onGoLogin != null) {
+                                  widget.onGoLogin!();
+                                  return;
+                                }
+                                Navigator.of(context).pushReplacement(
+                                  MaterialPageRoute(
+                                    builder: (_) => const EmailLoginScreen(),
+                                  ),
+                                );
+                              },
+                        child: const Text('이미 계정이 있으신가요? 로그인'),
+                      ),
+                    ],
                   ],
                 ),
               ),

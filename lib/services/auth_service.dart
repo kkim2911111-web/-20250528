@@ -6,6 +6,13 @@ class AuthService {
   /// 로그아웃 후 회원가입 화면 표시 (AuthGate에서 처리)
   void Function(bool toSignUp)? onSignedOut;
 
+  /// 관리자 가입 RPC 완료 전 — RoleGate(입주민 온보딩) 진입 방지
+  bool adminSignUpInProgress = false;
+
+  void beginAdminSignUpFlow() => adminSignUpInProgress = true;
+
+  void endAdminSignUpFlow() => adminSignUpInProgress = false;
+
   User? get currentUser => supabase.auth.currentUser;
 
   Future<void> signInWithEmail({

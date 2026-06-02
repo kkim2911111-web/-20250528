@@ -2,15 +2,39 @@ import 'package:flutter/material.dart';
 
 import '../../models/admin_messages.dart';
 import '../../models/staff_profile.dart';
+import '../../screens/login_screen.dart';
 import '../../services/auth_service.dart';
 import '../../theme/danji_colors.dart';
 import '../../widgets/danji_app_bar.dart';
 
-/// 지점 관리자 승인 대기 — 입주민 화면으로 넘어가지 않음
+/// 지점 관리자 승인 대기 — 입주민 온보딩/인증 화면으로 넘어가지 않음
 class AdminPendingScreen extends StatelessWidget {
-  final StaffProfile profile;
+  final StaffProfile? profile;
+  final String? displayName;
+  final String? complexName;
 
-  const AdminPendingScreen({super.key, required this.profile});
+  const AdminPendingScreen({
+    super.key,
+    this.profile,
+    this.displayName,
+    this.complexName,
+  });
+
+  String get _displayName =>
+      profile?.displayName ?? displayName?.trim() ?? '관리자';
+
+  String get _complexName =>
+      profile?.complexName ?? complexName?.trim() ?? '지점';
+
+  String get _contactLine {
+    final parts = <String>[
+      if ((profile?.companyName?.trim().isNotEmpty ?? false))
+        profile!.companyName!.trim(),
+      if ((profile?.phone?.trim().isNotEmpty ?? false)) profile!.phone!.trim(),
+    ];
+    if (parts.isEmpty) return '';
+    return '\n${parts.join(' · ')}';
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -22,7 +46,14 @@ class AdminPendingScreen extends StatelessWidget {
         showBack: false,
         extraActions: [
           TextButton(
-            onPressed: () => AuthService().signOut(),
+            onPressed: () async {
+              await AuthService().signOut();
+              if (!context.mounted) return;
+              Navigator.of(context).pushAndRemoveUntil(
+                MaterialPageRoute(builder: (_) => const LoginScreen()),
+                (_) => false,
+              );
+            },
             child: const Text('로그아웃'),
           ),
         ],
@@ -60,7 +91,7 @@ class AdminPendingScreen extends StatelessWidget {
                 ),
                 const SizedBox(height: 12),
                 Text(
-                  '${profile.displayName}님 · ${profile.complexName ?? '지점'}\n'
+                  '$_displayName님 · $_complexName$_contactLine\n'
                   '승인 완료 후 지점 관리 페이지가 열립니다.',
                   textAlign: TextAlign.center,
                   style: const TextStyle(

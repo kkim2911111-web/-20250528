@@ -13,8 +13,11 @@ class MyPageProfile {
   final String? cardLast4;
   final int points;
   final int couponCount;
+  final bool signupCompleted;
+  final String role;
   final bool residentApproved;
   final bool hasResidentRegistration;
+  final bool residentVerificationRequested;
   final String? residentComplexName;
   final String? residentBuilding;
   final String? residentUnit;
@@ -33,8 +36,11 @@ class MyPageProfile {
     this.cardLast4,
     this.points = 0,
     this.couponCount = 0,
+    this.signupCompleted = false,
+    this.role = 'resident',
     this.residentApproved = false,
     this.hasResidentRegistration = false,
+    this.residentVerificationRequested = false,
     this.residentComplexName,
     this.residentBuilding,
     this.residentUnit,
@@ -58,6 +64,12 @@ class MyPageProfile {
   bool get isPaymentCardComplete => hasPaymentCard;
 
   bool get isResidentComplete => residentApproved;
+
+  bool get isAdmin => role == 'admin';
+
+  /// user_profiles.resident_verification_requested + 미승인
+  bool get isResidentVerificationPending =>
+      residentVerificationRequested && !residentApproved;
 
   String? get residentLocationLabel {
     final parts = <String>[];

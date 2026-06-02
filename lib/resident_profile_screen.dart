@@ -3,9 +3,11 @@ import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'supabase_client.dart';
+import 'services/my_page_service.dart';
 import 'theme/danji_colors.dart';
 import 'utils/network_retry.dart';
 import 'widgets/danji_app_bar.dart';
+import 'widgets/resident_verification_pending.dart';
 
 class ResidentProfile {
   final String userId;
@@ -99,6 +101,7 @@ class ResidentProfileScreen extends StatefulWidget {
 
 class _ResidentProfileScreenState extends State<ResidentProfileScreen> {
   final _repo = ResidentRepository();
+  final _myPage = MyPageService();
   StreamSubscription<ResidentProfile?>? _profileSub;
 
   final _inviteCode = TextEditingController();
@@ -113,6 +116,8 @@ class _ResidentProfileScreenState extends State<ResidentProfileScreen> {
   String? _complexName;
 
   ResidentProfile? _profile;
+  bool _verificationRequested = false;
+  bool _loadingProfileFlags = true;
   bool _saving = false;
   String? _error;
 
@@ -134,6 +139,21 @@ class _ResidentProfileScreenState extends State<ResidentProfileScreen> {
     });
 
     _inviteCode.addListener(_onInviteCodeChanged);
+    _loadVerificationFlags();
+  }
+
+  Future<void> _loadVerificationFlags() async {
+    try {
+      final requested = await _myPage.isResidentVerificationRequested();
+      if (!mounted) return;
+      setState(() {
+        _verificationRequested = requested;
+        _loadingProfileFlags = false;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _loadingProfileFlags = false);
+    }
   }
 
   @override
@@ -254,8 +274,10 @@ class _ResidentProfileScreenState extends State<ResidentProfileScreen> {
 
     try {
       await _repo.upsertMyProfile(complexId: complexId, building: b, unit: u);
+      await _myPage.markResidentVerificationRequested();
 
       if (!mounted) return;
+      setState(() => _verificationRequested = true);
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('인증 신청 완료 (승인 대기)')),
       );
@@ -272,6 +294,7 @@ class _ResidentProfileScreenState extends State<ResidentProfileScreen> {
   @override
   Widget build(BuildContext context) {
     final approved = _profile?.approved == true;
+    final pendingVerification = !approved && _verificationRequested;
 
     return Scaffold(
       backgroundColor: DanjiColors.background,
@@ -294,106 +317,99 @@ class _ResidentProfileScreenState extends State<ResidentProfileScreen> {
       ),
       body: Padding(
         padding: const EdgeInsets.all(16),
-        child: ListView(
-          children: [
-            const Text(
-              '초대코드와 동/호수를 등록하면 관리자가 확인 후 승인합니다.',
-              style: TextStyle(
-                fontWeight: FontWeight.w600,
-                color: DanjiColors.textPrimary,
-                height: 1.45,
+        child: _loadingProfileFlags
+            ? const Center(child: CircularProgressIndicator())
+            : ListView(
+                children: [
+                  if (approved) ...[
+                    const Card(
+                      child: ListTile(
+                        leading: Icon(Icons.verified, color: Colors.green),
+                        title: Text('승인 완료'),
+                        subtitle: Text('예약 화면으로 자동 이동합니다.'),
+                      ),
+                    ),
+                  ] else if (pendingVerification) ...[
+                    const ResidentVerificationPendingPanel(),
+                  ] else ...[
+                    const Text(
+                      '초대코드와 동/호수를 등록하면 관리자가 확인 후 승인합니다.',
+                      style: TextStyle(
+                        fontWeight: FontWeight.w600,
+                        color: DanjiColors.textPrimary,
+                        height: 1.45,
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    TextField(
+                      controller: _inviteCode,
+                      textCapitalization: TextCapitalization.characters,
+                      decoration: const InputDecoration(
+                        labelText: '초대코드',
+                        border: OutlineInputBorder(),
+                        hintText: '예) DANJI2026',
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+                    if (_lookingUp) ...[
+                      const LinearProgressIndicator(minHeight: 2),
+                      const SizedBox(height: 8),
+                    ],
+                    if (_lookupError != null)
+                      Text(
+                        _lookupError!,
+                        style: const TextStyle(color: DanjiColors.accentRed),
+                      ),
+                    if (_complexName != null)
+                      Card(
+                        child: ListTile(
+                          leading: const Icon(Icons.apartment),
+                          title: Text(_complexName!),
+                          subtitle: const Text('단지가 확인되었습니다.'),
+                        ),
+                      ),
+                    const SizedBox(height: 16),
+                    TextField(
+                      controller: _building,
+                      decoration: const InputDecoration(
+                        labelText: '동',
+                        border: OutlineInputBorder(),
+                        hintText: '예) 101',
+                      ),
+                      keyboardType: TextInputType.number,
+                    ),
+                    const SizedBox(height: 12),
+                    TextField(
+                      controller: _unit,
+                      decoration: const InputDecoration(
+                        labelText: '호',
+                        border: OutlineInputBorder(),
+                        hintText: '예) 1203',
+                      ),
+                      keyboardType: TextInputType.number,
+                    ),
+                    const SizedBox(height: 16),
+                    if (_error != null)
+                      Padding(
+                        padding: const EdgeInsets.only(bottom: 12),
+                        child: Text(
+                          _error!,
+                          style: const TextStyle(color: DanjiColors.accentRed),
+                        ),
+                      ),
+                    FilledButton(
+                      onPressed: _saving ? null : _apply,
+                      child: _saving
+                          ? const SizedBox(
+                              height: 18,
+                              width: 18,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            )
+                          : const Text('입주민 인증 신청하기'),
+                    ),
+                  ],
+                ],
               ),
-            ),
-            const SizedBox(height: 16),
-            TextField(
-              controller: _inviteCode,
-              enabled: !approved,
-              textCapitalization: TextCapitalization.characters,
-              decoration: const InputDecoration(
-                labelText: '초대코드',
-                border: OutlineInputBorder(),
-                hintText: '예) DANJI2026',
-              ),
-            ),
-            const SizedBox(height: 10),
-            if (_lookingUp) ...[
-              const LinearProgressIndicator(minHeight: 2),
-              const SizedBox(height: 8),
-            ],
-            if (_lookupError != null)
-              Text(
-                _lookupError!,
-                style: const TextStyle(color: DanjiColors.accentRed),
-              ),
-            if (_complexName != null)
-              Card(
-                child: ListTile(
-                  leading: const Icon(Icons.apartment),
-                  title: Text(_complexName!),
-                  subtitle: const Text('단지가 확인되었습니다.'),
-                ),
-              ),
-            const SizedBox(height: 16),
-            TextField(
-              controller: _building,
-              enabled: !approved,
-              decoration: const InputDecoration(
-                labelText: '동',
-                border: OutlineInputBorder(),
-                hintText: '예) 101',
-              ),
-              keyboardType: TextInputType.number,
-            ),
-            const SizedBox(height: 12),
-            TextField(
-              controller: _unit,
-              enabled: !approved,
-              decoration: const InputDecoration(
-                labelText: '호',
-                border: OutlineInputBorder(),
-                hintText: '예) 1203',
-              ),
-              keyboardType: TextInputType.number,
-            ),
-            const SizedBox(height: 16),
-            if (_error != null)
-              Padding(
-                padding: const EdgeInsets.only(bottom: 12),
-                child: Text(
-                  _error!,
-                  style: const TextStyle(color: DanjiColors.accentRed),
-                ),
-              ),
-            if (approved) ...[
-              const Card(
-                child: ListTile(
-                  leading: Icon(Icons.verified, color: Colors.green),
-                  title: Text('승인 완료'),
-                  subtitle: Text('예약 화면으로 자동 이동합니다.'),
-                ),
-              ),
-            ] else ...[
-              FilledButton(
-                onPressed: _saving ? null : _apply,
-                child: _saving
-                    ? const SizedBox(
-                        height: 18,
-                        width: 18,
-                        child: CircularProgressIndicator(strokeWidth: 2),
-                      )
-                    : const Text('입주민 인증 신청하기'),
-              ),
-              const SizedBox(height: 12),
-              const Card(
-                child: ListTile(
-                  leading: Icon(Icons.hourglass_top),
-                  title: Text('승인 대기'),
-                  subtitle: Text('관리자가 승인하면 예약 기능이 열립니다.'),
-                ),
-              ),
-            ],
-          ],
-        ),
       ),
     );
   }

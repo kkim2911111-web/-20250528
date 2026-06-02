@@ -25,6 +25,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
   final _won = NumberFormat('#,###');
 
   Future<BranchStats>? _statsFuture;
+  Future<List<AdminVehicleDetail>>? _vehiclesFuture;
 
   @override
   void initState() {
@@ -35,7 +36,16 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
   void _reload() {
     setState(() {
       _statsFuture = _admin.fetchBranchStats(widget.profile.complexId);
+      _vehiclesFuture = _admin.fetchVehicles(widget.profile.complexId);
     });
+  }
+
+  String _complexLabel(AdminVehicleDetail vehicle) {
+    final name = vehicle.complexName?.trim();
+    if (name != null && name.isNotEmpty) return name;
+    final fallback = widget.profile.complexName?.trim();
+    if (fallback != null && fallback.isNotEmpty) return fallback;
+    return '단지';
   }
 
   Future<void> _logout() async {
@@ -166,6 +176,89 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                   ),
                 ],
               ),
+            ),
+            const SizedBox(height: 28),
+            const Text(
+              '등록 차량',
+              style: TextStyle(
+                color: DanjiColors.textPrimary,
+                fontWeight: FontWeight.w800,
+                fontSize: 18,
+              ),
+            ),
+            const SizedBox(height: 12),
+            FutureBuilder<List<AdminVehicleDetail>>(
+              future: _vehiclesFuture,
+              builder: (context, snap) {
+                if (snap.connectionState == ConnectionState.waiting) {
+                  return const SectionCard(
+                    child: Padding(
+                      padding: EdgeInsets.all(20),
+                      child: Center(
+                        child: SizedBox(
+                          height: 24,
+                          width: 24,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        ),
+                      ),
+                    ),
+                  );
+                }
+                if (snap.hasError) {
+                  return SectionCard(
+                    child: Text(friendlyAdminError(snap.error!)),
+                  );
+                }
+                final list = snap.data ?? [];
+                if (list.isEmpty) {
+                  return const SectionCard(
+                    child: Text('등록된 차량이 없습니다. 아래에서 차량을 등록해주세요.'),
+                  );
+                }
+                return Column(
+                  children: [
+                    for (final v in list.take(5))
+                      Padding(
+                        padding: const EdgeInsets.only(bottom: 10),
+                        child: SectionCard(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 16,
+                            vertical: 10,
+                          ),
+                          child: ListTile(
+                            contentPadding: EdgeInsets.zero,
+                            title: Text(
+                              v.name,
+                              style: const TextStyle(
+                                fontWeight: FontWeight.w800,
+                              ),
+                            ),
+                            subtitle: Text(
+                              '${_complexLabel(v)} · ${v.vehicleType} · '
+                              '${v.carNumber ?? '번호 미등록'}',
+                            ),
+                            trailing: Icon(
+                              v.isAvailable
+                                  ? Icons.check_circle
+                                  : Icons.pause_circle,
+                              color: v.isAvailable
+                                  ? const Color(0xFF43A047)
+                                  : DanjiColors.textMuted,
+                            ),
+                          ),
+                        ),
+                      ),
+                    if (list.length > 5)
+                      Text(
+                        '외 ${list.length - 5}대 · 차량 관리에서 전체 보기',
+                        style: const TextStyle(
+                          color: DanjiColors.textSecondary,
+                          fontSize: 13,
+                        ),
+                      ),
+                  ],
+                );
+              },
             ),
             const SizedBox(height: 28),
             const Text(

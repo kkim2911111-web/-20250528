@@ -9,6 +9,14 @@ import '../../widgets/danji_app_bar.dart';
 import '../../widgets/section_card.dart';
 import 'admin_vehicle_form_screen.dart';
 
+String _vehicleComplexLabel(AdminVehicleDetail vehicle, StaffProfile profile) {
+  final name = vehicle.complexName?.trim();
+  if (name != null && name.isNotEmpty) return name;
+  final fallback = profile.complexName?.trim();
+  if (fallback != null && fallback.isNotEmpty) return fallback;
+  return '단지';
+}
+
 class AdminVehicleManageScreen extends StatefulWidget {
   final StaffProfile profile;
 
@@ -81,6 +89,7 @@ class _AdminVehicleManageScreenState extends State<AdminVehicleManageScreen> {
                     style: const TextStyle(fontWeight: FontWeight.w800),
                   ),
                   subtitle: Text(
+                    '${_vehicleComplexLabel(v, widget.profile)} · '
                     '${v.vehicleType} · ${v.fuelType ?? '-'} · '
                     '₩${_won.format(v.pricePerHour)}/h\n'
                     '${v.carNumber ?? '번호 미등록'} · ${v.parkingLocation ?? '주차 미등록'}',
@@ -167,8 +176,9 @@ class _AdminInsuranceScreenState extends State<AdminInsuranceScreen> {
                   title: Text(v.name, style: const TextStyle(fontWeight: FontWeight.w800)),
                   subtitle: Text(
                     missing
-                        ? '보험 미등록'
-                        : '${v.insuranceCompany}\n'
+                        ? '${_vehicleComplexLabel(v, widget.profile)} · 보험 미등록'
+                        : '${_vehicleComplexLabel(v, widget.profile)}\n'
+                            '${v.insuranceCompany}\n'
                             '증권 ${v.insurancePolicyNumber}\n'
                             '만료 ${v.insuranceExpiresAt != null ? _date.format(v.insuranceExpiresAt!) : '-'}',
                   ),
@@ -279,6 +289,7 @@ class _AdminPriceScreenState extends State<AdminPriceScreen> {
         AdminVehicleDetail(
           id: vehicle.id,
           complexId: vehicle.complexId,
+          complexName: vehicle.complexName,
           name: vehicle.name,
           vehicleType: vehicle.vehicleType,
           fuelType: vehicle.fuelType,
@@ -322,7 +333,10 @@ class _AdminPriceScreenState extends State<AdminPriceScreen> {
                 child: ListTile(
                   contentPadding: EdgeInsets.zero,
                   title: Text(v.name, style: const TextStyle(fontWeight: FontWeight.w800)),
-                  subtitle: Text('${v.vehicleType} · ${v.fuelType ?? '-'}'),
+                  subtitle: Text(
+                    '${_vehicleComplexLabel(v, widget.profile)} · '
+                    '${v.vehicleType} · ${v.fuelType ?? '-'}',
+                  ),
                   trailing: Text(
                     '₩${_won.format(v.pricePerHour)}/h',
                     style: const TextStyle(

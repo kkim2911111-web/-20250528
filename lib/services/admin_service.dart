@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../models/license_review_item.dart';
@@ -14,6 +15,8 @@ class AdminException implements Exception {
 
 class AdminService {
   final _staffRepo = StaffRepository();
+
+  static const invalidInviteCodeMessage = '초대코드가 올바르지 않습니다.';
 
   static const vehicleTypes = [
     '경차',
@@ -37,18 +40,79 @@ class AdminService {
 
   Future<StaffProfile?> fetchMyProfile() => _staffRepo.fetchMyProfile();
 
-  Future<void> registerStaff({
+  /// 관리자 가입 — RPC 후 staff_users 레코드 확인까지
+  Future<StaffProfile> registerStaff({
     required String displayName,
     required String adminInviteCode,
+    required String phone,
+    required String companyName,
   }) async {
-    try {
-      await supabase.rpc('register_staff_for_me', params: {
-        'p_display_name': displayName.trim(),
-        'p_admin_invite_code': adminInviteCode.trim(),
-      });
-    } on PostgrestException catch (e) {
-      throw AdminException(mapAdminPostgrestError(e));
+    final session = supabase.auth.currentSession;
+    final user = supabase.auth.currentUser;
+    if (session == null || user == null) {
+      throw const AdminException(
+        '로그인 세션이 없습니다. 이메일 인증을 완료한 뒤 다시 시도해주세요.',
+      );
     }
+
+    final normalizedCode = adminInviteCode
+        .trim()
+        .replaceAll(RegExp(r'\s+'), '')
+        .toUpperCase();
+
+    debugPrint(
+      '[register_staff_for_me] call uid=${user.id} '
+      'invite=$normalizedCode name=${displayName.trim()}',
+    );
+
+    try {
+      final rpcRaw = await supabase.rpc('register_staff_for_me', params: {
+        'p_display_name': displayName.trim(),
+        'p_admin_invite_code': normalizedCode,
+        'p_phone': phone.trim(),
+        'p_company_name': companyName.trim(),
+      });
+      debugPrint(
+        '[register_staff_for_me] RPC response: ${_rpcResultToMap(rpcRaw)}',
+      );
+
+      final staff = await _waitForStaffProfile();
+      debugPrint(
+        '[register_staff_for_me] staff_users ready: '
+        'user_id=${staff.userId} approved=${staff.approved}',
+      );
+      return staff;
+    } on PostgrestException catch (e) {
+      debugPrint(
+        '[register_staff_for_me] RPC failed: ${e.message} '
+        '(code=${e.code}, hint=${e.hint}, details=${e.details})',
+      );
+      throw AdminException(mapAdminPostgrestError(e));
+    } on AuthException catch (e) {
+      throw AdminException('인증 오류: ${e.message}');
+    }
+  }
+
+  Future<StaffProfile> _waitForStaffProfile() async {
+    const attempts = 12;
+    const delay = Duration(milliseconds: 300);
+
+    for (var i = 0; i < attempts; i++) {
+      final staff = await _staffRepo.fetchMyProfile();
+      if (staff != null) return staff;
+      if (i < attempts - 1) await Future.delayed(delay);
+    }
+
+    throw const AdminException(
+      '관리자 등록은 완료되었으나 staff_users 확인에 실패했습니다. '
+      '잠시 후 다시 로그인해주세요.',
+    );
+  }
+
+  static Map<String, dynamic> _rpcResultToMap(dynamic data) {
+    if (data is Map<String, dynamic>) return data;
+    if (data is Map) return Map<String, dynamic>.from(data);
+    return {'raw': data?.toString()};
   }
 
   Future<BranchStats> fetchBranchStats(String complexId) async {
@@ -109,7 +173,7 @@ class AdminService {
   Future<List<AdminVehicleDetail>> fetchVehicles(String complexId) async {
     final rows = await supabase
         .from('vehicles')
-        .select('*')
+        .select('*, complexes(name)')
         .eq('complex_id', complexId)
         .order('created_at', ascending: false);
 
@@ -119,18 +183,36 @@ class AdminService {
   }
 
   Future<AdminVehicleDetail> createVehicle(AdminVehicleDetail vehicle) async {
-    final row = await _upsertVehicleRow(
-      insert: vehicle.toInsertMap(),
-    );
+    final staffComplexId = await _requireStaffComplexId();
+    final insert = vehicle.toInsertMap();
+    insert['complex_id'] = staffComplexId;
+
+    final row = await _upsertVehicleRow(insert: insert);
     return AdminVehicleDetail.fromMap(Map<String, dynamic>.from(row));
   }
 
   Future<AdminVehicleDetail> updateVehicle(AdminVehicleDetail vehicle) async {
+    final staffComplexId = await _requireStaffComplexId();
+    final update = vehicle.toUpdateMap();
+    update['complex_id'] = staffComplexId;
+
     final row = await _upsertVehicleRow(
-      update: vehicle.toUpdateMap(),
+      update: update,
       vehicleId: vehicle.id,
     );
     return AdminVehicleDetail.fromMap(Map<String, dynamic>.from(row));
+  }
+
+  /// 차량 등록·수정 시 staff_users.complex_id 사용
+  Future<String> _requireStaffComplexId() async {
+    final staff = await _staffRepo.fetchMyProfile();
+    final id = staff?.complexId.trim();
+    if (staff == null || id == null || id.isEmpty) {
+      throw const AdminException(
+        '관리자 단지 정보를 찾을 수 없습니다. staff_users를 확인해주세요.',
+      );
+    }
+    return id;
   }
 
   Future<Map<String, dynamic>> _upsertVehicleRow({
@@ -342,16 +424,43 @@ class AdminService {
 
 String mapAdminPostgrestError(PostgrestException error) {
   final msg = error.message.toLowerCase();
-  if (msg.contains('admin_invite_not_found')) {
-    return '관리자 초대코드가 올바르지 않습니다.';
+  final details = error.details?.toString().toLowerCase() ?? '';
+
+  if (msg.contains('not_authenticated')) {
+    return '로그인 후에만 관리자 가입이 가능합니다. 이메일 인증을 확인해주세요.';
+  }
+  if (msg.contains('invalid_display_name')) {
+    return '관리자 이름을 입력해주세요.';
+  }
+  if (msg.contains('admin_invite_not_found') ||
+      msg.contains('invalid_admin_invite_code')) {
+    return AdminService.invalidInviteCodeMessage;
+  }
+  if (msg.contains('invalid_phone')) {
+    return '전화번호를 입력해주세요.';
+  }
+  if (msg.contains('invalid_company_name')) {
+    return '업체명을 입력해주세요.';
   }
   if (msg.contains('staff_already_registered')) {
     return '이미 등록된 관리자 계정입니다.';
   }
+  if (msg.contains('schema_missing') || msg.contains('column_missing')) {
+    return 'DB 스키마가 준비되지 않았습니다.\n'
+        'Supabase에서 create_admin_staff.sql 및 최신 migration을 적용해주세요.\n'
+        '(${error.message})';
+  }
+  if (msg.contains('permission denied') && msg.contains('auth')) {
+    return '관리자 가입 RPC 권한 오류입니다.\n'
+        'migration 20260604160000_fix_register_staff_for_me.sql 을 적용해주세요.';
+  }
   if (msg.contains('register_staff_for_me') &&
-      msg.contains('could not find')) {
+      (msg.contains('could not find') || msg.contains('pgrst202'))) {
     return '관리자 RPC가 설치되지 않았습니다.\n'
-        'Supabase에서 create_admin_staff.sql 을 실행해주세요.';
+        'Supabase에서 create_admin_staff.sql 및 migration을 실행해주세요.';
+  }
+  if (details.isNotEmpty && !msg.contains(error.message.toLowerCase())) {
+    return '${error.message}\n$details';
   }
   if (msg.contains('row-level security') || msg.contains('policy')) {
     return '관리자 승인이 필요합니다.\n'

@@ -41,8 +41,11 @@ class MyPageService {
       return MyPageProfile(
         email: user.email,
         linkedProviders: providers,
+        signupCompleted: false,
+        role: 'resident',
         residentApproved: resident.approved,
         hasResidentRegistration: resident.registered,
+        residentVerificationRequested: false,
         residentComplexName: resident.complexName,
         residentBuilding: resident.building,
         residentUnit: resident.unit,
@@ -61,12 +64,17 @@ class MyPageService {
       licenseExpiry: row['license_expiry']?.toString(),
       licenseVerified: row['license_verified'] == true,
       licenseRejectionReason: row['license_rejection_reason']?.toString(),
-      hasPaymentCard: row['payment_card_registered'] == true,
+      hasPaymentCard: row['payment_card_registered'] == true ||
+          (row['toss_billing_key']?.toString().isNotEmpty ?? false),
       cardLast4: row['payment_card_last4']?.toString(),
       points: (row['points'] as num?)?.toInt() ?? 0,
       couponCount: (row['coupon_count'] as num?)?.toInt() ?? 0,
+      signupCompleted: row['signup_completed'] == true,
+      role: row['role']?.toString() ?? 'resident',
       residentApproved: resident.approved,
       hasResidentRegistration: resident.registered,
+      residentVerificationRequested:
+          row['resident_verification_requested'] == true,
       residentComplexName: resident.complexName,
       residentBuilding: resident.building,
       residentUnit: resident.unit,
@@ -83,7 +91,7 @@ class MyPageService {
     try {
       final row = await supabase
           .from('residents')
-          .select('building, unit, approved, complexes(name)')
+          .select('complex_id, building, unit, approved')
           .eq('user_id', userId)
           .maybeSingle();
       if (row == null) {
@@ -95,10 +103,11 @@ class MyPageService {
           unit: null,
         );
       }
-      final complexRaw = row['complexes'];
-      final complexName = complexRaw is Map
-          ? complexRaw['name']?.toString()
-          : null;
+
+      final complexName = await _fetchComplexNameById(
+        row['complex_id']?.toString(),
+      );
+
       return (
         registered: true,
         approved: row['approved'] == true,
@@ -106,15 +115,33 @@ class MyPageService {
         building: row['building']?.toString(),
         unit: row['unit']?.toString(),
       );
-    } catch (_) {
-      return (
-        registered: false,
-        approved: false,
-        complexName: null,
-        building: null,
-        unit: null,
-      );
+    } on PostgrestException catch (e) {
+      if (e.code == '42P01' || e.code == '42703') {
+        return (
+          registered: false,
+          approved: false,
+          complexName: null,
+          building: null,
+          unit: null,
+        );
+      }
+      rethrow;
     }
+  }
+
+  /// residents.complex_id → complexes.name
+  Future<String?> _fetchComplexNameById(String? complexId) async {
+    if (complexId == null || complexId.isEmpty) return null;
+
+    final row = await supabase
+        .from('complexes')
+        .select('name')
+        .eq('id', complexId)
+        .maybeSingle();
+
+    final name = row?['name']?.toString().trim();
+    if (name == null || name.isEmpty) return null;
+    return name;
   }
 
   Future<void> saveBasicInfo({
@@ -150,6 +177,129 @@ class MyPageService {
       'payment_card_registered': true,
       'payment_card_last4': cardLast4.trim(),
     });
+  }
+
+  Future<String?> getUserRole() async {
+    final user = supabase.auth.currentUser;
+    if (user == null) return null;
+
+    try {
+      final row = await supabase
+          .from('user_profiles')
+          .select('role')
+          .eq('user_id', user.id)
+          .maybeSingle();
+      return row?['role']?.toString();
+    } on PostgrestException catch (e) {
+      if (e.code == '42P01' || e.code == '42703') return null;
+      rethrow;
+    }
+  }
+
+  Future<bool> isAdminUser() async => (await getUserRole()) == 'admin';
+
+  Future<void> markAdminProfile({required String displayName}) async {
+    final user = supabase.auth.currentUser;
+    if (user == null) throw const AuthException('로그인이 필요합니다.');
+
+    await _upsert({
+      'role': 'admin',
+      'full_name': displayName.trim(),
+      'email': user.email,
+      'signup_completed': true,
+    });
+  }
+
+  Future<bool> isResidentVerificationRequested() async {
+    final user = supabase.auth.currentUser;
+    if (user == null) return false;
+
+    try {
+      final row = await supabase
+          .from('user_profiles')
+          .select('resident_verification_requested')
+          .eq('user_id', user.id)
+          .maybeSingle();
+      return row?['resident_verification_requested'] == true;
+    } on PostgrestException catch (e) {
+      if (e.code == '42P01' || e.code == '42703') return false;
+      rethrow;
+    }
+  }
+
+  Future<void> markResidentVerificationRequested() async {
+    await _upsert({'resident_verification_requested': true});
+  }
+
+  Future<bool> hasUserProfileRow() async {
+    final user = supabase.auth.currentUser;
+    if (user == null) return false;
+
+    try {
+      final row = await supabase
+          .from('user_profiles')
+          .select('user_id')
+          .eq('user_id', user.id)
+          .maybeSingle();
+      return row != null;
+    } on PostgrestException catch (e) {
+      if (e.code == '42P01') return false;
+      rethrow;
+    }
+  }
+
+  /// 온보딩 미완료 + step 0 (새로고침 시 이메일 회원가입 화면으로)
+  Future<bool> shouldShowEmailSignUpEntry() async {
+    if (await isSignupCompleted()) return false;
+    final step = await getOnboardingStep() ?? 0;
+    if (step != 0) return false;
+    return hasUserProfileRow();
+  }
+
+  Future<bool> isSignupCompleted() async {
+    final user = supabase.auth.currentUser;
+    if (user == null) return false;
+
+    try {
+      final row = await supabase
+          .from('user_profiles')
+          .select('signup_completed')
+          .eq('user_id', user.id)
+          .maybeSingle();
+      return row?['signup_completed'] == true;
+    } on PostgrestException catch (e) {
+      if (e.code == '42P01') return false;
+      rethrow;
+    }
+  }
+
+  Future<void> markSignupComplete() async {
+    await _upsert({
+      'signup_completed': true,
+      'onboarding_step': 4,
+    });
+  }
+
+  Future<int?> getOnboardingStep() async {
+    final user = supabase.auth.currentUser;
+    if (user == null) return null;
+
+    try {
+      final row = await supabase
+          .from('user_profiles')
+          .select('onboarding_step')
+          .eq('user_id', user.id)
+          .maybeSingle();
+      return (row?['onboarding_step'] as num?)?.toInt();
+    } on PostgrestException catch (e) {
+      if (e.code == '42P01' || e.code == '42703') return null;
+      rethrow;
+    }
+  }
+
+  Future<void> saveOnboardingStep(int step) async {
+    final clamped = step.clamp(0, 4);
+    await _upsert({'onboarding_step': clamped});
   }
 
   Future<void> _upsert(Map<String, dynamic> fields) async {

@@ -62,8 +62,37 @@
     }
   }
 
+  async function requestBillingAuth(options) {
+    if (typeof TossPayments === 'undefined') {
+      throw new Error('TossPayments SDK가 로드되지 않았습니다.');
+    }
+    if (!options.clientKey) {
+      throw new Error('TOSS_CLIENT_KEY가 설정되지 않았습니다.');
+    }
+
+    var clientKey = options.clientKey;
+    var customerKey = options.customerKey;
+    var customerEmail = options.customerEmail;
+    var customerName = options.customerName;
+    var successUrl =
+      options.successUrl || getOrigin() + '/payment/billing-success';
+    var failUrl = options.failUrl || getOrigin() + '/payment/billing-fail';
+
+    var tossPayments = TossPayments(clientKey);
+    var payment = tossPayments.payment({ customerKey: customerKey });
+
+    await payment.requestBillingAuth({
+      method: 'CARD',
+      successUrl: successUrl,
+      failUrl: failUrl,
+      customerEmail: customerEmail,
+      customerName: customerName,
+    });
+  }
+
   window.DanjiToss = {
     requestPayment: requestPayment,
+    requestBillingAuth: requestBillingAuth,
     getOrigin: getOrigin,
   };
 })();

@@ -5,6 +5,8 @@ class StaffProfile {
   final String role;
   final bool approved;
   final String? complexName;
+  final String? phone;
+  final String? companyName;
 
   const StaffProfile({
     required this.userId,
@@ -13,6 +15,8 @@ class StaffProfile {
     required this.role,
     required this.approved,
     this.complexName,
+    this.phone,
+    this.companyName,
   });
 
   bool get isApproved => approved;
@@ -29,6 +33,8 @@ class StaffProfile {
       role: map['role']?.toString() ?? 'branch_admin',
       approved: map['approved'] == true,
       complexName: complexMap?['name']?.toString(),
+      phone: map['phone']?.toString(),
+      companyName: map['company_name']?.toString(),
     );
   }
 }
@@ -60,6 +66,7 @@ class BranchStats {
 class AdminVehicleDetail {
   final String id;
   final String complexId;
+  final String? complexName;
   final String name;
   final String vehicleType;
   final String? fuelType;
@@ -77,6 +84,7 @@ class AdminVehicleDetail {
   const AdminVehicleDetail({
     required this.id,
     required this.complexId,
+    this.complexName,
     required this.name,
     required this.vehicleType,
     this.fuelType,
@@ -93,9 +101,14 @@ class AdminVehicleDetail {
   });
 
   factory AdminVehicleDetail.fromMap(Map<String, dynamic> map) {
+    final complexRaw = map['complexes'];
+    final complexMap =
+        complexRaw is Map ? Map<String, dynamic>.from(complexRaw) : null;
+
     return AdminVehicleDetail(
       id: map['id'].toString(),
       complexId: map['complex_id']?.toString() ?? '',
+      complexName: complexMap?['name']?.toString(),
       name: map['model_name']?.toString() ??
           map['name']?.toString() ??
           '차량',
@@ -141,6 +154,7 @@ class AdminVehicleDetail {
 
   Map<String, dynamic> toUpdateMap() {
     return {
+      'complex_id': complexId.isNotEmpty ? complexId : null,
       'model_name': name,
       'vehicle_type': vehicleType,
       'fuel_type': fuelType,

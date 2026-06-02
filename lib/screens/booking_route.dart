@@ -3,8 +3,7 @@ import 'package:flutter/material.dart';
 import '../models/staff_profile.dart';
 import '../repositories/staff_repository.dart';
 import '../resident_profile_screen.dart';
-import '../screens/admin/admin_dashboard_screen.dart';
-import '../screens/admin/admin_pending_screen.dart';
+import '../routing/admin_staff_flow.dart';
 import '../screens/booking_screen.dart';
 import '../screens/login_screen.dart';
 import '../services/my_page_service.dart';
@@ -26,10 +25,7 @@ class BookingRoute extends StatelessWidget {
       builder: (context, staffSnap) {
         final staff = staffSnap.data;
         if (staff != null) {
-          if (!staff.isApproved) {
-            return AdminPendingScreen(profile: staff);
-          }
-          return AdminDashboardScreen(profile: staff);
+          return AdminStaffFlow(initialStaff: staff);
         }
 
         if (staffSnap.connectionState == ConnectionState.waiting &&

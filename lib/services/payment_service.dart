@@ -9,6 +9,7 @@ import '../models/reservation.dart';
 import '../models/vehicle.dart';
 import '../screens/payment_fail_screen.dart';
 import '../screens/payment_success_screen.dart';
+import '../screens/toss_billing_webview_screen.dart';
 import '../screens/toss_payment_webview_screen.dart';
 import '../supabase_client.dart';
 import '../utils/network_retry.dart';
@@ -287,6 +288,74 @@ class PaymentService {
       prepared: prepared,
       method: method,
     );
+  }
+
+  /// 온보딩 — 빌링키 발급 (Edge Function, 실결제 없음)
+  Future<void> issueSignupBillingKey({
+    required String authKey,
+    required String customerKey,
+  }) async {
+    await _invokeFunction('billing-key-issue', {
+      'authKey': authKey,
+      'customerKey': customerKey,
+    });
+  }
+
+  /// 온보딩 결제카드 등록 — 토스 빌링키 발급만. 성공 시 true, 취소/실패 시 false.
+  Future<bool> registerSignupBillingKey(BuildContext context) async {
+    if (!PaymentConfig.isConfigured) {
+      throw StateError('TOSS_CLIENT_KEY가 필요합니다.');
+    }
+
+    final user = supabase.auth.currentUser;
+    if (user == null) {
+      throw const AuthException('로그인이 필요합니다.');
+    }
+    final customerKey = user.id;
+
+    if (kIsWeb) {
+      if (!_toss.isReady) {
+        throw StateError(
+          '토스페이먼츠 SDK가 로드되지 않았습니다. 페이지를 새로고침 후 다시 시도해주세요.',
+        );
+      }
+      await _toss.requestBillingAuth(
+        customerKey: customerKey,
+        customerEmail: user.email,
+        customerName: user.email?.split('@').first,
+      );
+      return false;
+    }
+
+    final params = await Navigator.of(context).push<Map<String, String>>(
+      MaterialPageRoute(
+        fullscreenDialog: true,
+        builder: (_) => TossBillingWebViewScreen(
+          customerKey: customerKey,
+          customerEmail: user.email,
+          customerName: user.email?.split('@').first,
+        ),
+      ),
+    );
+
+    if (!context.mounted) return false;
+    if (params == null || params['_route'] == 'fail') {
+      return false;
+    }
+
+    final authKey = params['authKey']?.trim();
+    if (authKey == null || authKey.isEmpty) {
+      throw StateError('카드 등록 승인 정보를 받지 못했습니다.');
+    }
+
+    final returnedCustomerKey =
+        params['customerKey']?.trim() ?? customerKey;
+
+    await issueSignupBillingKey(
+      authKey: authKey,
+      customerKey: returnedCustomerKey,
+    );
+    return true;
   }
 
   /// API 호출 전 — DB에 이미 저장된 결제/예약인지 조회 (네트워크 승인 생략용)

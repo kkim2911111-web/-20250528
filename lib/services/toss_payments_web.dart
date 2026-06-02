@@ -58,6 +58,41 @@ class TossPaymentsLauncher {
     await js_util.promiseToFuture(promise);
   }
 
+  /// 빌링키 발급 (실결제 없음) — 성공 시 브라우저가 successUrl로 이동
+  Future<void> requestBillingAuth({
+    required String customerKey,
+    String? customerEmail,
+    String? customerName,
+  }) async {
+    if (!PaymentConfig.isConfigured) {
+      throw StateError(
+        'TOSS_CLIENT_KEY가 설정되지 않았습니다.\n'
+        'flutter run -d chrome --dart-define=TOSS_CLIENT_KEY=test_ck_...',
+      );
+    }
+
+    final danjiToss = _danjiToss;
+    if (danjiToss == null) {
+      throw StateError('Toss 브릿지(DanjiToss)가 로드되지 않았습니다.');
+    }
+
+    final options = <String, dynamic>{
+      'clientKey': PaymentConfig.tossClientKey,
+      'customerKey': customerKey,
+      'successUrl': '$origin/payment/billing-success',
+      'failUrl': '$origin/payment/billing-fail',
+      if (customerEmail != null) 'customerEmail': customerEmail,
+      if (customerName != null) 'customerName': customerName,
+    };
+
+    final promise = js_util.callMethod(
+      danjiToss,
+      'requestBillingAuth',
+      [js_util.jsify(options)],
+    );
+    await js_util.promiseToFuture(promise);
+  }
+
   String get origin {
     final danjiToss = _danjiToss;
     if (danjiToss == null) return '';

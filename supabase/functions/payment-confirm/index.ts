@@ -91,6 +91,49 @@ Deno.serve(async (req) => {
       return jsonResponse({ error: '결제 금액이 일치하지 않습니다.' }, 400);
     }
 
+    if (order.vehicle_id === 'signup_card') {
+      const alreadyApproved =
+        isPaymentOrderPaid(order.status) ||
+        order.has_payment_key === true ||
+        (order.payment_key != null && String(order.payment_key).length > 0);
+
+      let tossResult: unknown = null;
+      if (!alreadyApproved) {
+        tossResult = await confirmTossPayment({
+          paymentKey,
+          orderId,
+          amount: Number(amount),
+        });
+        await admin
+          .from('payment_orders')
+          .update(paymentOrderPaidUpdate(paymentKey))
+          .eq('order_id', orderId);
+      }
+
+      const cardLast4 =
+        (tossResult as { card?: { number?: string } })?.card?.number
+          ?.toString()
+          .slice(-4) ?? '0000';
+
+      await admin.from('user_profiles').upsert(
+        {
+          user_id: user.id,
+          payment_card_registered: true,
+          payment_card_last4: cardLast4,
+          updated_at: new Date().toISOString(),
+        },
+        { onConflict: 'user_id' },
+      );
+
+      return jsonResponse({
+        ok: true,
+        signupCard: true,
+        orderId,
+        paymentKey,
+        payment: tossResult,
+      });
+    }
+
     if (
       await hasOverlap(
         admin,

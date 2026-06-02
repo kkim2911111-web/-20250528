@@ -1,14 +1,54 @@
 import 'package:flutter/material.dart';
 
 import '../models/my_page_profile.dart';
+import '../services/my_page_service.dart';
 import '../theme/danji_colors.dart';
 import '../widgets/danji_app_bar.dart';
 
 /// 입주민 인증 정보 — 읽기 전용
-class ResidentInfoReadOnlyScreen extends StatelessWidget {
+class ResidentInfoReadOnlyScreen extends StatefulWidget {
   final MyPageProfile profile;
 
   const ResidentInfoReadOnlyScreen({super.key, required this.profile});
+
+  @override
+  State<ResidentInfoReadOnlyScreen> createState() =>
+      _ResidentInfoReadOnlyScreenState();
+}
+
+class _ResidentInfoReadOnlyScreenState extends State<ResidentInfoReadOnlyScreen> {
+  final _myPage = MyPageService();
+  late MyPageProfile _profile;
+  var _loading = true;
+  Object? _loadError;
+
+  @override
+  void initState() {
+    super.initState();
+    _profile = widget.profile;
+    _refresh();
+  }
+
+  Future<void> _refresh() async {
+    setState(() {
+      _loading = true;
+      _loadError = null;
+    });
+    try {
+      final fresh = await _myPage.fetchProfile();
+      if (!mounted) return;
+      setState(() {
+        _profile = fresh;
+        _loading = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _loadError = e;
+        _loading = false;
+      });
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -19,43 +59,68 @@ class ResidentInfoReadOnlyScreen extends StatelessWidget {
         showBack: true,
         light: true,
       ),
-      body: ListView(
-        padding: const EdgeInsets.fromLTRB(24, 12, 24, 32),
-        children: [
-          const Text(
-            '입주민 인증 정보는 가입 시 등록되며 수정할 수 없습니다.\n'
-            '변경이 필요하면 고객센터로 문의해주세요.',
-            style: TextStyle(
-              color: DanjiColors.textSecondary,
-              height: 1.45,
-              fontSize: 13,
-            ),
-          ),
-          const SizedBox(height: 20),
-          _ReadOnlyField(
-            label: '아파트',
-            value: profile.residentComplexName ?? '-',
-          ),
-          _ReadOnlyField(
-            label: '동/호',
-            value: profile.dongHoLabel ?? '-',
-          ),
-          _ReadOnlyField(
-            label: '인증 상태',
-            value: profile.isResidentComplete
-                ? '인증완료'
-                : profile.hasResidentRegistration
-                    ? '승인대기'
-                    : '미등록',
-            valueColor: profile.isResidentComplete
-                ? DanjiColors.buttonBlue
-                : profile.hasResidentRegistration
-                    ? DanjiColors.accentRed
-                    : DanjiColors.textMuted,
-          ),
-        ],
-      ),
+      body: _loading
+          ? const Center(child: CircularProgressIndicator())
+          : _loadError != null
+              ? Center(
+                  child: Padding(
+                    padding: const EdgeInsets.all(24),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text('정보를 불러오지 못했습니다.\n$_loadError'),
+                        const SizedBox(height: 16),
+                        FilledButton(
+                          onPressed: _refresh,
+                          child: const Text('다시 시도'),
+                        ),
+                      ],
+                    ),
+                  ),
+                )
+              : ListView(
+                  padding: const EdgeInsets.fromLTRB(24, 12, 24, 32),
+                  children: [
+                    const Text(
+                      '입주민 인증 정보는 가입 시 등록되며 수정할 수 없습니다.\n'
+                      '변경이 필요하면 고객센터로 문의해주세요.',
+                      style: TextStyle(
+                        color: DanjiColors.textSecondary,
+                        height: 1.45,
+                        fontSize: 13,
+                      ),
+                    ),
+                    const SizedBox(height: 20),
+                    _ReadOnlyField(
+                      label: '아파트',
+                      value: _apartmentLabel(_profile),
+                    ),
+                    _ReadOnlyField(
+                      label: '동/호',
+                      value: _profile.dongHoLabel ?? '-',
+                    ),
+                    _ReadOnlyField(
+                      label: '인증 상태',
+                      value: _profile.isResidentComplete
+                          ? '인증완료'
+                          : _profile.hasResidentRegistration
+                              ? '승인대기'
+                              : '미등록',
+                      valueColor: _profile.isResidentComplete
+                          ? DanjiColors.buttonBlue
+                          : _profile.hasResidentRegistration
+                              ? DanjiColors.accentRed
+                              : DanjiColors.textMuted,
+                    ),
+                  ],
+                ),
     );
+  }
+
+  static String _apartmentLabel(MyPageProfile profile) {
+    final name = profile.residentComplexName?.trim();
+    if (name != null && name.isNotEmpty) return name;
+    return '-';
   }
 }
 

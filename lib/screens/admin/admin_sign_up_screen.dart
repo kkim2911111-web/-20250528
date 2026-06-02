@@ -1,16 +1,21 @@
 import 'package:flutter/material.dart';
 
-import '../../models/admin_messages.dart';
 import '../../services/admin_service.dart';
 import '../../services/auth_service.dart';
+import '../../supabase_client.dart';
 import '../../theme/danji_colors.dart';
 import '../../theme/danji_theme.dart';
 import '../../widgets/danji_app_bar.dart';
 
 class AdminSignUpScreen extends StatefulWidget {
   final VoidCallback? onGoLogin;
+  final VoidCallback? onRegistrationComplete;
 
-  const AdminSignUpScreen({super.key, this.onGoLogin});
+  const AdminSignUpScreen({
+    super.key,
+    this.onGoLogin,
+    this.onRegistrationComplete,
+  });
 
   @override
   State<AdminSignUpScreen> createState() => _AdminSignUpScreenState();
@@ -19,29 +24,47 @@ class AdminSignUpScreen extends StatefulWidget {
 class _AdminSignUpScreenState extends State<AdminSignUpScreen> {
   final _auth = AuthService();
   final _admin = AdminService();
-  final _name = TextEditingController();
   final _email = TextEditingController();
   final _password = TextEditingController();
+  final _name = TextEditingController();
+  final _phone = TextEditingController();
+  final _company = TextEditingController();
   final _inviteCode = TextEditingController(text: 'ADMIN-DANJI2026');
   bool _loading = false;
   String? _error;
+  bool _accountCreatedAwaitingStaff = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _auth.beginAdminSignUpFlow();
+  }
 
   @override
   void dispose() {
-    _name.dispose();
     _email.dispose();
     _password.dispose();
+    _name.dispose();
+    _phone.dispose();
+    _company.dispose();
     _inviteCode.dispose();
     super.dispose();
   }
 
   Future<void> _submit() async {
-    final name = _name.text.trim();
     final email = _email.text.trim();
     final password = _password.text;
+    final name = _name.text.trim();
+    final phone = _phone.text.trim();
+    final company = _company.text.trim();
     final code = _inviteCode.text.trim();
 
-    if (name.isEmpty || email.isEmpty || password.isEmpty || code.isEmpty) {
+    if (email.isEmpty ||
+        password.isEmpty ||
+        name.isEmpty ||
+        phone.isEmpty ||
+        company.isEmpty ||
+        code.isEmpty) {
       setState(() => _error = '모든 항목을 입력해주세요.');
       return;
     }
@@ -54,31 +77,52 @@ class _AdminSignUpScreenState extends State<AdminSignUpScreen> {
       _loading = true;
       _error = null;
     });
+    _auth.beginAdminSignUpFlow();
 
     try {
-      final signedIn = await _auth.signUpWithEmail(
-        email: email,
-        password: password,
-      );
-      if (!signedIn) {
-        if (!mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text(emailSignUpConfirmationMessage)),
+      final sessionUser = supabase.auth.currentUser;
+      final alreadySignedIn = sessionUser != null;
+
+      if (!alreadySignedIn) {
+        final signedIn = await _auth.signUpWithEmail(
+          email: email,
+          password: password,
         );
-        Navigator.of(context).pop();
+        if (!signedIn) {
+          if (!mounted) return;
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text(emailSignUpConfirmationMessage)),
+          );
+          Navigator.of(context).pop();
+          return;
+        }
+      } else if (sessionUser.email?.trim().toLowerCase() !=
+          email.toLowerCase()) {
+        setState(
+          () => _error = '다른 계정으로 로그인되어 있습니다. 로그아웃 후 다시 시도해주세요.',
+        );
         return;
+      }
+
+      if (mounted) {
+        setState(() => _accountCreatedAwaitingStaff = true);
       }
 
       await _admin.registerStaff(
         displayName: name,
         adminInviteCode: code,
+        phone: phone,
+        companyName: company,
       );
 
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text(AdminMessages.pendingApproval)),
-      );
-      Navigator.of(context).popUntil((route) => route.isFirst);
+      _auth.endAdminSignUpFlow();
+      widget.onRegistrationComplete?.call();
+      if (widget.onRegistrationComplete == null) {
+        Navigator.of(context).popUntil((route) => route.isFirst);
+      }
+    } on AdminException catch (e) {
+      setState(() => _error = e.message);
     } catch (e) {
       setState(() => _error = friendlyAdminError(e));
     } finally {
@@ -107,20 +151,27 @@ class _AdminSignUpScreenState extends State<AdminSignUpScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
+                    if (_accountCreatedAwaitingStaff) ...[
+                      const Text(
+                        '계정은 생성되었습니다. 초대코드를 확인한 뒤 다시 시도해주세요.',
+                        style: TextStyle(
+                          color: DanjiColors.accentRed,
+                          height: 1.5,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                    ],
                     const Text(
-                      '지점 관리자 계정을 생성합니다.\n'
-                      '가입 후 운영팀 승인이 완료되어야 차량 등록·관리가 가능합니다.',
+                      '지점 관리자 전용 가입입니다.\n'
+                      '가입 후 staff_users에 등록되며, 승인 전까지는 입주민 온보딩(5단계)으로 '
+                      '이동하지 않습니다.',
                       style: TextStyle(
                         color: DanjiColors.textSecondary,
                         height: 1.5,
                       ),
                     ),
                     const SizedBox(height: 16),
-                    TextField(
-                      controller: _name,
-                      decoration: _dec('관리자 이름'),
-                    ),
-                    const SizedBox(height: 12),
                     TextField(
                       controller: _email,
                       keyboardType: TextInputType.emailAddress,
@@ -134,8 +185,24 @@ class _AdminSignUpScreenState extends State<AdminSignUpScreen> {
                     ),
                     const SizedBox(height: 12),
                     TextField(
+                      controller: _name,
+                      decoration: _dec('이름'),
+                    ),
+                    const SizedBox(height: 12),
+                    TextField(
+                      controller: _phone,
+                      keyboardType: TextInputType.phone,
+                      decoration: _dec('전화번호'),
+                    ),
+                    const SizedBox(height: 12),
+                    TextField(
+                      controller: _company,
+                      decoration: _dec('업체명'),
+                    ),
+                    const SizedBox(height: 12),
+                    TextField(
                       controller: _inviteCode,
-                      decoration: _dec('관리자 초대코드'),
+                      decoration: _dec('초대코드'),
                     ),
                     const SizedBox(height: 14),
                     if (_error != null)
@@ -164,6 +231,7 @@ class _AdminSignUpScreenState extends State<AdminSignUpScreen> {
                       onPressed: _loading
                           ? null
                           : () {
+                              _auth.endAdminSignUpFlow();
                               if (widget.onGoLogin != null) {
                                 widget.onGoLogin!();
                                 return;

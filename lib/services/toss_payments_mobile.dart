@@ -18,5 +18,15 @@ class TossPaymentsLauncher {
     );
   }
 
+  Future<void> requestBillingAuth({
+    required String customerKey,
+    String? customerEmail,
+    String? customerName,
+  }) {
+    throw UnsupportedError(
+      '모바일 빌링키 발급은 TossBillingWebViewScreen을 사용하세요.',
+    );
+  }
+
   String get origin => PaymentConfig.mobilePaymentOrigin;
 }

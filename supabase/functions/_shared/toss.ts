@@ -83,6 +83,46 @@ export async function confirmTossPayment(params: {
   return data;
 }
 
+/** 빌링키 발급 — authKey 교환 (실결제 없음) */
+export async function issueTossBillingKey(params: {
+  authKey: string;
+  customerKey: string;
+}) {
+  const auth = getTossAuth();
+  const url = `${TOSS_API}/billing/authorizations/issue`;
+  const body = JSON.stringify({
+    authKey: params.authKey,
+    customerKey: params.customerKey,
+  });
+
+  console.log('[toss] POST', url, 'billing issue');
+
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: {
+      Authorization: `Basic ${auth}`,
+      'Content-Type': 'application/json',
+    },
+    body,
+  });
+
+  const data = await res.json();
+  console.log('[toss] billing issue response:', res.status, JSON.stringify(data));
+  if (!res.ok) {
+    const err = new Error(data.message || '빌링키 발급 실패') as Error & {
+      code?: string;
+    };
+    err.code = data.code;
+    throw err;
+  }
+
+  return data as {
+    billingKey: string;
+    card?: { number?: string; cardType?: string };
+    method?: string;
+  };
+}
+
 export async function cancelTossPayment(params: {
   paymentKey: string;
   cancelReason: string;

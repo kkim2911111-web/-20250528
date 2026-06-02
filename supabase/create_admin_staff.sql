@@ -27,6 +27,8 @@ create table if not exists public.staff_users (
 );
 
 alter table public.staff_users add column if not exists approved boolean not null default false;
+alter table public.staff_users add column if not exists phone text;
+alter table public.staff_users add column if not exists company_name text;
 
 create index if not exists staff_users_complex_id_idx
   on public.staff_users (complex_id);
@@ -56,6 +58,7 @@ with check (
 );
 
 -- vehicles 확장
+alter table public.vehicles add column if not exists complex_id uuid references public.complexes(id) on delete restrict;
 alter table public.vehicles add column if not exists fuel_type text;
 alter table public.vehicles add column if not exists insurance_company text;
 alter table public.vehicles add column if not exists insurance_policy_number text;
@@ -124,10 +127,23 @@ with check (
   )
 );
 
--- 관리자 회원가입 RPC
+-- 초대코드 정규화 (공백 제거 + 대문자)
+create or replace function public.normalize_admin_invite_code(p_code text)
+returns text
+language sql
+immutable
+as $$
+  select upper(regexp_replace(trim(coalesce(p_code, '')), '\s+', '', 'g'));
+$$;
+
+-- 관리자 회원가입 RPC (staff_users만 — 입주민 user_profiles 온보딩과 분리)
+drop function if exists public.register_staff_for_me(text, text);
+
 create or replace function public.register_staff_for_me(
   p_display_name text,
-  p_admin_invite_code text
+  p_admin_invite_code text,
+  p_phone text default null,
+  p_company_name text default null
 )
 returns jsonb
 language plpgsql
@@ -138,8 +154,10 @@ declare
   v_user uuid := auth.uid();
   v_complex_id uuid;
   v_complex_name text;
-  v_code text := nullif(trim(p_admin_invite_code), '');
+  v_code text;
   v_name text := nullif(trim(p_display_name), '');
+  v_phone text := nullif(trim(p_phone), '');
+  v_company text := nullif(trim(p_company_name), '');
 begin
   if v_user is null then
     raise exception 'not_authenticated';
@@ -149,7 +167,16 @@ begin
     raise exception 'invalid_display_name';
   end if;
 
-  if v_code is null then
+  if v_phone is null then
+    raise exception 'invalid_phone';
+  end if;
+
+  if v_company is null then
+    raise exception 'invalid_company_name';
+  end if;
+
+  v_code := public.normalize_admin_invite_code(p_admin_invite_code);
+  if v_code is null or v_code = '' then
     raise exception 'invalid_admin_invite_code';
   end if;
 
@@ -160,28 +187,33 @@ begin
   select c.id, c.name
   into v_complex_id, v_complex_name
   from public.complexes c
-  where upper(c.admin_invite_code) = upper(v_code)
+  where public.normalize_admin_invite_code(c.admin_invite_code) = v_code
   limit 1;
 
   if v_complex_id is null then
     raise exception 'admin_invite_not_found';
   end if;
 
-  insert into public.staff_users (user_id, complex_id, display_name, approved)
-  values (v_user, v_complex_id, v_name, false);
+  insert into public.staff_users (
+    user_id, complex_id, display_name, phone, company_name, approved
+  )
+  values (v_user, v_complex_id, v_name, v_phone, v_company, false);
 
   return jsonb_build_object(
     'userId', v_user,
     'complexId', v_complex_id,
     'complexName', v_complex_name,
     'displayName', v_name,
-    'approved', false
+    'phone', v_phone,
+    'companyName', v_company,
+    'approved', false,
+    'matchedInviteCode', v_code
   );
 end;
 $$;
 
-revoke all on function public.register_staff_for_me(text, text) from public;
-grant execute on function public.register_staff_for_me(text, text) to authenticated;
+revoke all on function public.register_staff_for_me(text, text, text, text) from public;
+grant execute on function public.register_staff_for_me(text, text, text, text) to authenticated;
 
 -- 반납 검수 완료
 create or replace function public.complete_return_inspection_for_staff(

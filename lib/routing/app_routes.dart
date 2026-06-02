@@ -3,18 +3,14 @@ import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../screens/booking_route.dart';
+import '../screens/billing_auth_result_screen.dart';
 import '../screens/payment_fail_screen.dart';
 import '../screens/payment_success_screen.dart';
-import '../screens/main_shell.dart';
-import '../resident_profile_screen.dart';
-import '../screens/admin/admin_dashboard_screen.dart';
-import '../screens/admin/admin_pending_screen.dart';
 import '../screens/admin/admin_sign_up_screen.dart';
 import '../screens/login_screen.dart';
 import '../screens/splash_screen.dart';
-import '../repositories/staff_repository.dart';
-import '../models/staff_profile.dart';
 import '../services/auth_service.dart';
+import 'role_gate.dart';
 import '../services/fcm_service.dart';
 import '../supabase_client.dart';
 
@@ -64,6 +60,12 @@ bool isPaymentFailPath(String? routeName) =>
 bool isPaymentRoute(String? routeName) =>
     isPaymentSuccessPath(routeName) || isPaymentFailPath(routeName);
 
+bool isBillingSuccessPath(String? routeName) =>
+    routePath(routeName).endsWith('/payment/billing-success');
+
+bool isBillingFailPath(String? routeName) =>
+    routePath(routeName).endsWith('/payment/billing-fail');
+
 /// orderId, paymentKey, amount — 스냅샷(결제 직후 URL) + Uri.base.queryParameters 병합
 Map<String, String> paymentQueryParams([String? routeName]) {
   final merged = <String, String>{};
@@ -101,6 +103,12 @@ Widget resolveInitialHomeWidget() {
     if (isPaymentFailPath(path)) {
       return PaymentFailScreen(queryParams: paymentQueryParams());
     }
+    if (isBillingSuccessPath(path)) {
+      return BillingAuthSuccessScreen(queryParams: paymentQueryParams());
+    }
+    if (isBillingFailPath(path)) {
+      return BillingAuthFailScreen(queryParams: paymentQueryParams());
+    }
   }
   return const AppEntry();
 }
@@ -136,6 +144,28 @@ Route<dynamic> onGenerateRoute(RouteSettings settings) {
   }
   if (path.endsWith('/payment/fail')) {
     return buildPaymentFailRoute(settings.name);
+  }
+  if (path.endsWith('/payment/billing-success')) {
+    return MaterialPageRoute(
+      settings: RouteSettings(
+        name: '/payment/billing-success',
+        arguments: paymentQueryParams(settings.name),
+      ),
+      builder: (_) => BillingAuthSuccessScreen(
+        queryParams: paymentQueryParams(settings.name),
+      ),
+    );
+  }
+  if (path.endsWith('/payment/billing-fail')) {
+    return MaterialPageRoute(
+      settings: RouteSettings(
+        name: '/payment/billing-fail',
+        arguments: paymentQueryParams(settings.name),
+      ),
+      builder: (_) => BillingAuthFailScreen(
+        queryParams: paymentQueryParams(settings.name),
+      ),
+    );
   }
 
   switch (path) {
@@ -186,6 +216,22 @@ Route<dynamic> onUnknownRoute(RouteSettings settings) {
       isPaymentFailPath(webInitialRoute())) {
     return buildPaymentFailRoute(settings.name);
   }
+  if (isBillingSuccessPath(settings.name) ||
+      isBillingSuccessPath(webInitialRoute())) {
+    return MaterialPageRoute(
+      builder: (_) => BillingAuthSuccessScreen(
+        queryParams: paymentQueryParams(settings.name),
+      ),
+    );
+  }
+  if (isBillingFailPath(settings.name) ||
+      isBillingFailPath(webInitialRoute())) {
+    return MaterialPageRoute(
+      builder: (_) => BillingAuthFailScreen(
+        queryParams: paymentQueryParams(settings.name),
+      ),
+    );
+  }
   return MaterialPageRoute(builder: (_) => const AppEntry());
 }
 
@@ -204,6 +250,16 @@ class AppEntry extends StatelessWidget {
       }
       if (isPaymentFailPath(path)) {
         return PaymentFailScreen(
+          queryParams: paymentQueryParams(),
+        );
+      }
+      if (isBillingSuccessPath(path)) {
+        return BillingAuthSuccessScreen(
+          queryParams: paymentQueryParams(),
+        );
+      }
+      if (isBillingFailPath(path)) {
+        return BillingAuthFailScreen(
           queryParams: paymentQueryParams(),
         );
       }
@@ -234,10 +290,7 @@ class _AuthGateState extends State<AuthGate> {
     supabase.auth.onAuthStateChange.listen((data) async {
       if (data.session != null) {
         if (mounted) {
-          setState(() {
-            _showSignUp = false;
-            _showAdminSignUp = false;
-          });
+          setState(() => _showSignUp = false);
         }
         await FcmService.instance.registerForCurrentUser();
       }
@@ -269,6 +322,8 @@ class _AuthGateState extends State<AuthGate> {
           if (_showAdminSignUp) {
             return AdminSignUpScreen(
               onGoLogin: () => setState(() => _showAdminSignUp = false),
+              onRegistrationComplete: () =>
+                  setState(() => _showAdminSignUp = false),
             );
           }
           if (_showSignUp) {
@@ -282,90 +337,23 @@ class _AuthGateState extends State<AuthGate> {
           );
         }
 
+        if (_showAdminSignUp || _auth.adminSignUpInProgress) {
+          return AdminSignUpScreen(
+            onGoLogin: () async {
+              _auth.endAdminSignUpFlow();
+              await _auth.signOut();
+              if (mounted) {
+                setState(() => _showAdminSignUp = false);
+              }
+            },
+            onRegistrationComplete: () {
+              _auth.endAdminSignUpFlow();
+              if (mounted) setState(() => _showAdminSignUp = false);
+            },
+          );
+        }
+
         return const RoleGate();
-      },
-    );
-  }
-}
-
-class RoleGate extends StatelessWidget {
-  const RoleGate({super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    return StreamBuilder<StaffProfile?>(
-      stream: StaffRepository().watchMyProfile(),
-      builder: (context, snap) {
-        if (snap.connectionState == ConnectionState.waiting && !snap.hasData) {
-          return const Scaffold(
-            body: Center(child: CircularProgressIndicator()),
-          );
-        }
-
-        final staff = snap.data;
-        if (staff != null) {
-          if (!staff.isApproved) {
-            return AdminPendingScreen(profile: staff);
-          }
-          return AdminDashboardScreen(profile: staff);
-        }
-
-        return const ResidentGate();
-      },
-    );
-  }
-}
-
-class ResidentGate extends StatefulWidget {
-  const ResidentGate({super.key});
-
-  @override
-  State<ResidentGate> createState() => _ResidentGateState();
-}
-
-class _ResidentGateState extends State<ResidentGate> {
-  var _retryToken = 0;
-
-  void _retry() => setState(() => _retryToken++);
-
-  @override
-  Widget build(BuildContext context) {
-    return StreamBuilder<ResidentProfile?>(
-      key: ValueKey(_retryToken),
-      stream: ResidentRepository().watchMyProfile(),
-      builder: (context, snap) {
-        if (snap.connectionState == ConnectionState.waiting && !snap.hasData) {
-          return const Scaffold(
-            body: Center(child: CircularProgressIndicator()),
-          );
-        }
-
-        if (snap.hasError && snap.data == null) {
-          return Scaffold(
-            appBar: AppBar(title: const Text('오류')),
-            body: Padding(
-              padding: const EdgeInsets.all(16),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  Text('입주민 정보 조회 실패: ${snap.error}'),
-                  const SizedBox(height: 16),
-                  FilledButton(
-                    onPressed: _retry,
-                    child: const Text('다시 시도'),
-                  ),
-                ],
-              ),
-            ),
-          );
-        }
-
-        final profile = snap.data;
-        if (profile == null || profile.approved != true) {
-          return const ResidentProfileScreen();
-        }
-
-        return const MainShell();
       },
     );
   }
