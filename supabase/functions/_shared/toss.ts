@@ -123,6 +123,57 @@ export async function issueTossBillingKey(params: {
   };
 }
 
+/** 빌링키로 자동 결제 (연장 등) */
+export async function chargeTossBilling(params: {
+  billingKey: string;
+  customerKey: string;
+  amount: number;
+  orderId: string;
+  orderName: string;
+}) {
+  const auth = getTossAuth();
+  const url = `${TOSS_API}/billing/${encodeURIComponent(params.billingKey)}`;
+  const body = JSON.stringify({
+    customerKey: params.customerKey,
+    amount: params.amount,
+    orderId: params.orderId,
+    orderName: params.orderName,
+    taxFreeAmount: 0,
+  });
+
+  console.log('[toss] POST', url, 'billing charge', params.orderId);
+
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: {
+      Authorization: `Basic ${auth}`,
+      'Content-Type': 'application/json',
+    },
+    body,
+  });
+
+  const data = await res.json();
+  console.log(
+    '[toss] billing charge response:',
+    res.status,
+    JSON.stringify(data),
+  );
+  if (!res.ok) {
+    const err = new Error(data.message || '빌링 자동결제 실패') as Error & {
+      code?: string;
+    };
+    err.code = data.code;
+    throw err;
+  }
+
+  return data as {
+    paymentKey: string;
+    orderId: string;
+    status: string;
+    totalAmount: number;
+  };
+}
+
 export async function cancelTossPayment(params: {
   paymentKey: string;
   cancelReason: string;

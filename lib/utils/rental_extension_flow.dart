@@ -118,6 +118,7 @@ Future<bool> _confirmAndApply(
           '추가 요금: ₩${won.format(added)}',
           if (check.newTotalPrice != null)
             '결제 합계: ₩${won.format(check.newTotalPrice)}',
+          if (added > 0) '등록된 결제카드로 자동 결제됩니다.',
         ].join('\n'),
         style: const TextStyle(
           color: DanjiColors.textSecondary,
@@ -154,7 +155,7 @@ Future<bool> _confirmAndApply(
               children: [
                 CircularProgressIndicator(),
                 SizedBox(height: 16),
-                Text(RentalExtensionMessages.applying),
+                Text(RentalExtensionMessages.payingAndApplying),
               ],
             ),
           ),

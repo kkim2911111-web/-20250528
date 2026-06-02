@@ -19,6 +19,7 @@ class ResidentInfoReadOnlyScreen extends StatefulWidget {
 class _ResidentInfoReadOnlyScreenState extends State<ResidentInfoReadOnlyScreen> {
   final _myPage = MyPageService();
   late MyPageProfile _profile;
+  String? _complexName;
   var _loading = true;
   Object? _loadError;
 
@@ -39,6 +40,7 @@ class _ResidentInfoReadOnlyScreenState extends State<ResidentInfoReadOnlyScreen>
       if (!mounted) return;
       setState(() {
         _profile = fresh;
+        _complexName = fresh.residentComplexName;
         _loading = false;
       });
     } catch (e) {
@@ -93,7 +95,7 @@ class _ResidentInfoReadOnlyScreenState extends State<ResidentInfoReadOnlyScreen>
                     const SizedBox(height: 20),
                     _ReadOnlyField(
                       label: '아파트',
-                      value: _apartmentLabel(_profile),
+                      value: _apartmentLabel(_profile, _complexName),
                     ),
                     _ReadOnlyField(
                       label: '동/호',
@@ -117,8 +119,8 @@ class _ResidentInfoReadOnlyScreenState extends State<ResidentInfoReadOnlyScreen>
     );
   }
 
-  static String _apartmentLabel(MyPageProfile profile) {
-    final name = profile.residentComplexName?.trim();
+  static String _apartmentLabel(MyPageProfile profile, String? loadedName) {
+    final name = loadedName?.trim() ?? profile.residentComplexName?.trim();
     if (name != null && name.isNotEmpty) return name;
     return '-';
   }

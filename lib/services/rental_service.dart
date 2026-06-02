@@ -897,20 +897,34 @@ fuel_level_start,fuel_level_end,is_accident,accident_note,door_unlocked
     }
   }
 
-  Future<Map<String, dynamic>> applyRentalExtension({
+  /// 빌링키 결제 후 연장 적용 (Edge Function)
+  Future<Map<String, dynamic>> payAndApplyRentalExtension({
     required String reservationId,
     int extensionHours = 1,
   }) async {
     try {
-      final data = await supabase.rpc('apply_rental_extension_for_me', params: {
-        'p_reservation_id': reservationId,
-        'p_extension_hours': extensionHours,
-      });
+      final data = await PaymentService().payRentalExtensionWithBilling(
+        reservationId: reservationId,
+        extensionHours: extensionHours,
+      );
       RentalService.signalListRefresh();
+      final result = data['result'];
+      if (result is Map) return _asMap(result);
       return _asMap(data);
-    } on PostgrestException catch (e) {
-      throw RentalException(friendlyRentalError(e));
+    } catch (e) {
+      if (e is RentalException) rethrow;
+      throw RentalException(e.toString().replaceFirst('Exception: ', ''));
     }
+  }
+
+  Future<Map<String, dynamic>> applyRentalExtension({
+    required String reservationId,
+    int extensionHours = 1,
+  }) async {
+    return payAndApplyRentalExtension(
+      reservationId: reservationId,
+      extensionHours: extensionHours,
+    );
   }
 
   Future<Map<String, dynamic>> logEmergencyConsultation({
@@ -1004,6 +1018,9 @@ String friendlyRentalError(PostgrestException error) {
   }
   if (msg.contains('invalid_extension_hours')) {
     return '연장 시간을 올바르게 입력해주세요.';
+  }
+  if (msg.contains('payment_required')) {
+    return '연장 전 결제가 필요합니다. 앱을 최신 버전으로 업데이트 후 다시 시도해주세요.';
   }
   if (msg.contains('extension_not_eligible') ||
       msg.contains('next_reservation_exists')) {

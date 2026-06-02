@@ -12,6 +12,7 @@ import '../supabase_client.dart';
 import '../theme/danji_colors.dart';
 import '../theme/danji_theme.dart';
 import '../theme/danji_typography.dart';
+import '../utils/rental_inquiry_flow.dart';
 import '../widgets/danji_app_bar.dart';
 import '../widgets/payment_method_sheet.dart';
 
@@ -63,6 +64,49 @@ class _BookingScreenState extends State<BookingScreen> {
     final end = _buildEndDateTime(_selectedDay, _endHour);
     if (start == null || end == null) return 0;
     return end.difference(start).inHours;
+  }
+
+  DateTime? get _rangeStartDay => _selectedDay;
+
+  DateTime? get _rangeEndDay {
+    final day = _selectedDay;
+    if (day == null) return null;
+    final end = _buildEndDateTime(day, _endHour);
+    return end == null ? null : _dateOnly(end);
+  }
+
+  bool _isRangeStart(DateTime day) {
+    final start = _rangeStartDay;
+    return start != null && isSameDay(day, start);
+  }
+
+  bool _isRangeEnd(DateTime day) {
+    final end = _rangeEndDay;
+    return end != null && isSameDay(day, end);
+  }
+
+  bool _isInBookingRange(DateTime day) {
+    final start = _rangeStartDay;
+    final end = _rangeEndDay;
+    if (start == null || end == null) return false;
+    final d = _dateOnly(day);
+    final s = _dateOnly(start);
+    final e = _dateOnly(end);
+    if (e.isBefore(s)) return isSameDay(day, s);
+    return !d.isBefore(s) && !d.isAfter(e);
+  }
+
+  bool get _exceedsMaxBookingDuration {
+    final start = _buildStartDateTime(_selectedDay, _startHour);
+    final end = _buildEndDateTime(_selectedDay, _endHour);
+    if (start == null || end == null) return false;
+    return end.difference(start) > const Duration(hours: 24);
+  }
+
+  Future<bool> _guardMaxBookingDuration() async {
+    if (!_exceedsMaxBookingDuration) return true;
+    await showRentalInquiryDialog(context);
+    return false;
   }
 
   bool _isToday(DateTime day) {
@@ -186,6 +230,8 @@ class _BookingScreenState extends State<BookingScreen> {
       setState(() => _error = '최소 1시간 이상 선택해주세요.');
       return;
     }
+
+    if (!await _guardMaxBookingDuration()) return;
 
     final startTime = _buildStartDateTime(day, _startHour);
     final endTime = _buildEndDateTime(day, _endHour);
@@ -342,7 +388,7 @@ class _BookingScreenState extends State<BookingScreen> {
                     firstDay: _dateOnly(DateTime.now()),
                     lastDay: _dateOnly(DateTime.now()).add(const Duration(days: 365)),
                     focusedDay: _focusedDay,
-                    selectedDayPredicate: (day) => isSameDay(_selectedDay, day),
+                    selectedDayPredicate: (_) => false,
                     locale: 'ko_KR',
                     startingDayOfWeek: StartingDayOfWeek.monday,
                     headerStyle: const HeaderStyle(
@@ -352,37 +398,34 @@ class _BookingScreenState extends State<BookingScreen> {
                         color: DanjiColors.textPrimary,
                         fontWeight: FontWeight.w700,
                       ),
-                      leftChevronIcon: const Icon(
+                      leftChevronIcon: Icon(
                         Icons.chevron_left,
                         color: DanjiColors.textPrimary,
                       ),
-                      rightChevronIcon: const Icon(
+                      rightChevronIcon: Icon(
                         Icons.chevron_right,
                         color: DanjiColors.textPrimary,
                       ),
                     ),
-                    calendarStyle: CalendarStyle(
+                    calendarStyle: const CalendarStyle(
                       outsideDaysVisible: false,
                       defaultTextStyle:
-                          const TextStyle(color: DanjiColors.textPrimary),
+                          TextStyle(color: DanjiColors.textPrimary),
                       weekendTextStyle:
-                          const TextStyle(color: DanjiColors.textSecondary),
-                      todayTextStyle: const TextStyle(
-                        color: DanjiColors.buttonBlue,
-                        fontWeight: FontWeight.w800,
-                      ),
-                      todayDecoration: BoxDecoration(
-                        color: DanjiColors.skyLight,
-                        shape: BoxShape.circle,
-                      ),
-                      selectedDecoration: const BoxDecoration(
-                        color: DanjiColors.buttonBlue,
-                        shape: BoxShape.circle,
-                      ),
-                      selectedTextStyle: const TextStyle(
-                        color: Colors.white,
-                        fontWeight: FontWeight.w700,
-                      ),
+                          TextStyle(color: DanjiColors.textSecondary),
+                      todayDecoration: BoxDecoration(),
+                      selectedDecoration: BoxDecoration(),
+                    ),
+                    calendarBuilders: CalendarBuilders(
+                      defaultBuilder: (context, day, focusedDay) {
+                        return _BookingRangeDayCell(
+                          day: day,
+                          isToday: _isToday(day),
+                          isRangeStart: _isRangeStart(day),
+                          isRangeEnd: _isRangeEnd(day),
+                          isInRange: _isInBookingRange(day),
+                        );
+                      },
                     ),
                     enabledDayPredicate: (day) =>
                         !day.isBefore(_dateOnly(DateTime.now())),
@@ -406,13 +449,15 @@ class _BookingScreenState extends State<BookingScreen> {
                         value: _startHour,
                         hours: _startHourOptions,
                         labelBuilder: _formatHourLabel,
-                        onChanged: (hour) {
+                        onChanged: (hour) async {
                           if (hour == null) return;
                           setState(() {
                             _startHour = hour;
                             _normalizeHoursForSelectedDay();
                             _error = null;
                           });
+                          if (!mounted) return;
+                          await _guardMaxBookingDuration();
                         },
                       ),
                       const Divider(height: 24, color: DanjiColors.border),
@@ -421,12 +466,14 @@ class _BookingScreenState extends State<BookingScreen> {
                         value: _endHour,
                         hours: _endHourOptions,
                         labelBuilder: _formatEndHourLabel,
-                        onChanged: (hour) {
+                        onChanged: (hour) async {
                           if (hour == null) return;
                           setState(() {
                             _endHour = hour;
                             _error = null;
                           });
+                          if (!mounted) return;
+                          await _guardMaxBookingDuration();
                         },
                       ),
                     ],
@@ -648,6 +695,106 @@ class _SectionCard extends StatelessWidget {
         border: Border.all(color: DanjiColors.border),
       ),
       child: child,
+    );
+  }
+}
+
+/// 예약 기간 달력 — 시작/종료 진한 원, 중간 옅은 하늘색, 오늘 옅은 원
+class _BookingRangeDayCell extends StatelessWidget {
+  final DateTime day;
+  final bool isToday;
+  final bool isRangeStart;
+  final bool isRangeEnd;
+  final bool isInRange;
+
+  const _BookingRangeDayCell({
+    required this.day,
+    required this.isToday,
+    required this.isRangeStart,
+    required this.isRangeEnd,
+    required this.isInRange,
+  });
+
+  static const _circleSize = 36.0;
+
+  @override
+  Widget build(BuildContext context) {
+    final singleDay = isRangeStart && isRangeEnd;
+    final showRangeBar = isInRange && !singleDay;
+    final isMiddle = showRangeBar && !isRangeStart && !isRangeEnd;
+
+    Color textColor = DanjiColors.textPrimary;
+    FontWeight fontWeight = FontWeight.w500;
+
+    if (isRangeStart || isRangeEnd) {
+      textColor = Colors.white;
+      fontWeight = FontWeight.w700;
+    } else if (isToday && !isInRange) {
+      textColor = DanjiColors.buttonBlue;
+      fontWeight = FontWeight.w800;
+    } else if (isMiddle) {
+      fontWeight = FontWeight.w600;
+    }
+
+    return SizedBox(
+      width: double.infinity,
+      height: _circleSize,
+      child: Stack(
+        alignment: Alignment.center,
+        clipBehavior: Clip.none,
+        children: [
+          if (isMiddle)
+            Positioned.fill(
+              child: Container(color: DanjiColors.skyLight),
+            ),
+          if (showRangeBar && !isMiddle)
+            Positioned.fill(
+              child: Align(
+                alignment: Alignment.center,
+                child: Container(
+                  height: _circleSize,
+                  decoration: BoxDecoration(
+                    color: DanjiColors.skyLight,
+                    borderRadius: BorderRadius.horizontal(
+                      left: isRangeStart
+                          ? const Radius.circular(_circleSize / 2)
+                          : Radius.zero,
+                      right: isRangeEnd
+                          ? const Radius.circular(_circleSize / 2)
+                          : Radius.zero,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          if (isToday && !isInRange)
+            Container(
+              width: _circleSize,
+              height: _circleSize,
+              decoration: const BoxDecoration(
+                color: DanjiColors.skyLight,
+                shape: BoxShape.circle,
+              ),
+            ),
+          if (isRangeStart || isRangeEnd)
+            Container(
+              width: _circleSize,
+              height: _circleSize,
+              decoration: const BoxDecoration(
+                color: DanjiColors.buttonBlue,
+                shape: BoxShape.circle,
+              ),
+            ),
+          Text(
+            '${day.day}',
+            style: TextStyle(
+              color: textColor,
+              fontWeight: fontWeight,
+              fontSize: 14,
+            ),
+          ),
+        ],
+      ),
     );
   }
 }

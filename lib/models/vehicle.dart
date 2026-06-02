@@ -6,6 +6,7 @@ class Vehicle {
   final int pricePerHour;
   final String? parkingLocation;
   final String? parkingPhotoUrl;
+  final String? carImageUrl;
   final String? carNumber;
   final bool isAvailable;
 
@@ -17,6 +18,7 @@ class Vehicle {
     required this.pricePerHour,
     this.parkingLocation,
     this.parkingPhotoUrl,
+    this.carImageUrl,
     this.carNumber,
     required this.isAvailable,
   });
@@ -36,6 +38,7 @@ class Vehicle {
           0,
       parkingLocation: _readString(map, ['parking_location', 'parking_spot']),
       parkingPhotoUrl: _readString(map, ['parking_photo_url', 'photo_url']),
+      carImageUrl: _readString(map, ['car_image_url']),
       carNumber: _readString(map, ['car_number', 'plate_number']),
       isAvailable: available,
     );

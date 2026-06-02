@@ -79,5 +79,6 @@ abstract final class RentalExtensionMessages {
   static const emergencyTitle = '연장 불가';
   static const needInUse = '대여 중(in_use)인 예약만 연장할 수 있습니다.';
   static const applying = '연장 처리 중…';
+  static const payingAndApplying = '결제 및 연장 처리 중…';
   static const checking = '연장 가능 여부 확인 중…';
 }

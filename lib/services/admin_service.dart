@@ -171,6 +171,7 @@ class AdminService {
   }
 
   Future<List<AdminVehicleDetail>> fetchVehicles(String complexId) async {
+    final complexDisplayName = await _resolveComplexDisplayName(complexId);
     final rows = await supabase
         .from('vehicles')
         .select('*, complexes(name)')
@@ -178,8 +179,59 @@ class AdminService {
         .order('created_at', ascending: false);
 
     return (rows as List)
-        .map((r) => AdminVehicleDetail.fromMap(Map<String, dynamic>.from(r)))
+        .map(
+          (r) => _vehicleDetailFromRow(
+            Map<String, dynamic>.from(r),
+            complexDisplayName,
+          ),
+        )
         .toList();
+  }
+
+  /// complexes.name 조인 + 직접 조회 + RPC 폴백 (RLS·조인 실패 대비)
+  Future<String?> _resolveComplexDisplayName(String complexId) async {
+    final id = complexId.trim();
+    if (id.isEmpty) return _fetchMyStaffComplexNameRpc();
+
+    try {
+      final row = await supabase
+          .from('complexes')
+          .select('name')
+          .eq('id', id)
+          .maybeSingle();
+      final name = row?['name']?.toString().trim();
+      if (name != null && name.isNotEmpty) return name;
+    } on PostgrestException catch (e) {
+      debugPrint('[AdminService] complexes select failed: ${e.message}');
+    }
+
+    return _fetchMyStaffComplexNameRpc();
+  }
+
+  Future<String?> _fetchMyStaffComplexNameRpc() async {
+    try {
+      final raw = await supabase.rpc('get_my_staff_complex_name');
+      final name = raw?.toString().trim();
+      if (name == null || name.isEmpty) return null;
+      return name;
+    } on PostgrestException catch (e) {
+      debugPrint('[AdminService] get_my_staff_complex_name failed: ${e.message}');
+      return null;
+    }
+  }
+
+  AdminVehicleDetail _vehicleDetailFromRow(
+    Map<String, dynamic> row,
+    String? complexDisplayName,
+  ) {
+    final detail = AdminVehicleDetail.fromMap(row);
+    final joined = detail.complexName?.trim();
+    if (joined != null && joined.isNotEmpty) return detail;
+    final fallback = complexDisplayName?.trim();
+    if (fallback != null && fallback.isNotEmpty) {
+      return detail.withComplexName(fallback);
+    }
+    return detail;
   }
 
   Future<AdminVehicleDetail> createVehicle(AdminVehicleDetail vehicle) async {
@@ -188,7 +240,11 @@ class AdminService {
     insert['complex_id'] = staffComplexId;
 
     final row = await _upsertVehicleRow(insert: insert);
-    return AdminVehicleDetail.fromMap(Map<String, dynamic>.from(row));
+    final displayName = await _resolveComplexDisplayName(staffComplexId);
+    return _vehicleDetailFromRow(
+      Map<String, dynamic>.from(row),
+      displayName,
+    );
   }
 
   Future<AdminVehicleDetail> updateVehicle(AdminVehicleDetail vehicle) async {
@@ -200,7 +256,11 @@ class AdminService {
       update: update,
       vehicleId: vehicle.id,
     );
-    return AdminVehicleDetail.fromMap(Map<String, dynamic>.from(row));
+    final displayName = await _resolveComplexDisplayName(staffComplexId);
+    return _vehicleDetailFromRow(
+      Map<String, dynamic>.from(row),
+      displayName,
+    );
   }
 
   /// 차량 등록·수정 시 staff_users.complex_id 사용
@@ -230,7 +290,7 @@ class AdminService {
             await supabase
                 .from('vehicles')
                 .insert(payload)
-                .select('*')
+                .select('*, complexes(name)')
                 .single(),
           );
         }
@@ -239,7 +299,7 @@ class AdminService {
               .from('vehicles')
               .update(payload)
               .eq('id', vehicleId!)
-              .select('*')
+              .select('*, complexes(name)')
               .single(),
         );
       } on PostgrestException catch (e) {

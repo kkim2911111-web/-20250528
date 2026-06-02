@@ -8,16 +8,20 @@ export function getAdminClient(): SupabaseClient {
   });
 }
 
+export function getUserClient(authHeader: string): SupabaseClient {
+  const url = Deno.env.get('SUPABASE_URL')!;
+  const anon = Deno.env.get('SUPABASE_ANON_KEY')!;
+  return createClient(url, anon, {
+    global: { headers: { Authorization: authHeader } },
+    auth: { persistSession: false, autoRefreshToken: false },
+  });
+}
+
 export async function getUserFromRequest(req: Request) {
   const authHeader = req.headers.get('Authorization');
   if (!authHeader?.startsWith('Bearer ')) return null;
 
-  const url = Deno.env.get('SUPABASE_URL')!;
-  const anon = Deno.env.get('SUPABASE_ANON_KEY')!;
-  const client = createClient(url, anon, {
-    global: { headers: { Authorization: authHeader } },
-    auth: { persistSession: false, autoRefreshToken: false },
-  });
+  const client = getUserClient(authHeader);
 
   const { data, error } = await client.auth.getUser();
   if (error || !data.user) return null;

@@ -189,6 +189,27 @@ class AdminVehicleDetail {
   bool get hasInsurance =>
       (insuranceCompany?.trim().isNotEmpty ?? false) &&
       (insurancePolicyNumber?.trim().isNotEmpty ?? false);
+
+  AdminVehicleDetail withComplexName(String name) {
+    return AdminVehicleDetail(
+      id: id,
+      complexId: complexId,
+      complexName: name,
+      name: this.name,
+      vehicleType: vehicleType,
+      fuelType: fuelType,
+      pricePerHour: pricePerHour,
+      parkingLocation: parkingLocation,
+      carNumber: carNumber,
+      isAvailable: isAvailable,
+      insuranceCompany: insuranceCompany,
+      insurancePolicyNumber: insurancePolicyNumber,
+      insuranceExpiresAt: insuranceExpiresAt,
+      lastLatitude: lastLatitude,
+      lastLongitude: lastLongitude,
+      lastLocationUpdatedAt: lastLocationUpdatedAt,
+    );
+  }
 }
 
 class AdminReservationRow {

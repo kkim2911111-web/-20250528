@@ -381,67 +381,84 @@ enum _HomeReservationMode {
   inUse,
 }
 
-class _HomeCardPresentation {
-  final String title;
-  final String badge;
-  final Color badgeBackground;
-  final Color badgeText;
-  final String? footer;
-  final bool footerIsCountdown;
-
-  const _HomeCardPresentation({
-    required this.title,
-    required this.badge,
-    required this.badgeBackground,
-    required this.badgeText,
-    this.footer,
-    this.footerIsCountdown = false,
-  });
-}
-
-_HomeCardPresentation _homeCardPresentation({
-  required Reservation reservation,
-  required int index,
-  required DateFormat timeFormat,
-}) {
+_HomeCardBadgeStyle _homeCardBadgeStyle(Reservation reservation) {
   if (reservation.status == 'in_use') {
-    final end = reservation.endAt;
-    return _HomeCardPresentation(
-      title: '지금 타는 차',
-      badge: '대여중',
-      badgeBackground: DanjiColors.tagRentingBg,
-      badgeText: DanjiColors.tagRentingText,
-      footer: end != null ? _formatTimeRemaining(end) : null,
-      footerIsCountdown: true,
+    return const _HomeCardBadgeStyle(
+      label: '대여중',
+      background: DanjiColors.tagRentingBg,
+      textColor: DanjiColors.tagRentingText,
     );
   }
 
-  final inWindow = reservation.isWithinUsageWindow;
   final isConfirmed =
       reservation.status == 'confirmed' || reservation.status == 'pending';
-  return _HomeCardPresentation(
-    title: index > 0
-        ? '다음 예약'
-        : (inWindow ? '이용 시간대' : '가장 임박한 예약'),
-    badge: inWindow
-        ? (isConfirmed ? '예약확정' : reservation.statusLabel)
-        : reservation.timeUntilStartLabel,
-    badgeBackground: inWindow && isConfirmed
-        ? DanjiColors.tagConfirmedBg
-        : (inWindow
-            ? DanjiColors.tagRentingBg
-            : DanjiColors.tagConfirmedBg),
-    badgeText: inWindow && isConfirmed
-        ? DanjiColors.tagConfirmedText
-        : (inWindow
-            ? DanjiColors.tagRentingText
-            : DanjiColors.tagConfirmedText),
-    footer: reservation.startAt != null
-        ? '${DateFormat('M월 d일 (E)', 'ko_KR').format(reservation.startAt!)} '
-            '${timeFormat.format(reservation.startAt!)} 시작'
-            '${reservation.vehicle?.parkingLocation != null ? ' · ${reservation.vehicle!.parkingLocation}' : ''}'
-        : null,
+  final inWindow = reservation.isWithinUsageWindow;
+  final start = reservation.startAt;
+  final startPassed =
+      start != null && start.isBefore(DateTime.now());
+
+  // 시작 시각 경과·이용 시간대 — "이용 가능 시간" 대신 예약확정만
+  if (isConfirmed && (inWindow || startPassed)) {
+    return const _HomeCardBadgeStyle(
+      label: '예약확정',
+      background: DanjiColors.tagConfirmedBg,
+      textColor: DanjiColors.tagConfirmedText,
+    );
+  }
+
+  if (inWindow) {
+    return _HomeCardBadgeStyle(
+      label: reservation.statusLabel,
+      background: DanjiColors.tagRentingBg,
+      textColor: DanjiColors.tagRentingText,
+    );
+  }
+
+  return _HomeCardBadgeStyle(
+    label: reservation.timeUntilStartLabel,
+    background: DanjiColors.tagConfirmedBg,
+    textColor: DanjiColors.tagConfirmedText,
   );
+}
+
+class _HomeCardBadgeStyle {
+  final String label;
+  final Color background;
+  final Color textColor;
+
+  const _HomeCardBadgeStyle({
+    required this.label,
+    required this.background,
+    required this.textColor,
+  });
+}
+
+bool _isSameDay(DateTime a, DateTime b) {
+  return a.year == b.year && a.month == b.month && a.day == b.day;
+}
+
+String _rentalStartLine(DateTime? start) {
+  if (start == null) return '대여 시작 -';
+  final time = DateFormat('HH:mm').format(start);
+  final now = DateTime.now();
+  if (_isSameDay(start, now)) return '대여 시작 금일 $time';
+  return '대여 시작 ${DateFormat('M/d').format(start)} $time';
+}
+
+String _rentalEndLine(DateTime? end) {
+  if (end == null) return '대여 종료 -';
+  final time = DateFormat('HH:mm').format(end);
+  final now = DateTime.now();
+  if (_isSameDay(end, now)) return '대여 종료 금일 $time';
+  return '대여 종료 ${DateFormat('M/d').format(end)} $time';
+}
+
+/// 대여 중(in_use)일 때만 종료까지 남은 시간 — 시작 전 문구는 뱃지로만 표시
+String? _remainingTimeLine(Reservation reservation) {
+  if (reservation.status != 'in_use') return null;
+  final end = reservation.endAt;
+  if (end == null) return null;
+  return _formatTimeRemaining(end);
 }
 
 String _formatTimeRemaining(DateTime end) {
@@ -526,27 +543,16 @@ class _HomeReservationSectionState extends State<_HomeReservationSection> {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         SizedBox(
-          height: 188,
+          height: 200,
           child: PageView.builder(
             controller: _pageController,
             itemCount: widget.reservations.length,
             onPageChanged: (index) => setState(() => _currentPage = index),
             itemBuilder: (context, index) {
               final reservation = widget.reservations[index];
-              final meta = _homeCardPresentation(
-                reservation: reservation,
-                index: index,
-                timeFormat: widget.timeFormat,
-              );
               return _ReservationInfoCard(
                 reservation: reservation,
-                timeFormat: widget.timeFormat,
-                title: meta.title,
-                badge: meta.badge,
-                badgeBackground: meta.badgeBackground,
-                badgeText: meta.badgeText,
-                footer: meta.footer,
-                footerIsCountdown: meta.footerIsCountdown,
+                badgeStyle: _homeCardBadgeStyle(reservation),
               );
             },
           ),
@@ -1018,109 +1024,259 @@ class _EmptyHomeBody extends StatelessWidget {
 
 class _ReservationInfoCard extends StatelessWidget {
   final Reservation reservation;
-  final DateFormat timeFormat;
-  final String title;
-  final String badge;
-  final Color badgeBackground;
-  final Color badgeText;
-  final String? footer;
-  final bool footerIsCountdown;
+  final _HomeCardBadgeStyle badgeStyle;
 
   const _ReservationInfoCard({
     required this.reservation,
-    required this.timeFormat,
-    required this.title,
-    required this.badge,
-    this.badgeBackground = DanjiColors.tagConfirmedBg,
-    this.badgeText = DanjiColors.tagConfirmedText,
-    this.footer,
-    this.footerIsCountdown = false,
+    required this.badgeStyle,
   });
 
   @override
   Widget build(BuildContext context) {
     final vehicle = reservation.vehicle;
-    final carLine = [
-      vehicle?.name ?? '차량',
-      if (vehicle?.carNumber != null) '(${vehicle!.carNumber})',
-    ].join(' ');
+    final carName = vehicle?.name ?? '차량';
+    final carNumber = vehicle?.carNumber?.trim();
+    final carImageUrl = vehicle?.carImageUrl?.trim();
+    final remaining = _remainingTimeLine(reservation);
 
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
       decoration: BoxDecoration(
         color: DanjiColors.surface,
         borderRadius: BorderRadius.circular(16),
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final halfWidth = constraints.maxWidth / 2;
+          return Row(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              Text(
-                title,
-                style: const TextStyle(
-                  fontSize: 13,
-                  color: DanjiColors.textSecondary,
-                  fontWeight: FontWeight.w500,
+              SizedBox(
+                width: halfWidth,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    _HomeCardFittedLine(
+                      text: carName,
+                      style: _HomeCardTypography.carName,
+                    ),
+                    const SizedBox(height: 5),
+                    _HomeCardFittedLine(
+                      text: carNumber != null && carNumber.isNotEmpty
+                          ? carNumber
+                          : '차량번호 미등록',
+                      style: _HomeCardTypography.carNumber,
+                    ),
+                    const SizedBox(height: 7),
+                    _HomeCardFittedLine(
+                      text: _rentalStartLine(reservation.startAt),
+                      style: _HomeCardTypography.schedule,
+                    ),
+                    const SizedBox(height: 3),
+                    _HomeCardFittedLine(
+                      text: _rentalEndLine(reservation.endAt),
+                      style: _HomeCardTypography.schedule,
+                    ),
+                    if (remaining != null) ...[
+                      const SizedBox(height: 7),
+                      _HomeCardFittedLine(
+                        text: remaining,
+                        style: _HomeCardTypography.remaining,
+                      ),
+                    ],
+                    const SizedBox(height: 7),
+                    _HomeStatusBadge(
+                      label: badgeStyle.label,
+                      background: badgeStyle.background,
+                      textColor: badgeStyle.textColor,
+                    ),
+                  ],
                 ),
               ),
-              const Spacer(),
-              Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-                decoration: BoxDecoration(
-                  color: badgeBackground,
-                  borderRadius: BorderRadius.circular(20),
-                ),
-                child: Text(
-                  badge,
-                  style: TextStyle(
-                    color: badgeText,
-                    fontSize: 12,
-                    fontWeight: FontWeight.w700,
-                  ),
+              SizedBox(
+                width: halfWidth,
+                child: Center(
+                  child: _HomeCarImage(url: carImageUrl),
                 ),
               ),
             ],
-          ),
-          const SizedBox(height: 10),
-          Text(
-            carLine,
-            style: const TextStyle(
-              fontSize: 18,
-              fontWeight: FontWeight.w700,
-              color: DanjiColors.textPrimary,
-              letterSpacing: -0.3,
+          );
+        },
+      ),
+    );
+  }
+}
+
+/// 홈 차량 카드 — 고급스러운 타이포 계층
+abstract final class _HomeCardTypography {
+  static const carName = TextStyle(
+    fontSize: 17,
+    fontWeight: FontWeight.w800,
+    color: Color(0xFF15181C),
+    height: 1.1,
+    letterSpacing: -0.5,
+  );
+
+  static const carNumber = TextStyle(
+    fontSize: 11,
+    fontWeight: FontWeight.w500,
+    color: Color(0xFF8A9299),
+    height: 1.25,
+    letterSpacing: 0.2,
+  );
+
+  static const schedule = TextStyle(
+    fontSize: 11,
+    fontWeight: FontWeight.w500,
+    color: Color(0xFF6B737C),
+    height: 1.35,
+    letterSpacing: 0.02,
+  );
+
+  static const remaining = TextStyle(
+    fontSize: 12.5,
+    fontWeight: FontWeight.w700,
+    color: DanjiColors.toneRed,
+    height: 1.2,
+    letterSpacing: -0.15,
+  );
+}
+
+/// 좁은 영역(50%)에서도 잘리지 않도록 한 줄·축소 표시
+class _HomeCardFittedLine extends StatelessWidget {
+  final String text;
+  final TextStyle style;
+
+  const _HomeCardFittedLine({
+    required this.text,
+    required this.style,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      width: double.infinity,
+      child: FittedBox(
+        fit: BoxFit.scaleDown,
+        alignment: Alignment.centerLeft,
+        child: Text(
+          text,
+          maxLines: 1,
+          style: style,
+        ),
+      ),
+    );
+  }
+}
+
+class _HomeStatusBadge extends StatelessWidget {
+  final String label;
+  final Color background;
+  final Color textColor;
+
+  const _HomeStatusBadge({
+    required this.label,
+    required this.background,
+    required this.textColor,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
+      decoration: BoxDecoration(
+        color: background,
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Text(
+        label,
+        style: TextStyle(
+          color: textColor,
+          fontSize: 11,
+          fontWeight: FontWeight.w700,
+          letterSpacing: -0.1,
+          height: 1.15,
+        ),
+      ),
+    );
+  }
+}
+
+/// 홈 예약 카드 차량 이미지 (오른쪽 50%) — URL 없음/실패 시 placeholder
+class _HomeCarImage extends StatelessWidget {
+  final String? url;
+
+  const _HomeCarImage({this.url});
+
+  bool get _hasUrl {
+    final u = url?.trim();
+    return u != null && u.isNotEmpty;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final w = constraints.maxWidth;
+        final h = constraints.maxHeight.isFinite
+            ? constraints.maxHeight
+            : 120.0;
+        final imageHeight = (h * 0.92).clamp(88.0, 118.0);
+
+        return SizedBox(
+          width: w,
+          height: h,
+          child: Center(
+            child: SizedBox(
+              width: w,
+              height: imageHeight,
+              child: _hasUrl
+                  ? _networkImage(url!.trim(), w, imageHeight)
+                  : _placeholder(w, imageHeight),
             ),
           ),
-          if (reservation.usagePeriodLabel != null) ...[
-            const SizedBox(height: 6),
-            Text(
-              '${reservation.usagePeriodLabel}'
-              '${vehicle?.parkingLocation != null && !footerIsCountdown ? ' · ${vehicle!.parkingLocation}' : ''}',
-              style: const TextStyle(
-                fontSize: 13,
-                color: DanjiColors.textSecondary,
-                height: 1.4,
+        );
+      },
+    );
+  }
+
+  Widget _networkImage(String imageUrl, double w, double h) {
+    return Image.network(
+      imageUrl,
+      width: w,
+      height: h,
+      fit: BoxFit.contain,
+      alignment: Alignment.center,
+      filterQuality: FilterQuality.high,
+      gaplessPlayback: true,
+      errorBuilder: (_, __, ___) => _placeholder(w, h),
+      loadingBuilder: (context, child, progress) {
+        if (progress == null) return child;
+        return _placeholder(w, h, showProgress: true);
+      },
+    );
+  }
+
+  Widget _placeholder(double w, double h, {bool showProgress = false}) {
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: const Color(0xFFE8ECF1),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Center(
+        child: showProgress
+            ? const SizedBox(
+                width: 22,
+                height: 22,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              )
+            : Icon(
+                Icons.directions_car_filled_outlined,
+                size: (h * 0.45).clamp(40.0, 56.0),
+                color: DanjiColors.textMuted.withValues(alpha: 0.85),
               ),
-            ),
-          ],
-          if (footer != null) ...[
-            const SizedBox(height: 6),
-            Text(
-              footer!,
-              style: TextStyle(
-                color: footerIsCountdown
-                    ? DanjiColors.toneRed
-                    : DanjiColors.textSecondary,
-                fontSize: 13,
-                fontWeight:
-                    footerIsCountdown ? FontWeight.w700 : FontWeight.w400,
-              ),
-            ),
-          ],
-        ],
       ),
     );
   }

@@ -1,4 +1,5 @@
 import 'package:flutter/foundation.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../models/staff_profile.dart';
 import '../supabase_client.dart';
@@ -39,10 +40,27 @@ class StaffRepository {
       return null;
     }
 
-    final profile = StaffProfile.fromMap(map);
+    var profile = StaffProfile.fromMap(map);
+    final complexName = profile.complexName?.trim();
+    if (complexName == null || complexName.isEmpty) {
+      final resolved = await _fetchMyStaffComplexNameRpc();
+      if (resolved != null) {
+        profile = StaffProfile(
+          userId: profile.userId,
+          complexId: profile.complexId,
+          displayName: profile.displayName,
+          role: profile.role,
+          approved: profile.approved,
+          complexName: resolved,
+          phone: profile.phone,
+          companyName: profile.companyName,
+        );
+      }
+    }
     debugPrint(
       '[StaffRepository] staff_users OK: user_id=${profile.userId} '
-      'approved=${profile.approved} complex=${profile.complexId}',
+      'approved=${profile.approved} complex=${profile.complexId} '
+      'name=${profile.complexName}',
     );
     return profile;
   }
@@ -67,6 +85,20 @@ class StaffRepository {
         yield profile;
       } catch (_) {}
       if (profile == null) break;
+    }
+  }
+
+  Future<String?> _fetchMyStaffComplexNameRpc() async {
+    try {
+      final raw = await supabase.rpc('get_my_staff_complex_name');
+      final name = raw?.toString().trim();
+      if (name == null || name.isEmpty) return null;
+      return name;
+    } on PostgrestException catch (e) {
+      debugPrint(
+        '[StaffRepository] get_my_staff_complex_name failed: ${e.message}',
+      );
+      return null;
     }
   }
 }

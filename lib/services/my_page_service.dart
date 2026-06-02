@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../models/my_page_profile.dart';
@@ -91,7 +92,7 @@ class MyPageService {
     try {
       final row = await supabase
           .from('residents')
-          .select('complex_id, building, unit, approved')
+          .select('complex_id, building, unit, approved, complexes(name)')
           .eq('user_id', userId)
           .maybeSingle();
       if (row == null) {
@@ -104,9 +105,18 @@ class MyPageService {
         );
       }
 
-      final complexName = await _fetchComplexNameById(
-        row['complex_id']?.toString(),
-      );
+      final complexId = row['complex_id']?.toString();
+      var complexName = _parseComplexNameFromRow(row);
+
+      complexName ??= await _fetchComplexNameById(complexId);
+      complexName ??= await _fetchMyResidentComplexNameRpc();
+
+      if (kDebugMode && (complexName == null || complexName.isEmpty)) {
+        debugPrint(
+          '[MyPageService] resident complex name missing '
+          'user_id=$userId complex_id=$complexId',
+        );
+      }
 
       return (
         registered: true,
@@ -129,19 +139,76 @@ class MyPageService {
     }
   }
 
-  /// residents.complex_id → complexes.name
+  String? _parseComplexNameFromRow(Map<String, dynamic> row) {
+    final complexRaw = row['complexes'];
+    if (complexRaw is Map) {
+      final name = Map<String, dynamic>.from(complexRaw)['name']?.toString().trim();
+      if (name != null && name.isNotEmpty) return name;
+    }
+    return null;
+  }
+
+  /// residents.complex_id → complexes.name (RLS: complexes_select_own_resident)
   Future<String?> _fetchComplexNameById(String? complexId) async {
     if (complexId == null || complexId.isEmpty) return null;
 
-    final row = await supabase
-        .from('complexes')
-        .select('name')
-        .eq('id', complexId)
-        .maybeSingle();
+    try {
+      final row = await supabase
+          .from('complexes')
+          .select('name')
+          .eq('id', complexId)
+          .maybeSingle();
 
-    final name = row?['name']?.toString().trim();
-    if (name == null || name.isEmpty) return null;
-    return name;
+      final name = row?['name']?.toString().trim();
+      if (name == null || name.isEmpty) return null;
+      return name;
+    } on PostgrestException catch (e) {
+      if (kDebugMode) {
+        debugPrint('[MyPageService] complexes select failed: ${e.message}');
+      }
+      return null;
+    }
+  }
+
+  /// lookup RLS 차단 시 security definer RPC 폴백
+  Future<String?> _fetchMyResidentComplexNameRpc() async {
+    try {
+      final raw = await supabase.rpc('get_my_resident_complex_name');
+      final name = raw?.toString().trim();
+      if (name == null || name.isEmpty) return null;
+      return name;
+    } on PostgrestException catch (e) {
+      if (e.code == 'PGRST202' ||
+          e.message.contains('get_my_resident_complex_name')) {
+        return null;
+      }
+      if (kDebugMode) {
+        debugPrint('[MyPageService] get_my_resident_complex_name: ${e.message}');
+      }
+      return null;
+    }
+  }
+
+  /// 주민인증 화면 — 단지명 포함 입주민 정보 (마이페이지 프로필과 동일 소스)
+  Future<({
+    String? complexName,
+    String? building,
+    String? unit,
+    bool approved,
+    bool registered,
+  })> fetchResidentVerificationInfo() async {
+    final user = supabase.auth.currentUser;
+    if (user == null) {
+      throw const AuthException('로그인이 필요합니다.');
+    }
+    final resident = await _fetchResident(user.id);
+    return (
+      complexName: resident.complexName,
+      building: resident.building,
+      unit: resident.unit,
+      approved: resident.approved,
+      registered: resident.registered,
+    );
   }
 
   Future<void> saveBasicInfo({

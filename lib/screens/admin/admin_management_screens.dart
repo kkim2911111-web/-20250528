@@ -9,11 +9,12 @@ import '../../widgets/danji_app_bar.dart';
 import '../../widgets/section_card.dart';
 import 'admin_vehicle_form_screen.dart';
 
+/// complexes.name 조인값 우선, 없으면 관리자 프로필 단지명
 String _vehicleComplexLabel(AdminVehicleDetail vehicle, StaffProfile profile) {
-  final name = vehicle.complexName?.trim();
-  if (name != null && name.isNotEmpty) return name;
-  final fallback = profile.complexName?.trim();
-  if (fallback != null && fallback.isNotEmpty) return fallback;
+  final fromVehicle = vehicle.complexName?.trim();
+  if (fromVehicle != null && fromVehicle.isNotEmpty) return fromVehicle;
+  final fromProfile = profile.complexName?.trim();
+  if (fromProfile != null && fromProfile.isNotEmpty) return fromProfile;
   return '단지';
 }
 

@@ -356,9 +356,13 @@ $$;
 -- 6) RPC — 연장 적용
 -- ---------------------------------------------------------------------------
 
+drop function if exists public.apply_rental_extension_for_me(text, integer);
+
 create or replace function public.apply_rental_extension_for_me(
   p_reservation_id text,
-  p_extension_hours integer default 1
+  p_extension_hours integer default 1,
+  p_payment_key text default null,
+  p_payment_order_id text default null
 )
 returns jsonb
 language plpgsql
@@ -375,6 +379,8 @@ declare
   v_added_price integer;
   v_seq integer;
   v_now timestamptz := now();
+  v_payment_key text := nullif(trim(p_payment_key), '');
+  v_order_id text := nullif(trim(p_payment_order_id), '');
 begin
   if v_user is null then
     raise exception 'not_authenticated';
@@ -389,6 +395,12 @@ begin
     raise exception '%', coalesce(v_check->>'reason', 'extension_not_eligible');
   end if;
 
+  v_added_price := coalesce((v_check->>'addedPrice')::integer, 0);
+
+  if v_added_price > 0 and v_payment_key is null then
+    raise exception 'payment_required';
+  end if;
+
   select *
   into v_row
   from public.reservations
@@ -398,7 +410,6 @@ begin
 
   v_end := coalesce(v_row.end_at, v_row.end_time);
   v_new_end := v_end + (p_extension_hours || ' hours')::interval;
-  v_added_price := coalesce((v_check->>'addedPrice')::integer, 0);
   v_seq := v_row.extension_count + 1;
 
   update public.reservations
@@ -420,7 +431,10 @@ begin
     previous_end_at,
     new_end_at,
     added_price,
-    extension_seq
+    extension_seq,
+    payment_order_id,
+    payment_key,
+    payment_status
   ) values (
     v_row.id,
     v_user,
@@ -429,7 +443,10 @@ begin
     v_end,
     v_new_end,
     v_added_price,
-    v_seq
+    v_seq,
+    v_order_id,
+    v_payment_key,
+    case when v_payment_key is not null then 'paid' else null end
   );
 
   return jsonb_build_object(
@@ -440,7 +457,9 @@ begin
     'newEndAt', v_new_end,
     'addedPrice', v_added_price,
     'extensionCount', v_seq,
-    'newTotalPrice', v_row.total_price + v_added_price
+    'newTotalPrice', v_row.total_price + v_added_price,
+    'paymentKey', v_payment_key,
+    'paymentOrderId', v_order_id
   );
 end;
 $$;
@@ -520,8 +539,8 @@ $$;
 revoke all on function public.check_rental_extension_for_me(text, integer) from public;
 grant execute on function public.check_rental_extension_for_me(text, integer) to authenticated;
 
-revoke all on function public.apply_rental_extension_for_me(text, integer) from public;
-grant execute on function public.apply_rental_extension_for_me(text, integer) to authenticated;
+revoke all on function public.apply_rental_extension_for_me(text, integer, text, text) from public;
+grant execute on function public.apply_rental_extension_for_me(text, integer, text, text) to authenticated;
 
 revoke all on function public.log_emergency_consultation_for_me(text, text, text, jsonb) from public;
 grant execute on function public.log_emergency_consultation_for_me(text, text, text, jsonb) to authenticated;

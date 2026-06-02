@@ -290,6 +290,52 @@ class PaymentService {
     );
   }
 
+  /// 대여 연장 — 등록된 빌링키로 추가 요금 결제 후 연장 적용
+  Future<Map<String, dynamic>> payRentalExtensionWithBilling({
+    required String reservationId,
+    int extensionHours = 1,
+  }) async {
+    if (!isSupabaseInitialized) {
+      throw StateError('Supabase가 초기화되지 않았습니다.');
+    }
+    final user = supabase.auth.currentUser;
+    if (user == null) {
+      throw const AuthException('로그인이 필요합니다.');
+    }
+
+    try {
+      final data = await _invokeFunction('billing-extension-charge', {
+        'reservationId': reservationId,
+        'extensionHours': extensionHours,
+      });
+      return data;
+    } on FunctionException catch (e) {
+      throw Exception(_friendlyExtensionBillingError(e));
+    }
+  }
+
+  String _friendlyExtensionBillingError(FunctionException error) {
+    final details = error.details;
+    if (details is Map) {
+      final msg = details['error']?.toString();
+      if (msg != null && msg.isNotEmpty) return msg;
+      final code = details['code']?.toString();
+      if (code == 'billing_key_missing') {
+        return '등록된 결제카드가 없습니다. 마이페이지에서 결제카드를 등록해주세요.';
+      }
+      if (code == 'billing_charge_failed') {
+        return '결제에 실패했습니다. 카드 한도·잔액을 확인해주세요.';
+      }
+      if (code == 'extension_apply_failed') {
+        return '결제는 완료되었으나 연장 적용에 실패했습니다. 고객센터로 문의해주세요.';
+      }
+    }
+    if (details is String && details.isNotEmpty) {
+      return _mapCancelError(details);
+    }
+    return error.reasonPhrase ?? '연장 결제에 실패했습니다.';
+  }
+
   /// 온보딩 — 빌링키 발급 (Edge Function, 실결제 없음)
   Future<void> issueSignupBillingKey({
     required String authKey,
