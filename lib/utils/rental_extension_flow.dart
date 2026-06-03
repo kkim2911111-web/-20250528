@@ -4,22 +4,16 @@ import 'package:intl/intl.dart';
 import '../models/rental_extension_result.dart';
 import '../models/reservation.dart';
 import '../services/rental_service.dart';
+import '../services/support_contacts_service.dart';
 import '../theme/danji_colors.dart';
 import 'phone_launcher.dart';
 
-/// 연장 버튼 → 가능 여부 확인 → 연장 적용 또는 긴급 상담 안내
+/// 연장 버튼 → 서버 최신 예약 조회 → 가능 여부 확인 → 연장 적용 또는 안내
 Future<bool> openRentalExtension(
   BuildContext context,
   Reservation reservation, {
   int extensionHours = 1,
 }) async {
-  if (reservation.status != 'in_use') {
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text(RentalExtensionMessages.needInUse)),
-    );
-    return false;
-  }
-
   final service = RentalService();
   final navigator = Navigator.of(context, rootNavigator: true);
   showDialog<void>(
@@ -45,10 +39,22 @@ Future<bool> openRentalExtension(
     ),
   );
 
+  Reservation current;
   RentalExtensionCheckResult check;
   try {
+    current = await service.fetchReservation(reservation.id);
+    if (!current.isInUse) {
+      if (navigator.canPop()) navigator.pop();
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text(RentalExtensionMessages.needInUse)),
+        );
+      }
+      return false;
+    }
+
     check = await service.checkRentalExtension(
-      reservationId: reservation.id,
+      reservationId: current.id,
       extensionHours: extensionHours,
     );
   } catch (e) {
@@ -67,7 +73,7 @@ Future<bool> openRentalExtension(
   if (check.eligible) {
     return _confirmAndApply(
       context,
-      reservation: reservation,
+      reservation: current,
       check: check,
       service: service,
       extensionHours: extensionHours,
@@ -75,16 +81,46 @@ Future<bool> openRentalExtension(
   }
 
   if (check.showEmergencyConsultation) {
-    await _showEmergencyDialog(context, reservation, check, service);
+    await _showEmergencyDialog(context, current, check, service);
     return false;
   }
 
   ScaffoldMessenger.of(context).showSnackBar(
     SnackBar(
-      content: Text(check.message ?? '지금은 연장할 수 없습니다.'),
+      content: Text(_messageForExtensionCheck(check)),
     ),
   );
   return false;
+}
+
+String _messageForExtensionCheck(RentalExtensionCheckResult check) {
+  switch (check.reason) {
+    case 'invalid_status':
+      return RentalExtensionMessages.needInUse;
+    case 'too_early':
+      return RentalExtensionMessages.tooEarly;
+    case 'too_late':
+      return RentalExtensionMessages.tooLate;
+    case 'next_reservation_exists':
+      return '다음 예약이 있어 연장할 수 없습니다.';
+    default:
+      break;
+  }
+
+  final message = check.message?.trim();
+  if (message != null && message.isNotEmpty) {
+    if (message.contains('종료 1시간 전부터')) {
+      return RentalExtensionMessages.tooEarly;
+    }
+    if (message.contains('종료 시각이 지나')) {
+      return RentalExtensionMessages.tooLate;
+    }
+    if (message.contains('in_use')) {
+      return RentalExtensionMessages.needInUse;
+    }
+    return message;
+  }
+  return '지금은 연장할 수 없습니다.';
 }
 
 Future<bool> _confirmAndApply(
@@ -194,7 +230,19 @@ Future<void> _showEmergencyDialog(
   RentalExtensionCheckResult check,
   RentalService service,
 ) async {
-  final phone = check.emergencyPhone ?? '010-4455-6676';
+  var phone = SupportContactsService.normalizePhone(check.emergencyPhone);
+  phone ??= await SupportContactsService().fetchEmergencyPhone();
+  if (!context.mounted) return;
+
+  if (phone == null) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('긴급 상담 번호가 등록되지 않았습니다. 관리자에게 문의해주세요.'),
+      ),
+    );
+    return;
+  }
+  final phoneNumber = phone;
 
   await showDialog<void>(
     context: context,
@@ -209,8 +257,11 @@ Future<void> _showEmergencyDialog(
         ),
       ),
       content: Text(
-        check.message ??
-            '다음 예약이 있어 연장할 수 없습니다.\n긴급 상담으로 문의해주세요.',
+        () {
+          final msg = _messageForExtensionCheck(check);
+          if (msg.isNotEmpty && msg != '지금은 연장할 수 없습니다.') return msg;
+          return '다음 예약이 있어 연장할 수 없습니다.\n긴급 상담으로 문의해주세요.';
+        }(),
         style: const TextStyle(
           color: DanjiColors.textSecondary,
           height: 1.5,
@@ -232,17 +283,17 @@ Future<void> _showEmergencyDialog(
               );
             } catch (_) {}
 
-            final launched = await launchPhoneCall(phone);
+            final launched = await launchPhoneCall(phoneNumber);
             if (!ctx.mounted) return;
             if (!launched) {
               ScaffoldMessenger.of(ctx).showSnackBar(
-                SnackBar(content: Text('전화 연결: $phone')),
+                SnackBar(content: Text('전화 연결: $phoneNumber')),
               );
             }
             Navigator.of(ctx).pop();
           },
           icon: const Icon(Icons.phone),
-          label: Text('긴급 상담 ($phone)'),
+          label: Text('긴급 상담 ($phoneNumber)'),
         ),
       ],
     ),

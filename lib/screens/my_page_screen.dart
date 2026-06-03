@@ -1,9 +1,10 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 
 import '../models/my_page_profile.dart';
 import '../services/auth_service.dart';
 import '../services/my_page_service.dart';
+import '../services/payment_service.dart';
 import '../theme/danji_colors.dart';
 import '../theme/danji_typography.dart';
 import '../widgets/danji_app_bar.dart';
@@ -61,9 +62,20 @@ class _MyPageScreenState extends State<MyPageScreen> {
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
-      builder: (_) => _PaymentCardSheet(initialLast4: profile.cardLast4 ?? ''),
+      builder: (_) => _PaymentCardSheet(
+        alreadyRegistered: profile.isPaymentCardComplete,
+        cardLast4: profile.cardLast4,
+      ),
     );
-    if (saved == true) _reload();
+    if (saved == true) {
+      _reload();
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(paymentCardRegistrationSuccessMessage),
+        ),
+      );
+    }
   }
 
   Future<void> _openPersonalInfo(MyPageProfile profile) async {
@@ -507,55 +519,51 @@ class _MenuRow extends StatelessWidget {
   }
 }
 
+/// 마이페이지 결제수단 — 온보딩 5단계와 동일한 토스 빌링키 발급
 class _PaymentCardSheet extends StatefulWidget {
-  final String initialLast4;
+  final bool alreadyRegistered;
+  final String? cardLast4;
 
-  const _PaymentCardSheet({required this.initialLast4});
+  const _PaymentCardSheet({
+    required this.alreadyRegistered,
+    this.cardLast4,
+  });
 
   @override
   State<_PaymentCardSheet> createState() => _PaymentCardSheetState();
 }
 
 class _PaymentCardSheetState extends State<_PaymentCardSheet> {
-  final _service = MyPageService();
-  late final TextEditingController _last4;
-  bool _saving = false;
+  final _payment = PaymentService();
+  bool _registering = false;
   String? _error;
 
-  @override
-  void initState() {
-    super.initState();
-    _last4 = TextEditingController(text: widget.initialLast4);
-  }
-
-  @override
-  void dispose() {
-    _last4.dispose();
-    super.dispose();
-  }
-
-  Future<void> _save() async {
-    final last4 = _last4.text.trim();
-    if (last4.length != 4) {
-      setState(() {
-        _error = '카드 번호 뒤 4자리를 입력해주세요.';
-      });
-      return;
-    }
-
+  Future<void> _registerCard() async {
     setState(() {
-      _saving = true;
+      _registering = true;
       _error = null;
     });
 
     try {
-      await _service.savePaymentCard(cardLast4: last4);
-      if (mounted) Navigator.of(context).pop(true);
+      final ok = await _payment.registerSignupBillingKey(context);
+      if (!mounted) return;
+
+      if (!ok) {
+        setState(() {
+          _registering = false;
+          _error = kIsWeb
+              ? '카드 등록창에서 완료하거나, 취소 시 다시 시도해주세요.'
+              : '카드 등록이 완료되지 않았습니다. 다시 시도해주세요.';
+        });
+        return;
+      }
+
+      Navigator.of(context).pop(true);
     } catch (e) {
       if (!mounted) return;
       setState(() {
-        _saving = false;
-        _error = e.toString();
+        _registering = false;
+        _error = e.toString().replaceFirst('Exception: ', '');
       });
     }
   }
@@ -563,6 +571,7 @@ class _PaymentCardSheetState extends State<_PaymentCardSheet> {
   @override
   Widget build(BuildContext context) {
     final bottom = MediaQuery.of(context).viewInsets.bottom;
+    final last4 = widget.cardLast4?.trim();
 
     return Padding(
       padding: EdgeInsets.fromLTRB(20, 20, 20, bottom + 20),
@@ -578,40 +587,99 @@ class _PaymentCardSheetState extends State<_PaymentCardSheet> {
               fontWeight: FontWeight.w800,
             ),
           ),
-          const SizedBox(height: 16),
-          TextField(
-            controller: _last4,
-            keyboardType: TextInputType.number,
-            inputFormatters: [
-              FilteringTextInputFormatter.digitsOnly,
-              LengthLimitingTextInputFormatter(4),
-            ],
-            decoration: const InputDecoration(
-              labelText: '카드 뒤 4자리',
-              filled: true,
-              fillColor: DanjiColors.skyLight,
-              border: OutlineInputBorder(borderSide: BorderSide.none),
+          const SizedBox(height: 12),
+          const Text(
+            '토스페이먼츠로 결제카드를 등록합니다.\n'
+            '실제 결제 없이 카드 정보만 등록되며, 빌링키가 발급됩니다.',
+            style: TextStyle(
+              color: DanjiColors.textSecondary,
+              height: 1.45,
+              fontSize: 14,
             ),
           ),
+          const SizedBox(height: 16),
+          if (widget.alreadyRegistered)
+            Card(
+              color: DanjiColors.skyLight,
+              elevation: 0,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: ListTile(
+                leading: const Icon(
+                  Icons.credit_card,
+                  color: DanjiColors.buttonBlue,
+                ),
+                title: const Text(
+                  '등록된 결제카드',
+                  style: TextStyle(fontWeight: FontWeight.w700),
+                ),
+                subtitle: Text(
+                  last4 != null && last4.isNotEmpty
+                      ? '**** **** **** $last4'
+                      : '빌링키가 등록되어 있습니다.',
+                ),
+              ),
+            )
+          else
+            Card(
+              elevation: 0,
+              color: DanjiColors.skyLight,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: const Padding(
+                padding: EdgeInsets.all(16),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      '등록 방법',
+                      style: TextStyle(fontWeight: FontWeight.w700),
+                    ),
+                    SizedBox(height: 8),
+                    Text(
+                      '아래 버튼을 누르면 토스 카드 등록창이 열립니다.',
+                      style: TextStyle(
+                        color: DanjiColors.textSecondary,
+                        height: 1.4,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
           if (_error != null) ...[
-            const SizedBox(height: 8),
-            Text(_error!, style: const TextStyle(color: DanjiColors.accentRed)),
+            const SizedBox(height: 12),
+            Text(
+              _error!,
+              style: const TextStyle(
+                color: DanjiColors.accentRed,
+                fontSize: 13,
+                height: 1.4,
+              ),
+            ),
           ],
           const SizedBox(height: 16),
           FilledButton(
-            onPressed: _saving ? null : _save,
+            onPressed: _registering ? null : _registerCard,
             style: FilledButton.styleFrom(
               backgroundColor: DanjiColors.buttonBlue,
               foregroundColor: Colors.white,
               minimumSize: const Size.fromHeight(48),
             ),
-            child: _saving
+            child: _registering
                 ? const SizedBox(
-                    height: 20,
-                    width: 20,
-                    child: CircularProgressIndicator(strokeWidth: 2),
+                    height: 22,
+                    width: 22,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      color: Colors.white,
+                    ),
                   )
-                : const Text('저장'),
+                : Text(
+                    widget.alreadyRegistered ? '카드 다시 등록' : '토스로 카드 등록',
+                  ),
           ),
         ],
       ),

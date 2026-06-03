@@ -13,7 +13,9 @@ Future<bool> openReservationChange(
   if (!reservation.canChangeReservation) {
     if (reservation.isChangeBlocked && context.mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text(ReservationCancelMessages.tooLate)),
+        const SnackBar(
+          content: Text(ReservationCancelMessages.changeTooLate),
+        ),
       );
     }
     return false;
@@ -70,9 +72,9 @@ Future<void> showReservationManageDialog({
   required Future<void> Function() onCancel,
   required Future<void> Function() onChange,
 }) async {
-  if (reservation.isCancelBlocked) {
+  if (reservation.isChangeBlocked) {
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text(ReservationCancelMessages.tooLate)),
+      const SnackBar(content: Text(ReservationCancelMessages.changeTooLate)),
     );
     return;
   }

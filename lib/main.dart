@@ -13,6 +13,15 @@ import 'theme/danji_colors.dart';
 import 'theme/danji_theme.dart';
 import 'theme/danji_typography.dart';
 
+/// 시스템 글자 크기 설정과 무관하게 앱 UI 비율 유지 (textScaleFactor 1.0)
+Widget _lockAppTextScale(BuildContext context, Widget? child) {
+  final mq = MediaQuery.of(context);
+  return MediaQuery(
+    data: mq.copyWith(textScaler: TextScaler.noScaling),
+    child: child ?? const SizedBox.shrink(),
+  );
+}
+
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await SupabaseConfig.loadEnv();
@@ -100,6 +109,7 @@ class _BootstrapAppState extends State<BootstrapApp> {
         debugShowCheckedModeBanner: false,
         title: '단지카',
         theme: DanjiTheme.light,
+        builder: _lockAppTextScale,
         home: const _BootstrapLoadingScreen(),
       );
     }
@@ -123,7 +133,7 @@ class _BootstrapAppState extends State<BootstrapApp> {
       onUnknownRoute: kIsWeb ? onUnknownRoute : null,
       onGenerateInitialRoutes: kIsWeb ? generateInitialRoutes : null,
       builder: (context, child) {
-        Widget content = child ?? const SizedBox.shrink();
+        Widget content = _lockAppTextScale(context, child);
         content = DefaultTextStyle(
           style: DanjiTypography.bodyRegular,
           child: content,

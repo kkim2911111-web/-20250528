@@ -21,6 +21,7 @@ dependencies:
   url_launcher: ^6.3.1
   webview_flutter: ^4.10.0
   google_mlkit_text_recognition: ^0.15.0
+  flutter_svg: ^2.3.0
 
 dev_dependencies:
   flutter_test:
@@ -31,3 +32,5 @@ flutter:
   uses-material-design: true
   assets:
     - .env
+    - assets/brand/danji_logo.svg
+    - assets/brand/danji_logo_icon.svg

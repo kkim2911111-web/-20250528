@@ -1,11 +1,22 @@
 import 'package:flutter/material.dart';
 
+import '../services/support_contacts_service.dart';
 import '../theme/danji_colors.dart';
 import 'phone_launcher.dart';
 
-const accidentEmergencyPhone = '010-4455-6676';
-
 Future<void> showAccidentEmergencyDialog(BuildContext context) async {
+  final phone = await SupportContactsService().fetchEmergencyPhone();
+  if (!context.mounted) return;
+
+  if (phone == null) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('긴급 상담 번호가 등록되지 않았습니다. 관리자에게 문의해주세요.'),
+      ),
+    );
+    return;
+  }
+
   await showDialog<void>(
     context: context,
     builder: (ctx) => AlertDialog(
@@ -32,17 +43,17 @@ Future<void> showAccidentEmergencyDialog(BuildContext context) async {
         ),
         FilledButton.icon(
           onPressed: () async {
-            final launched = await launchPhoneCall(accidentEmergencyPhone);
+            final launched = await launchPhoneCall(phone);
             if (!ctx.mounted) return;
             if (!launched) {
               ScaffoldMessenger.of(ctx).showSnackBar(
-                SnackBar(content: Text('전화 연결: $accidentEmergencyPhone')),
+                SnackBar(content: Text('전화 연결: $phone')),
               );
             }
             Navigator.of(ctx).pop();
           },
           icon: const Icon(Icons.phone),
-          label: Text('긴급 상담 ($accidentEmergencyPhone)'),
+          label: Text('긴급 상담 ($phone)'),
         ),
       ],
     ),

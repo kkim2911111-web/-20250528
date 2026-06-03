@@ -16,6 +16,10 @@ import '../utils/network_retry.dart';
 import 'reservation_service.dart';
 import 'toss_payments.dart';
 
+/// 결제카드(빌링키) 등록·변경 성공 안내 — 마이페이지·온보딩·웹 리다이렉트 공통
+const paymentCardRegistrationSuccessMessage =
+    '결제카드 등록이 완료되었습니다.';
+
 class PreparePaymentResult {
   final String orderId;
   final int amount;
@@ -347,7 +351,8 @@ class PaymentService {
     });
   }
 
-  /// 온보딩 결제카드 등록 — 토스 빌링키 발급만. 성공 시 true, 취소/실패 시 false.
+  /// 결제카드 등록 — 토스 빌링키 발급 (온보딩·마이페이지 공통). 성공 시 true.
+  /// `billing-key-issue` Edge Function → `user_profiles.toss_billing_key` 저장.
   Future<bool> registerSignupBillingKey(BuildContext context) async {
     if (!PaymentConfig.isConfigured) {
       throw StateError('TOSS_CLIENT_KEY가 필요합니다.');

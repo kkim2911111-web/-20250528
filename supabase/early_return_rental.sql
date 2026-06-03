@@ -75,7 +75,7 @@ $$;
 
 -- ---------------------------------------------------------------------------
 -- 3) complete_rental_for_me — 중도반납 파라미터 추가
---    status: in_use → returned
+--    status: in_use → completed
 --    return_type: normal | early
 -- ---------------------------------------------------------------------------
 
@@ -172,7 +172,7 @@ begin
 
   update public.reservations
   set
-    status = 'returned',
+    status = 'completed',
     returned_at = v_now,
     actual_end_at = v_now,
     return_type = v_return_type,
@@ -193,7 +193,7 @@ begin
 
   return jsonb_build_object(
     'reservationId', v_id,
-    'status', 'returned',
+    'status', 'completed',
     'returnType', v_return_type,
     'returnedAt', v_now,
     'actualEndAt', v_now,

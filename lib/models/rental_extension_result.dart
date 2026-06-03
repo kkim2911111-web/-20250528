@@ -1,3 +1,5 @@
+import '../services/support_contacts_service.dart';
+
 class RentalExtensionCheckResult {
   final bool eligible;
   final String? reason;
@@ -35,7 +37,7 @@ class RentalExtensionCheckResult {
 
   factory RentalExtensionCheckResult.fromMap(Map<String, dynamic> map) {
     return RentalExtensionCheckResult(
-      eligible: map['eligible'] == true,
+      eligible: map['eligible'] == true || map['eligible'] == 'true',
       reason: map['reason']?.toString(),
       message: map['message']?.toString(),
       reservationId: map['reservationId']?.toString(),
@@ -47,7 +49,9 @@ class RentalExtensionCheckResult {
       currentTotalPrice: (map['currentTotalPrice'] as num?)?.toInt(),
       newTotalPrice: (map['newTotalPrice'] as num?)?.toInt(),
       extensionCount: (map['extensionCount'] as num?)?.toInt(),
-      emergencyPhone: map['emergencyPhone']?.toString(),
+      emergencyPhone: SupportContactsService.normalizePhone(
+        map['emergencyPhone']?.toString(),
+      ),
       showEmergencyConsultation: map['showEmergencyConsultation'] == true,
       blockingReservationId: map['blockingReservationId']?.toString(),
     );
@@ -78,6 +82,9 @@ abstract final class RentalExtensionMessages {
   static const confirmTitle = '대여 연장';
   static const emergencyTitle = '연장 불가';
   static const needInUse = '대여 중(in_use)인 예약만 연장할 수 있습니다.';
+  static const tooEarly =
+      '대여 종료 1시간 전부터 연장 신청이 가능합니다.';
+  static const tooLate = '예약 종료 시각이 지나 연장할 수 없습니다.';
   static const applying = '연장 처리 중…';
   static const payingAndApplying = '결제 및 연장 처리 중…';
   static const checking = '연장 가능 여부 확인 중…';

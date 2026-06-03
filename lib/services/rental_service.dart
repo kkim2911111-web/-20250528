@@ -407,7 +407,7 @@ fuel_level_start,fuel_level_end,is_accident,accident_note,door_unlocked
         final row = await supabase
             .from('reservations')
             .select(select)
-            .eq('id', reservationId)
+            .eq('id', _reservationIdFilter(reservationId))
             .eq('user_id', user.id)
             .maybeSingle();
 
@@ -791,7 +791,7 @@ fuel_level_start,fuel_level_end,is_accident,accident_note,door_unlocked
         final row = await supabase
             .from('reservations')
             .select(select)
-            .eq('id', reservationId)
+            .eq('id', _reservationIdFilter(reservationId))
             .eq('user_id', userId)
             .maybeSingle();
         if (row != null) {
@@ -891,7 +891,7 @@ fuel_level_start,fuel_level_end,is_accident,accident_note,door_unlocked
         'p_reservation_id': reservationId,
         'p_extension_hours': extensionHours,
       });
-      return RentalExtensionCheckResult.fromMap(_asMap(data));
+      return RentalExtensionCheckResult.fromMap(_parseExtensionRpcMap(data));
     } on PostgrestException catch (e) {
       throw RentalException(friendlyRentalError(e));
     }
@@ -955,11 +955,18 @@ fuel_level_start,fuel_level_end,is_accident,accident_note,door_unlocked
     required bool isAccident,
     String? accidentNote,
   }) async {
+    final user = supabase.auth.currentUser;
+    if (user == null) {
+      throw const AuthException('로그인이 필요합니다.');
+    }
+
     final photoUrls = await uploadPhotos(
       reservationId: reservationId,
       phase: 'return',
       photos: photos,
     );
+
+    final nowIso = DateTime.now().toUtc().toIso8601String();
 
     try {
       final data = await supabase.rpc('complete_rental_for_me', params: {
@@ -970,17 +977,161 @@ fuel_level_start,fuel_level_end,is_accident,accident_note,door_unlocked
         'p_is_accident': isAccident,
         'p_accident_note': accidentNote,
       });
+      await _assertReservationReturnCompleted(reservationId);
       RentalService.signalListRefresh();
       return _asMap(data);
     } on PostgrestException catch (e) {
+      if (_shouldFallbackCompleteRental(e)) {
+        await _persistReturnComplete(
+          reservationId: reservationId,
+          userId: user.id,
+          nowIso: nowIso,
+          photoUrls: photoUrls,
+          mileageEnd: mileageEnd,
+          fuelLevelEnd: fuelLevelEnd.value,
+          isAccident: isAccident,
+          accidentNote: accidentNote,
+        );
+        RentalService.signalListRefresh();
+        return {
+          'reservationId': reservationId,
+          'status': 'completed',
+          'returnedAt': nowIso,
+          'actualEndAt': nowIso,
+        };
+      }
       throw RentalException(friendlyRentalError(e));
     }
+  }
+
+  bool _shouldFallbackCompleteRental(PostgrestException error) {
+    final msg = _postgrestErrorText(error);
+    return msg.contains('could not find the function') ||
+        msg.contains('complete_rental_for_me') ||
+        msg.contains('schema cache');
+  }
+
+  Future<void> _persistReturnComplete({
+    required String reservationId,
+    required String userId,
+    required String nowIso,
+    required List<String> photoUrls,
+    required int mileageEnd,
+    required String fuelLevelEnd,
+    required bool isAccident,
+    String? accidentNote,
+  }) async {
+    final idFilter = _reservationIdFilter(reservationId);
+    final note = isAccident ? accidentNote?.trim() : null;
+    final payloads = <Map<String, dynamic>>[
+      {
+        'status': 'completed',
+        'returned_at': nowIso,
+        'actual_end_at': nowIso,
+        'return_type': 'normal',
+        'return_photos': photoUrls,
+        'mileage_end': mileageEnd,
+        'fuel_level_end': fuelLevelEnd,
+        'is_accident': isAccident,
+        'accident_note': note,
+      },
+      {
+        'status': 'completed',
+        'returned_at': nowIso,
+        'actual_end_at': nowIso,
+        'return_photos': photoUrls,
+        'mileage_end': mileageEnd,
+        'fuel_level_end': fuelLevelEnd,
+      },
+      {
+        'status': 'completed',
+        'returned_at': nowIso,
+      },
+    ];
+
+    PostgrestException? lastError;
+    for (final payload in payloads) {
+      try {
+        final row = await supabase
+            .from('reservations')
+            .update(payload)
+            .eq('id', idFilter)
+            .eq('user_id', userId)
+            .eq('status', 'in_use')
+            .select('status')
+            .maybeSingle();
+        if (row != null &&
+            _isReturnCompletedStatus(row['status']?.toString())) {
+          return;
+        }
+      } on PostgrestException catch (e) {
+        lastError = e;
+        if (!_isMissingColumnError(e)) {
+          throw RentalException(friendlyRentalError(e));
+        }
+      }
+    }
+
+    if (lastError != null) {
+      throw RentalException(friendlyRentalError(lastError));
+    }
+    throw const RentalException(
+      '반납 상태(completed)가 저장되지 않았습니다. 다시 시도해주세요.',
+    );
+  }
+
+  bool _isReturnCompletedStatus(String? status) {
+    final s = status?.trim().toLowerCase();
+    return s == 'completed' || s == 'returned';
+  }
+
+  Future<void> _assertReservationReturnCompleted(String reservationId) async {
+    final user = supabase.auth.currentUser;
+    if (user == null) return;
+
+    final row = await supabase
+        .from('reservations')
+        .select('status')
+        .eq('id', _reservationIdFilter(reservationId))
+        .eq('user_id', user.id)
+        .maybeSingle();
+
+    final status = row?['status']?.toString();
+    if (_isReturnCompletedStatus(status)) return;
+
+    if (status == 'in_use') {
+      throw const RentalException(
+        '반납은 처리되었으나 status가 in_use로 남아 있습니다.\n'
+        'Supabase에서 complete_rental_for_me 마이그레이션(20260604220000)을 실행해주세요.',
+      );
+    }
+
+    throw RentalException(
+      '반납 상태가 저장되지 않았습니다. (현재: ${status ?? 'unknown'})',
+    );
   }
 
   Map<String, dynamic> _asMap(Object? data) {
     if (data is Map<String, dynamic>) return data;
     if (data is Map) return Map<String, dynamic>.from(data);
     return {};
+  }
+
+  Map<String, dynamic> _parseExtensionRpcMap(Object? data) {
+    final map = _asMap(data);
+    if (map.containsKey('eligible') || map.containsKey('reason')) {
+      return map;
+    }
+    for (final key in ['data', 'result']) {
+      final nested = map[key];
+      if (nested is Map) {
+        final inner = _asMap(nested);
+        if (inner.containsKey('eligible') || inner.containsKey('reason')) {
+          return inner;
+        }
+      }
+    }
+    return map;
   }
 }
 
@@ -1058,6 +1209,10 @@ String friendlyRentalError(PostgrestException error) {
     }
     if (msg.contains('start_rental_for_me')) {
       return '대여 시작 RPC가 설치되지 않았습니다.\nSupabase에서 fix_rental_rpcs_bigint.sql 을 실행해주세요.';
+    }
+    if (msg.contains('complete_rental_for_me')) {
+      return '반납 RPC가 설치되지 않았습니다.\n'
+          'Supabase에서 supabase/migrations/20260604220000_complete_rental_status_completed.sql 을 실행해주세요.';
     }
     if (msg.contains('check_rental_extension_for_me') ||
         msg.contains('apply_rental_extension_for_me')) {

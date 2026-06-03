@@ -89,7 +89,9 @@ class _BillingAuthSuccessScreenState extends State<BillingAuthSuccessScreen> {
                   ),
                   const SizedBox(height: 16),
                   Text(
-                    _error == null ? '결제카드 등록이 완료되었습니다.' : '카드 등록에 실패했습니다.',
+                    _error == null
+                        ? paymentCardRegistrationSuccessMessage
+                        : '카드 등록에 실패했습니다.',
                     style: const TextStyle(
                       fontSize: 18,
                       fontWeight: FontWeight.w700,

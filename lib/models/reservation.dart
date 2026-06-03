@@ -72,7 +72,7 @@ class Reservation {
       startAt: _parseDate(map['start_at'] ?? map['start_time']),
       endAt: _parseDate(map['end_at'] ?? map['end_time']),
       totalPrice: (map['total_price'] as num?)?.toInt() ?? 0,
-      status: map['status']?.toString() ?? 'pending',
+      status: normalizeStatus(map['status']),
       paymentKey: map['payment_key']?.toString(),
       paymentStatus: map['payment_status']?.toString(),
       orderId: map['order_id']?.toString(),
@@ -105,6 +105,27 @@ class Reservation {
       return value.map((e) => e.toString()).where((s) => s.isNotEmpty).toList();
     }
     return const [];
+  }
+
+  /// DB/JSON status 정규화 (공백·대소문자·in-use 변형)
+  static String normalizeStatus(Object? raw) {
+    final s = raw?.toString().trim().toLowerCase() ?? '';
+    if (s.isEmpty) return 'pending';
+    if (s == 'in use' || s == 'in-use') return 'in_use';
+    return s;
+  }
+
+  bool get isInUse => status == 'in_use';
+
+  /// 연장 신청 가능 구간 — in_use 이고 종료 1시간 전 ~ 종료 시각 전
+  bool get isWithinExtensionRequestWindow {
+    if (!isInUse) return false;
+    final end = endAt;
+    if (end == null) return false;
+    final now = DateTime.now();
+    if (!now.isBefore(end)) return false;
+    final windowStart = end.subtract(const Duration(hours: 1));
+    return !now.isBefore(windowStart);
   }
 
   /// 대여 전 필수 사진(6장) 업로드 완료 여부
@@ -141,9 +162,9 @@ class Reservation {
 
   bool get canStartRental => showRentalStartButton && isRentalStartWindowOpen;
 
-  bool get canUseVehicle => status == 'in_use';
+  bool get canUseVehicle => isInUse;
 
-  bool get canReturn => status == 'in_use';
+  bool get canReturn => isInUse;
 
   bool get isFinished => status == 'returned' || status == 'completed';
 
@@ -188,6 +209,25 @@ class Reservation {
   bool get shouldShowCancelButton =>
       status == 'confirmed' && canCancel;
 
+  /// 예약 변경 버튼 표시 — 이용 대기(pending/confirmed), 대여 시작 전
+  bool get canShowChangeButton => canShowCancelButton;
+
+  /// 예약 변경 가능 — 취소 가능 조건과 동일
+  bool get canChangeReservation {
+    if (!canShowChangeButton) return false;
+    if (status == 'pending' && !isPaid) return true;
+    final start = _start;
+    if (start == null) return true;
+    return DateTime.now().add(const Duration(hours: 1)).isBefore(start);
+  }
+
+  /// 대여 시작 1시간(60분) 이내로 변경 불가
+  bool get isChangeBlocked =>
+      canShowChangeButton && !canChangeReservation;
+
+  /// 예약변경 버튼 표시 — pending/confirmed & 변경 가능 시각 전
+  bool get shouldShowChangeButton => canShowChangeButton;
+
   DateTime? get _start => startAt;
   DateTime? get _end => endAt;
 
@@ -228,7 +268,7 @@ class Reservation {
 
   /// 운행 중 — in_use 또는 이용 시간대 내
   bool get isOperating =>
-      status == 'in_use' ||
+      isInUse ||
       (!isEffectivelyFinished &&
           isActiveStatus &&
           _start != null &&
@@ -248,8 +288,7 @@ class Reservation {
   bool get canUnlockDoor => !isTooEarlyForRentalStart;
 
   /// 스마트키 — 대여 중(in_use)만
-  bool get isSmartKeyEligible =>
-      status == 'in_use' && !isEffectivelyFinished;
+  bool get isSmartKeyEligible => isInUse && !isEffectivelyFinished;
 
   DateTime get sortByStart => startAt ?? DateTime.fromMillisecondsSinceEpoch(0);
 
@@ -334,7 +373,7 @@ abstract final class RentalStartMessages {
 abstract final class ReservationCancelMessages {
   static const success = '예약취소가 완료되었습니다.';
   static const tooLate = '대여예약 1시간(60분)이전에는 예약취소가 불가능합니다';
-  static const waitingGuide =
-      '이용 시작 전까지「예약취소」를 누르면 결제 금액이 전액 환불됩니다. '
-      '단, 대여예약 1시간(60분) 이내에는 예약취소가 불가능합니다.';
+  static const changeTooLate = '대여 시작 1시간 전부터는 예약 변경이 불가합니다.';
+  static const changeSuccess = '예약이 변경되었습니다.';
+  static const waitingGuide = '대여 시작 1시간 전까지 취소 시 전액 환불됩니다.';
 }

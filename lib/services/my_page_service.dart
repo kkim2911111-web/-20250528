@@ -239,13 +239,6 @@ class MyPageService {
     });
   }
 
-  Future<void> savePaymentCard({required String cardLast4}) async {
-    await _upsert({
-      'payment_card_registered': true,
-      'payment_card_last4': cardLast4.trim(),
-    });
-  }
-
   Future<String?> getUserRole() async {
     final user = supabase.auth.currentUser;
     if (user == null) return null;

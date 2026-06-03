@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import '../theme/danji_colors.dart';
+import '../widgets/danji_logo.dart';
 
 /// 앱 시작 스플래시 — 2초 후 child 로 전환
 class SplashScreen extends StatefulWidget {
@@ -39,18 +40,9 @@ class _SplashScreenState extends State<SplashScreen> {
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    Container(
-                      width: 88,
-                      height: 88,
-                      decoration: BoxDecoration(
-                        color: Colors.white.withValues(alpha: 0.15),
-                        borderRadius: BorderRadius.circular(24),
-                      ),
-                      child: const Icon(
-                        Icons.apartment_rounded,
-                        size: 52,
-                        color: Colors.white,
-                      ),
+                    const DanjiLogo(
+                      size: 120,
+                      variant: DanjiLogoVariant.full,
                     ),
                     const SizedBox(height: 20),
                     const Text(

@@ -246,12 +246,20 @@ begin
     raise exception 'reservation_not_found';
   end if;
 
+  if v_res.status = 'completed' then
+    return jsonb_build_object(
+      'reservationId', p_reservation_id,
+      'status', 'completed',
+      'alreadyCompleted', true
+    );
+  end if;
+
   if v_res.status <> 'returned' then
     raise exception 'invalid_status';
   end if;
 
   update public.reservations
-  set status = 'completed'
+  set status = 'completed', updated_at = now()
   where id = v_res.id;
 
   return jsonb_build_object('reservationId', p_reservation_id, 'status', 'completed');

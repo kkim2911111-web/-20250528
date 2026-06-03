@@ -2,16 +2,25 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:table_calendar/table_calendar.dart';
 
+import '../models/reservation.dart';
 import '../models/vehicle.dart';
 import '../services/reservation_service.dart';
 import '../theme/danji_colors.dart';
+import '../theme/danji_theme.dart';
 import '../theme/danji_typography.dart';
 import '../widgets/danji_app_bar.dart';
 
 class ReservationScreen extends StatefulWidget {
   final Vehicle vehicle;
+  final Reservation? existingReservation;
 
-  const ReservationScreen({super.key, required this.vehicle});
+  const ReservationScreen({
+    super.key,
+    required this.vehicle,
+    this.existingReservation,
+  });
+
+  bool get isEditMode => existingReservation != null;
 
   @override
   State<ReservationScreen> createState() => _ReservationScreenState();
@@ -20,25 +29,47 @@ class ReservationScreen extends StatefulWidget {
 class _ReservationScreenState extends State<ReservationScreen> {
   final _service = ReservationService();
   final _dateFormat = DateFormat('yyyy-MM-dd HH:mm');
+  final _won = NumberFormat('#,###');
 
-  DateTime _focusedDay = DateTime.now();
+  late DateTime _focusedDay;
   DateTime? _selectedDay;
-  TimeOfDay _startTime = const TimeOfDay(hour: 9, minute: 0);
-  TimeOfDay _endTime = const TimeOfDay(hour: 11, minute: 0);
+  late TimeOfDay _startTime;
+  late TimeOfDay _endTime;
 
   bool _loading = false;
   String? _error;
 
+  bool get _isEditMode => widget.isEditMode;
+
   @override
   void initState() {
     super.initState();
-    _selectedDay = _dateOnly(DateTime.now());
+    final existing = widget.existingReservation;
+    if (existing != null) {
+      final start = existing.startAt ?? DateTime.now();
+      final end = existing.endAt ?? start.add(const Duration(hours: 2));
+      _selectedDay = _dateOnly(start);
+      _focusedDay = _selectedDay!;
+      _startTime = TimeOfDay(hour: start.hour, minute: start.minute);
+      _endTime = TimeOfDay(hour: end.hour, minute: end.minute);
+    } else {
+      _selectedDay = _dateOnly(DateTime.now());
+      _focusedDay = _selectedDay!;
+      _startTime = const TimeOfDay(hour: 9, minute: 0);
+      _endTime = const TimeOfDay(hour: 11, minute: 0);
+    }
   }
 
   DateTime _dateOnly(DateTime dt) => DateTime(dt.year, dt.month, dt.day);
 
   DateTime? _buildDateTime(DateTime day, TimeOfDay time) {
     return DateTime(day.year, day.month, day.day, time.hour, time.minute);
+  }
+
+  int _computeTotalPrice(DateTime startAt, DateTime endAt) {
+    final hours = endAt.difference(startAt).inMinutes / 60.0;
+    final billableHours = hours < 1 ? 1 : hours.ceil();
+    return billableHours * widget.vehicle.pricePerHour;
   }
 
   Future<void> _pickTime({required bool isStart}) async {
@@ -48,7 +79,7 @@ class _ReservationScreenState extends State<ReservationScreen> {
       builder: (context, child) {
         return Theme(
           data: Theme.of(context).copyWith(
-            colorScheme: ColorScheme.light(
+            colorScheme: const ColorScheme.light(
               primary: DanjiColors.buttonBlue,
               surface: DanjiColors.surface,
               onSurface: DanjiColors.textPrimary,
@@ -85,6 +116,11 @@ class _ReservationScreenState extends State<ReservationScreen> {
       return;
     }
 
+    if (endAt.difference(startAt).inMinutes < 60) {
+      setState(() => _error = '최소 1시간 이상 예약해야 합니다.');
+      return;
+    }
+
     if (startAt.isBefore(DateTime.now())) {
       setState(() => _error = '과거 시간은 예약할 수 없습니다.');
       return;
@@ -96,20 +132,38 @@ class _ReservationScreenState extends State<ReservationScreen> {
     });
 
     try {
-      await _service.createReservation(
-        vehicleId: widget.vehicle.id,
-        startAt: startAt,
-        endAt: endAt,
-      );
-
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('예약이 접수되었습니다. (대기)')),
-      );
-      Navigator.of(context).pop();
+      if (_isEditMode) {
+        final reservation = widget.existingReservation!;
+        final totalPrice = _computeTotalPrice(startAt, endAt);
+        await _service.updateReservationForMe(
+          reservationId: reservation.id,
+          startAt: startAt,
+          endAt: endAt,
+          totalPrice: totalPrice,
+        );
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(ReservationCancelMessages.changeSuccess),
+          ),
+        );
+        Navigator.of(context).pop(true);
+      } else {
+        await _service.createReservation(
+          vehicleId: widget.vehicle.id,
+          startAt: startAt,
+          endAt: endAt,
+        );
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('예약이 접수되었습니다. (대기)')),
+        );
+        Navigator.of(context).pop();
+      }
     } catch (e) {
       if (e is ReservationOverlapException ||
-          e is ReservationPermissionException) {
+          e is ReservationPermissionException ||
+          e is ReservationChangeException) {
         if (!mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text(e.toString())),
@@ -128,10 +182,14 @@ class _ReservationScreenState extends State<ReservationScreen> {
     final day = _selectedDay;
     final startAt = day != null ? _buildDateTime(day, _startTime) : null;
     final endAt = day != null ? _buildDateTime(day, _endTime) : null;
+    final previewPrice =
+        startAt != null && endAt != null && endAt.isAfter(startAt)
+            ? _computeTotalPrice(startAt, endAt)
+            : null;
 
     return Scaffold(
       backgroundColor: DanjiColors.background,
-      appBar: const DanjiAppBar(title: '예약하기'),
+      appBar: DanjiAppBar(title: _isEditMode ? '예약 변경' : '예약하기'),
       body: ListView(
         padding: const EdgeInsets.all(20),
         children: [
@@ -248,6 +306,16 @@ class _ReservationScreenState extends State<ReservationScreen> {
                 height: 1.4,
               ),
             ),
+            if (previewPrice != null) ...[
+              const SizedBox(height: 4),
+              Text(
+                '예상 요금: ₩${_won.format(previewPrice)}',
+                style: const TextStyle(
+                  color: DanjiColors.textPrimary,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ],
           ],
           if (_error != null) ...[
             const SizedBox(height: 12),
@@ -268,7 +336,7 @@ class _ReservationScreenState extends State<ReservationScreen> {
                       width: 20,
                       child: CircularProgressIndicator(strokeWidth: 2),
                     )
-                  : const Text('예약하기'),
+                  : Text(_isEditMode ? '변경 저장' : '예약하기'),
             ),
           ),
         ],

@@ -10,6 +10,7 @@ import '../theme/danji_theme.dart';
 import '../theme/danji_typography.dart';
 import '../widgets/danji_app_bar.dart';
 import '../utils/rental_navigation.dart';
+import '../utils/reservation_change_flow.dart';
 
 class MyReservationsScreen extends StatefulWidget {
   /// true: 마이페이지 이용내역 (종료된 예약만)
@@ -112,6 +113,17 @@ class _MyReservationsScreenState extends State<MyReservationsScreen> {
       return;
     }
     await _cancelReservation(reservation);
+  }
+
+  Future<void> _onChangeTap(Reservation reservation) async {
+    if (!reservation.canChangeReservation) {
+      if (reservation.isChangeBlocked) {
+        _showCancelSnack(ReservationCancelMessages.changeTooLate);
+      }
+      return;
+    }
+    final changed = await openReservationChange(context, reservation);
+    if (changed) await _reloadAndWait();
   }
 
   void _showCancelSnack(String message) {
@@ -311,7 +323,7 @@ class _MyReservationsScreenState extends State<MyReservationsScreen> {
                     child: Text(
                       ReservationCancelMessages.waitingGuide,
                       style: TextStyle(
-                        color: DanjiColors.textSecondary,
+                        color: Color(0xFF888888),
                         fontSize: 13,
                         height: 1.45,
                       ),
@@ -333,9 +345,14 @@ class _MyReservationsScreenState extends State<MyReservationsScreen> {
                             item.status == 'in_use',
                         onReturn: null,
                         showCancelButton: item.shouldShowCancelButton,
-                        cancelBlocked: false,
+                        showChangeButton: item.shouldShowChangeButton,
+                        cancelBlocked: item.isCancelBlocked,
+                        changeBlocked: item.isChangeBlocked,
                         onCancelTap: item.shouldShowCancelButton
                             ? () => _onCancelTap(item)
+                            : null,
+                        onChangeTap: item.shouldShowChangeButton
+                            ? () => _onChangeTap(item)
                             : null,
                       ),
                     ),
@@ -420,8 +437,11 @@ class _ReservationCard extends StatelessWidget {
   final VoidCallback? onUseVehicle;
   final VoidCallback? onReturn;
   final VoidCallback? onCancelTap;
+  final VoidCallback? onChangeTap;
   final bool showCancelButton;
+  final bool showChangeButton;
   final bool cancelBlocked;
+  final bool changeBlocked;
   final bool useVehicleEnabled;
 
   const _ReservationCard({
@@ -432,8 +452,11 @@ class _ReservationCard extends StatelessWidget {
     this.onUseVehicle,
     this.onReturn,
     this.onCancelTap,
+    this.onChangeTap,
     this.showCancelButton = false,
+    this.showChangeButton = false,
     this.cancelBlocked = false,
+    this.changeBlocked = false,
     this.useVehicleEnabled = true,
   });
 
@@ -461,6 +484,21 @@ class _ReservationCard extends StatelessWidget {
       variant == _CardVariant.waiting &&
       reservation.showRentalStartButton &&
       reservation.isTooEarlyForRentalStart;
+
+  static const _inUseRentalButtonColor = Color(0xFFCCCCCC);
+
+  ButtonStyle _rentalStartButtonStyle(Reservation reservation) {
+    final base = DanjiTheme.primaryButton.copyWith(
+      minimumSize: const WidgetStatePropertyAll(Size.fromHeight(48)),
+      padding: const WidgetStatePropertyAll(
+        EdgeInsets.symmetric(vertical: 14),
+      ),
+    );
+    if (!reservation.isInUse) return base;
+    return base.copyWith(
+      backgroundColor: const WidgetStatePropertyAll(_inUseRentalButtonColor),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -572,17 +610,8 @@ class _ReservationCard extends StatelessWidget {
                     child: FilledButton.icon(
                       onPressed: useVehicleEnabled ? onUseVehicle : null,
                       icon: const Icon(Icons.directions_car_outlined, size: 18),
-                      label: Text(
-                        '대여하기',
-                      ),
-                      style: DanjiTheme.primaryButton.copyWith(
-                        minimumSize: const WidgetStatePropertyAll(
-                          Size.fromHeight(48),
-                        ),
-                        padding: const WidgetStatePropertyAll(
-                          EdgeInsets.symmetric(vertical: 14),
-                        ),
-                      ),
+                      label: const Text('대여하기'),
+                      style: _rentalStartButtonStyle(reservation),
                     ),
                   ),
                 if (onUseVehicle != null && onReturn != null)
@@ -605,41 +634,98 @@ class _ReservationCard extends StatelessWidget {
               ],
             ),
           ],
-          if (showCancelButton) ...[
+          if (showCancelButton || showChangeButton) ...[
             const SizedBox(height: 10),
-            SizedBox(
-              width: double.infinity,
-              child: OutlinedButton.icon(
-                onPressed: onCancelTap,
-                icon: Icon(
-                  Icons.event_busy_outlined,
-                  size: 18,
-                  color: cancelBlocked
-                      ? DanjiColors.textMuted
-                      : DanjiColors.accentRed,
-                ),
-                label: const Text('예약취소'),
-                style: OutlinedButton.styleFrom(
-                  foregroundColor: DanjiColors.accentRed,
-                  side: BorderSide(
-                    color: cancelBlocked
-                        ? DanjiColors.border
-                        : DanjiColors.accentRed.withValues(alpha: 0.6),
+            Row(
+              children: [
+                if (showChangeButton)
+                  Expanded(
+                    child: OutlinedButton.icon(
+                      onPressed:
+                          changeBlocked ? null : onChangeTap,
+                      icon: Icon(
+                        Icons.edit_calendar_outlined,
+                        size: 18,
+                        color: changeBlocked
+                            ? DanjiColors.textMuted
+                            : DanjiColors.buttonBlue,
+                      ),
+                      label: const Text('예약변경'),
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: DanjiColors.buttonBlue,
+                        side: BorderSide(
+                          color: changeBlocked
+                              ? DanjiColors.border
+                              : DanjiColors.buttonBlue.withValues(alpha: 0.6),
+                        ),
+                        backgroundColor: DanjiColors.surface,
+                        padding: const EdgeInsets.symmetric(vertical: 13),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                      ),
+                    ),
                   ),
-                  backgroundColor: DanjiColors.surface,
-                  padding: const EdgeInsets.symmetric(vertical: 13),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12),
+                if (showChangeButton && showCancelButton)
+                  const SizedBox(width: 8),
+                if (showCancelButton)
+                  Expanded(
+                    child: OutlinedButton.icon(
+                      onPressed: cancelBlocked ? null : onCancelTap,
+                      icon: Icon(
+                        Icons.event_busy_outlined,
+                        size: 18,
+                        color: cancelBlocked
+                            ? DanjiColors.textMuted
+                            : DanjiColors.accentRed,
+                      ),
+                      label: const Text('예약취소'),
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: DanjiColors.accentRed,
+                        side: BorderSide(
+                          color: cancelBlocked
+                              ? DanjiColors.border
+                              : DanjiColors.accentRed.withValues(alpha: 0.6),
+                        ),
+                        backgroundColor: DanjiColors.surface,
+                        padding: const EdgeInsets.symmetric(vertical: 13),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                      ),
+                    ),
                   ),
-                ),
-              ),
+              ],
             ),
-            if (cancelBlocked) ...[
+            if (changeBlocked) ...[
               const SizedBox(height: 8),
               Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Icon(
+                  const Icon(
+                    Icons.info_outline,
+                    size: 14,
+                    color: DanjiColors.textMuted,
+                  ),
+                  const SizedBox(width: 6),
+                  Expanded(
+                    child: Text(
+                      ReservationCancelMessages.changeTooLate,
+                      style: TextStyle(
+                        color: DanjiColors.textSecondary,
+                        fontSize: 12,
+                        height: 1.4,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ] else if (cancelBlocked) ...[
+              const SizedBox(height: 8),
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Icon(
                     Icons.info_outline,
                     size: 14,
                     color: DanjiColors.textMuted,

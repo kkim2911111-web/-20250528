@@ -1,9 +1,11 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../models/reservation.dart';
 import '../supabase_client.dart';
 import '../constants/payment_order_status.dart';
 import '../utils/booking_eligibility.dart';
 import 'my_page_service.dart';
+import 'rental_service.dart';
 
 class ReservationOverlapException implements Exception {
   final String message;
@@ -12,9 +14,22 @@ class ReservationOverlapException implements Exception {
   String toString() => message;
 }
 
+/// 예약 화면 — 차량 선택 불가 사유
+enum VehicleBookingBlockReason {
+  inUse,
+  timeOverlap,
+}
+
 class ReservationPermissionException implements Exception {
   final String message;
   const ReservationPermissionException(this.message);
+  @override
+  String toString() => message;
+}
+
+class ReservationChangeException implements Exception {
+  final String message;
+  const ReservationChangeException(this.message);
   @override
   String toString() => message;
 }
@@ -89,31 +104,62 @@ class ReservationService {
     }
   }
 
+  /// 예약 불가 사유 — null이면 해당 시간대 예약 가능
+  Future<VehicleBookingBlockReason?> getVehicleBookingBlockReason({
+    required String vehicleId,
+    required DateTime startAt,
+    required DateTime endAt,
+  }) async {
+    if (await _vehicleHasInUseReservation(vehicleId)) {
+      return VehicleBookingBlockReason.inUse;
+    }
+    final overlaps = await _hasConfirmedOrPendingTimeOverlap(
+      vehicleId: vehicleId,
+      startAt: startAt,
+      endAt: endAt,
+    );
+    if (overlaps) return VehicleBookingBlockReason.timeOverlap;
+    return null;
+  }
+
+  /// 예약 불가 여부 — true면 해당 시간대에 예약할 수 없음
   Future<bool> hasOverlappingReservation({
+    required String vehicleId,
+    required DateTime startAt,
+    required DateTime endAt,
+  }) async {
+    return (await getVehicleBookingBlockReason(
+          vehicleId: vehicleId,
+          startAt: startAt,
+          endAt: endAt,
+        )) !=
+        null;
+  }
+
+  Future<bool> _vehicleHasInUseReservation(String vehicleId) async {
+    final vid = _vehicleIdForQuery(vehicleId);
+    try {
+      final rows = await supabase
+          .from('reservations')
+          .select('id')
+          .eq('vehicle_id', vid)
+          .eq('status', 'in_use')
+          .limit(1);
+      return rows.isNotEmpty;
+    } on PostgrestException catch (e) {
+      if (e.code == '42703') return false;
+      rethrow;
+    }
+  }
+
+  Future<bool> _hasConfirmedOrPendingTimeOverlap({
     required String vehicleId,
     required DateTime startAt,
     required DateTime endAt,
   }) async {
     final startUtc = startAt.toUtc().toIso8601String();
     final endUtc = endAt.toUtc().toIso8601String();
-
-    try {
-      final result = await supabase.rpc(
-        'check_vehicle_time_overlap_for_me',
-        params: {
-          'p_vehicle_id': vehicleId,
-          'p_start_time': startUtc,
-          'p_end_time': endUtc,
-        },
-      );
-      if (result is bool) return result;
-    } on PostgrestException catch (e) {
-      final msg = e.message.toLowerCase();
-      if (!msg.contains('could not find') &&
-          !msg.contains('check_vehicle_time_overlap_for_me')) {
-        rethrow;
-      }
-    }
+    final vid = _vehicleIdForQuery(vehicleId);
 
     for (final startCol in _startCols) {
       for (final endCol in _endCols) {
@@ -121,12 +167,12 @@ class ReservationService {
           final rows = await supabase
               .from('reservations')
               .select('id')
-              .eq('vehicle_id', vehicleId)
-              .inFilter('status', ['pending', 'confirmed', 'in_use'])
+              .eq('vehicle_id', vid)
+              .inFilter('status', ['pending', 'confirmed'])
               .lt(startCol, endUtc)
               .gt(endCol, startUtc)
               .limit(1);
-          return rows.isNotEmpty;
+          if (rows.isNotEmpty) return true;
         } on PostgrestException catch (e) {
           if (e.code == '42703') continue;
           rethrow;
@@ -134,6 +180,11 @@ class ReservationService {
       }
     }
     return false;
+  }
+
+  dynamic _vehicleIdForQuery(String vehicleId) {
+    final parsed = int.tryParse(vehicleId.trim());
+    return parsed ?? vehicleId;
   }
 
   Future<void> _insertReservation(Map<String, dynamic> payload) async {
@@ -282,6 +333,43 @@ class ReservationService {
       endTime: endAt,
       totalPrice: totalPrice,
     );
+  }
+
+  /// 예약 변경 — update_reservation_for_me RPC
+  Future<Map<String, dynamic>> updateReservationForMe({
+    required String reservationId,
+    required DateTime startAt,
+    required DateTime endAt,
+    int? totalPrice,
+  }) async {
+    final user = supabase.auth.currentUser;
+    if (user == null) {
+      throw const AuthException('로그인이 필요합니다.');
+    }
+
+    if (!endAt.isAfter(startAt)) {
+      throw ArgumentError('종료 시간은 시작 시간보다 뒤여야 합니다.');
+    }
+
+    try {
+      final params = <String, dynamic>{
+        'p_reservation_id': reservationId,
+        'p_start_time': startAt.toUtc().toIso8601String(),
+        'p_end_time': endAt.toUtc().toIso8601String(),
+      };
+      if (totalPrice != null) {
+        params['p_total_price'] = totalPrice;
+      }
+
+      final data = await supabase.rpc('update_reservation_for_me', params: params);
+      RentalService.signalListRefresh();
+      if (data is Map) {
+        return Map<String, dynamic>.from(data);
+      }
+      return {'id': reservationId};
+    } on PostgrestException catch (e) {
+      throw ReservationChangeException(friendlyUpdateReservationError(e));
+    }
   }
 
   String _reservationIdFrom(Map<String, dynamic> map) {
@@ -748,11 +836,44 @@ class ReservationService {
   }
 }
 
+String friendlyUpdateReservationError(PostgrestException error) {
+  final msg = error.message.toLowerCase();
+  if (msg.contains('change_too_late')) {
+    return ReservationCancelMessages.changeTooLate;
+  }
+  if (msg.contains('time_overlap') ||
+      (msg.contains('overlap') && !msg.contains('change'))) {
+    return '이미 예약된 시간입니다';
+  }
+  if (msg.contains('invalid_status')) {
+    return '현재 상태에서는 예약을 변경할 수 없습니다.';
+  }
+  if (msg.contains('invalid_time_range')) {
+    return '종료 시간은 시작 시간보다 뒤여야 합니다.';
+  }
+  if (msg.contains('reservation_not_found')) {
+    return '예약 정보를 찾을 수 없습니다.';
+  }
+  if (msg.contains('could not find the function') ||
+      msg.contains('update_reservation_for_me')) {
+    return '예약 변경 RPC가 설치되지 않았습니다.\n'
+        'Supabase에서 supabase/migrations/20260601170000_update_reservation_for_me.sql 을 실행해주세요.';
+  }
+  return error.message;
+}
+
 String friendlyReservationError(Object error) {
+  if (error is ReservationChangeException) return error.message;
   if (error is ReservationOverlapException) return error.message;
   if (error is ReservationPermissionException) return error.message;
   if (error is PostgrestException) {
     final msg = error.message.toLowerCase();
+    if (msg.contains('change_too_late')) {
+      return ReservationCancelMessages.changeTooLate;
+    }
+    if (msg.contains('time_overlap')) {
+      return '이미 예약된 시간입니다';
+    }
     if (msg.contains('overlap') || msg.contains('exclusion')) {
       return '이미 예약된 시간입니다';
     }

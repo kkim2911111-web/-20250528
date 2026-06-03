@@ -341,6 +341,11 @@ class _SignUpWizardScreenState extends State<SignUpWizardScreen> {
         _loading = false;
         _cardRegistered = true;
       });
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(paymentCardRegistrationSuccessMessage),
+        ),
+      );
       await _goToStep(SignupWizardStep.complete.index);
     } catch (e) {
       setState(() {

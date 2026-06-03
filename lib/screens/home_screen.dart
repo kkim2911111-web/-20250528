@@ -1,5 +1,7 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../models/grouped_reservations.dart';
 import '../models/home_banner.dart';
@@ -21,6 +23,7 @@ import '../utils/rental_extension_flow.dart';
 import '../utils/rental_navigation.dart';
 import '../utils/booking_eligibility.dart';
 import '../widgets/danji_brand_title.dart';
+import '../widgets/danji_logo.dart';
 import '../utils/danji_snackbar.dart';
 import '../widgets/rental_inquiry_button.dart';
 import '../widgets/smart_key_door_buttons.dart';
@@ -144,8 +147,8 @@ class HomeScreenState extends State<HomeScreen> {
     }
 
     list.sort((a, b) {
-      final aInUse = a.status == 'in_use';
-      final bInUse = b.status == 'in_use';
+      final aInUse = a.isInUse;
+      final bInUse = b.isInUse;
       if (aInUse && !bInUse) return -1;
       if (bInUse && !aInUse) return 1;
       return a.sortByStart.compareTo(b.sortByStart);
@@ -154,7 +157,7 @@ class HomeScreenState extends State<HomeScreen> {
   }
 
   _HomeReservationMode _homeMode(Reservation reservation) {
-    if (reservation.status == 'in_use') {
+    if (reservation.isInUse) {
       return _HomeReservationMode.inUse;
     }
     if (reservation.status == 'confirmed' || reservation.status == 'pending') {
@@ -177,6 +180,7 @@ class HomeScreenState extends State<HomeScreen> {
         backgroundColor: DanjiColors.background,
         elevation: 0,
         scrolledUnderElevation: 0,
+        toolbarHeight: DanjiBrandTitle.homeToolbarHeight,
         title: const DanjiBrandTitle(),
         actions: [
           IconButton(
@@ -243,6 +247,8 @@ class HomeScreenState extends State<HomeScreen> {
                   ),
                 const SizedBox(height: 12),
                 _HomeEventBannerSection(future: _bannerFuture),
+                const SizedBox(height: 12),
+                const _NaverClipBanner(),
                 const SizedBox(height: 16),
                 const RentalInquiryButton(),
               ],
@@ -382,7 +388,7 @@ enum _HomeReservationMode {
 }
 
 _HomeCardBadgeStyle _homeCardBadgeStyle(Reservation reservation) {
-  if (reservation.status == 'in_use') {
+  if (reservation.isInUse) {
     return const _HomeCardBadgeStyle(
       label: '대여중',
       background: DanjiColors.tagRentingBg,
@@ -455,7 +461,7 @@ String _rentalEndLine(DateTime? end) {
 
 /// 대여 중(in_use)일 때만 종료까지 남은 시간 — 시작 전 문구는 뱃지로만 표시
 String? _remainingTimeLine(Reservation reservation) {
-  if (reservation.status != 'in_use') return null;
+  if (!reservation.isInUse) return null;
   final end = reservation.endAt;
   if (end == null) return null;
   return _formatTimeRemaining(end);
@@ -567,7 +573,7 @@ class _HomeReservationSectionState extends State<_HomeReservationSection> {
         const SizedBox(height: 12),
         ...switch (mode) {
           _HomeReservationMode.inUse => [
-              if (_current.status == 'in_use') ...[
+              if (_current.isInUse) ...[
                 SmartKeyDoorButtons(
                   key: ValueKey('door-${_current.id}'),
                   reservation: _current,
@@ -584,12 +590,12 @@ class _HomeReservationSectionState extends State<_HomeReservationSection> {
               _QuickGrid2x2(
                 tiles: [
                   _QuickTileData(
-                    icon: Icons.schedule_outlined,
+                    icon: Icons.access_time_outlined,
                     label: '연장하기',
                     onTap: () => widget.onExtend(_current),
                   ),
                   _QuickTileData(
-                    icon: Icons.warning_amber_rounded,
+                    icon: Icons.warning_amber_outlined,
                     label: '사고신고',
                     isAccident: true,
                     onTap: () => widget.onAccident(_current),
@@ -600,7 +606,7 @@ class _HomeReservationSectionState extends State<_HomeReservationSection> {
                     onTap: widget.onBook,
                   ),
                   _QuickTileData(
-                    icon: Icons.assignment_outlined,
+                    icon: Icons.receipt_long_outlined,
                     label: '내 예약',
                     onTap: widget.onReservations,
                   ),
@@ -628,7 +634,7 @@ class _HomeReservationSectionState extends State<_HomeReservationSection> {
                     onTap: widget.onBook,
                   ),
                   _QuickTileData(
-                    icon: Icons.assignment_outlined,
+                    icon: Icons.receipt_long_outlined,
                     label: '내 예약',
                     onTap: widget.onReservations,
                   ),
@@ -668,25 +674,20 @@ class _QuickGrid2x2 extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return GridView.builder(
-      shrinkWrap: true,
-      physics: const NeverScrollableScrollPhysics(),
-      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-        crossAxisCount: 2,
-        mainAxisSpacing: 12,
-        crossAxisSpacing: 12,
-        childAspectRatio: 1.55,
-      ),
-      itemCount: tiles.length,
-      itemBuilder: (context, index) {
-        final tile = tiles[index];
-        return _QuickTile(
-          icon: tile.icon,
-          label: tile.label,
-          isAccident: tile.isAccident,
-          onTap: tile.onTap,
-        );
-      },
+    return Row(
+      children: [
+        for (var i = 0; i < tiles.length; i++) ...[
+          if (i > 0) const SizedBox(width: 6),
+          Expanded(
+            child: _QuickTile(
+              icon: tiles[i].icon,
+              label: tiles[i].label,
+              isAccident: tiles[i].isAccident,
+              onTap: tiles[i].onTap,
+            ),
+          ),
+        ],
+      ],
     );
   }
 }
@@ -741,6 +742,132 @@ class _HomeData {
   });
 }
 
+/// 네이버 플레이스 클립 배너
+class _NaverClipBanner extends StatelessWidget {
+  const _NaverClipBanner();
+
+  static const _clipUrl = 'https://clipcreators.naver.com/web/clip/3918515';
+  static const Color _naverGreen = Color(0xFF03C75A);
+
+  Future<void> _openClip(BuildContext context) async {
+    final uri = Uri.parse(_clipUrl);
+    try {
+      final launched = await launchUrl(
+        uri,
+        mode: kIsWeb
+            ? LaunchMode.platformDefault
+            : LaunchMode.externalApplication,
+      );
+      if (!context.mounted) return;
+      if (!launched) {
+        DanjiSnackBar.show(context, '링크를 열 수 없습니다.');
+      }
+    } catch (_) {
+      if (context.mounted) {
+        DanjiSnackBar.show(context, '링크를 열 수 없습니다.');
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: () => _openClip(context),
+        borderRadius: BorderRadius.circular(14),
+        child: Ink(
+          padding: const EdgeInsets.symmetric(vertical: 13, horizontal: 14),
+          decoration: BoxDecoration(
+            color: const Color(0xFFF3FBF0),
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(color: const Color(0xFFC8EAB8)),
+          ),
+          child: Row(
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 8,
+                        vertical: 3,
+                      ),
+                      decoration: BoxDecoration(
+                        color: _naverGreen,
+                        borderRadius: BorderRadius.circular(20),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Container(
+                            width: 4,
+                            height: 4,
+                            decoration: const BoxDecoration(
+                              color: Colors.white,
+                              shape: BoxShape.circle,
+                            ),
+                          ),
+                          const SizedBox(width: 5),
+                          const Text(
+                            '네이버 클립',
+                            style: TextStyle(
+                              fontSize: 9,
+                              fontWeight: FontWeight.w500,
+                              color: Colors.white,
+                              height: 1.2,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    const Text(
+                      '매일이 힐링, 영종도의 삶',
+                      style: TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w500,
+                        color: Color(0xFF111111),
+                        height: 1.25,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    const Text(
+                      '영종도라이프 · 클립 보러가기',
+                      style: TextStyle(
+                        fontSize: 10,
+                        color: Color(0xFF6B9E6B),
+                        height: 1.25,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 10),
+              Container(
+                width: 36,
+                height: 36,
+                decoration: const BoxDecoration(
+                  color: _naverGreen,
+                  shape: BoxShape.circle,
+                ),
+                alignment: Alignment.center,
+                child: const Icon(
+                  Icons.play_arrow_rounded,
+                  color: Colors.white,
+                  size: 22,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 class _HomeEventBannerSection extends StatelessWidget {
   final Future<HomeBanner?>? future;
 
@@ -779,52 +906,146 @@ class _EventBannerCard extends StatelessWidget {
 
   const _EventBannerCard({required this.banner});
 
+  static const _background = Color(0xFF0A1628);
+  static const _accent = Color(0xFF3182F6);
+
   @override
   Widget build(BuildContext context) {
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.fromLTRB(20, 20, 20, 20),
-      decoration: BoxDecoration(
-        color: DanjiColors.bannerBackground,
-        borderRadius: BorderRadius.circular(16),
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(16),
+      child: Container(
+        width: double.infinity,
+        padding: const EdgeInsets.fromLTRB(20, 18, 20, 18),
+        decoration: const BoxDecoration(
+          color: _background,
+        ),
+        child: Stack(
+          clipBehavior: Clip.none,
+          children: [
+            Positioned(
+              right: -24,
+              top: -36,
+              child: Container(
+                width: 100,
+                height: 100,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: _accent.withValues(alpha: 0.12),
+                ),
+              ),
+            ),
+            Positioned(
+              right: 8,
+              bottom: -28,
+              child: Container(
+                width: 80,
+                height: 80,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: _accent.withValues(alpha: 0.08),
+                ),
+              ),
+            ),
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: [
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      if (banner.subTitle.isNotEmpty) ...[
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 8,
+                            vertical: 2,
+                          ),
+                          decoration: BoxDecoration(
+                            color: _accent,
+                            borderRadius: BorderRadius.circular(20),
+                          ),
+                          child: Text(
+                            banner.subTitle,
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 10,
+                              fontWeight: FontWeight.w500,
+                              height: 1.2,
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 7),
+                      ],
+                      if (banner.mainTitle.isNotEmpty)
+                        Text(
+                          banner.mainTitle,
+                          style: const TextStyle(
+                            fontSize: 15,
+                            fontWeight: FontWeight.w500,
+                            color: Colors.white,
+                            height: 1.35,
+                          ),
+                        ),
+                      if (banner.description.isNotEmpty) ...[
+                        const SizedBox(height: 6),
+                        Text(
+                          banner.description,
+                          style: TextStyle(
+                            fontSize: 11,
+                            color: Colors.white.withValues(alpha: 0.5),
+                            height: 1.45,
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Container(
+                  width: 48,
+                  height: 48,
+                  decoration: BoxDecoration(
+                    color: _accent.withValues(alpha: 0.15),
+                    borderRadius: BorderRadius.circular(14),
+                  ),
+                  alignment: Alignment.center,
+                  child: const DanjiLogo(
+                    size: 26,
+                    variant: DanjiLogoVariant.iconOnly,
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          if (banner.mainTitle.isNotEmpty)
-            Text(
-              banner.mainTitle,
-              style: const TextStyle(
-                color: DanjiColors.bannerText,
-                fontSize: 18,
-                fontWeight: FontWeight.w700,
-                height: 1.35,
-              ),
-            ),
-          if (banner.subTitle.isNotEmpty) ...[
-            const SizedBox(height: 6),
-            Text(
-              banner.subTitle,
-              style: const TextStyle(
-                color: DanjiColors.bannerTextMuted,
-                fontSize: 13,
-                fontWeight: FontWeight.w500,
-                height: 1.45,
-              ),
-            ),
-          ],
-          if (banner.description.isNotEmpty) ...[
-            const SizedBox(height: 8),
-            Text(
-              banner.description,
-              style: const TextStyle(
-                color: DanjiColors.bannerTextMuted,
-                fontSize: 13,
-                height: 1.45,
-              ),
-            ),
-          ],
-        ],
+    );
+  }
+}
+
+/// 홈 상단·배너 — 좁은 화면에서도 이모지·문구가 한 줄로 유지되도록 축소
+class _HomeSingleLineText extends StatelessWidget {
+  final String text;
+  final TextStyle style;
+
+  const _HomeSingleLineText({
+    required this.text,
+    required this.style,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      width: double.infinity,
+      child: FittedBox(
+        fit: BoxFit.scaleDown,
+        alignment: Alignment.centerLeft,
+        child: Text(
+          text,
+          maxLines: 1,
+          softWrap: false,
+          style: style,
+        ),
       ),
     );
   }
@@ -861,13 +1082,14 @@ class _GreetingCard extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Expanded(
-                child: Text(
-                  '안녕하세요, $name 님',
+                child: _HomeSingleLineText(
+                  text: '안녕하세요, $name 님',
                   style: const TextStyle(
-                    fontSize: 20,
+                    fontSize: 17,
                     fontWeight: FontWeight.w700,
                     color: DanjiColors.textPrimary,
-                    letterSpacing: -0.3,
+                    letterSpacing: -0.35,
+                    height: 1.15,
                   ),
                 ),
               ),
@@ -1011,7 +1233,7 @@ class _EmptyHomeBody extends StatelessWidget {
         _QuickGrid2x2(
           tiles: [
             _QuickTileData(
-              icon: Icons.assignment_outlined,
+              icon: Icons.receipt_long_outlined,
               label: '내 예약',
               onTap: onReservations,
             ),
@@ -1371,49 +1593,47 @@ class _QuickTile extends StatelessWidget {
     this.isAccident = false,
   });
 
+  static const _accidentColor = Color(0xFFF04452);
+  static const _iconBlue = Color(0xFF3182F6);
+  static const _defaultTextColor = Color(0xFF111111);
+
   @override
   Widget build(BuildContext context) {
-    final iconColor = isAccident ? DanjiColors.toneRed : DanjiColors.brandBlue;
-    final textColor = isAccident ? DanjiColors.toneRed : DanjiColors.brandBlue;
+    final iconColor = isAccident ? _accidentColor : _iconBlue;
+    final textColor = isAccident ? _accidentColor : _defaultTextColor;
 
     return Material(
       color: Colors.transparent,
-      borderRadius: BorderRadius.circular(14),
+      borderRadius: BorderRadius.circular(12),
       child: InkWell(
         onTap: onTap,
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: BorderRadius.circular(12),
         splashColor: Colors.black.withValues(alpha: 0.06),
         highlightColor: Colors.black.withValues(alpha: 0.04),
         child: Ink(
+          height: 64,
           decoration: BoxDecoration(
-            color: DanjiColors.surface,
-            borderRadius: BorderRadius.circular(14),
-            boxShadow: const [
-              BoxShadow(
-                color: DanjiColors.cardShadow,
-                blurRadius: 8,
-                offset: Offset(0, 2),
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(icon, size: 24, color: iconColor),
+              const SizedBox(height: 4),
+              Text(
+                label,
+                textAlign: TextAlign.center,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w500,
+                  color: textColor,
+                  height: 1.2,
+                ),
               ),
             ],
-          ),
-          child: Padding(
-            padding: const EdgeInsets.symmetric(vertical: 18, horizontal: 8),
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(icon, size: 26, color: iconColor),
-                const SizedBox(height: 8),
-                Text(
-                  label,
-                  style: TextStyle(
-                    fontSize: 14,
-                    fontWeight: FontWeight.w500,
-                    color: textColor,
-                  ),
-                ),
-              ],
-            ),
           ),
         ),
       ),

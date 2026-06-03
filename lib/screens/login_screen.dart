@@ -4,7 +4,21 @@ import '../services/auth_service.dart';
 import '../theme/danji_colors.dart';
 import '../theme/danji_theme.dart';
 import '../widgets/danji_app_bar.dart';
+import '../widgets/danji_logo.dart';
 import 'admin/admin_sign_up_screen.dart';
+
+/// 로그인 화면 전용 색상 (디자인 스펙)
+abstract final class _LoginColors {
+  static const brandBlue = Color(0xFF3182F6);
+  static const background = Color(0xFFFFFFFF);
+  static const kakaoYellow = Color(0xFFFEE500);
+  static const kakaoText = Color(0xFF3C1E1E);
+  static const naverGreen = Color(0xFF03C75A);
+  static const subtitleGray = Color(0xFF888888);
+  static const dividerGray = Color(0xFFE5E5E5);
+  static const mutedGray = Color(0xFFBBBBBB);
+  static const headlineDark = Color(0xFF191919);
+}
 
 class LoginScreen extends StatelessWidget {
   final VoidCallback? onGoSignUp;
@@ -16,10 +30,30 @@ class LoginScreen extends StatelessWidget {
     this.onGoAdminSignUp,
   });
 
+  void _goSignUp(BuildContext context) {
+    if (onGoSignUp != null) {
+      onGoSignUp!();
+      return;
+    }
+    Navigator.of(context).push(
+      MaterialPageRoute(builder: (_) => const SignUpScreen()),
+    );
+  }
+
+  void _goAdminSignUp(BuildContext context) {
+    if (onGoAdminSignUp != null) {
+      onGoAdminSignUp!();
+      return;
+    }
+    Navigator.of(context).push(
+      MaterialPageRoute(builder: (_) => const AdminSignUpScreen()),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: DanjiColors.background,
+      backgroundColor: _LoginColors.background,
       body: SafeArea(
         child: LayoutBuilder(
           builder: (context, constraints) {
@@ -30,115 +64,46 @@ class LoginScreen extends StatelessWidget {
                   child: ConstrainedBox(
                     constraints: const BoxConstraints(maxWidth: 420),
                     child: Padding(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 20,
-                        vertical: 16,
-                      ),
+                      padding: const EdgeInsets.symmetric(horizontal: 24),
                       child: Column(
                         mainAxisAlignment: MainAxisAlignment.center,
                         crossAxisAlignment: CrossAxisAlignment.stretch,
                         children: [
-                          const SizedBox(height: 12),
-                          const _Header(),
                           const SizedBox(height: 24),
-                          Container(
-                            padding: const EdgeInsets.all(16),
-                            decoration: BoxDecoration(
-                              color: DanjiColors.surface,
-                              borderRadius: BorderRadius.circular(16),
-                              border: Border.all(color: DanjiColors.border),
-                            ),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.stretch,
-                              children: [
-                                _SocialButton(
-                                  label: '카카오 로그인',
-                                  background: const Color(0xFFFEE500),
-                                  foreground: const Color(0xFF191600),
-                                  icon: Icons.chat_bubble_rounded,
-                                  onPressed: () {
-                                    _toast(context, '카카오 로그인은 다음 단계에서 연결합니다.');
-                                  },
-                                ),
-                                const SizedBox(height: 12),
-                                _SocialButton(
-                                  label: '네이버 로그인',
-                                  background: const Color(0xFF03C75A),
-                                  foreground: Colors.white,
-                                  icon: Icons.eco_rounded,
-                                  onPressed: () {
-                                    _toast(context, '네이버 로그인은 다음 단계에서 연결합니다.');
-                                  },
-                                ),
-                                const SizedBox(height: 12),
-                                _SocialButton(
-                                  label: '이메일 로그인',
-                                  background: DanjiColors.buttonBlue,
-                                  foreground: Colors.white,
-                                  icon: Icons.mail_rounded,
-                                  onPressed: () {
-                                    Navigator.of(context).push(
-                                      MaterialPageRoute(
-                                        builder: (_) => const EmailLoginScreen(),
-                                      ),
-                                    );
-                                  },
-                                ),
-                                const SizedBox(height: 14),
-                                Row(
-                                  mainAxisAlignment: MainAxisAlignment.center,
-                                  children: [
-                                    const Text(
-                                      '처음이신가요?',
-                                      style: TextStyle(color: DanjiColors.textSecondary),
-                                    ),
-                                    TextButton(
-                                      onPressed: () {
-                                        if (onGoSignUp != null) {
-                                          onGoSignUp!();
-                                          return;
-                                        }
-                                        Navigator.of(context).push(
-                                          MaterialPageRoute(
-                                            builder: (_) => const SignUpScreen(),
-                                          ),
-                                        );
-                                      },
-                                      style: TextButton.styleFrom(
-                                        foregroundColor: DanjiColors.buttonBlue,
-                                      ),
-                                      child: const Text('회원가입'),
-                                    ),
-                                  ],
-                                ),
-                                TextButton(
-                                  onPressed: () {
-                                    if (onGoAdminSignUp != null) {
-                                      onGoAdminSignUp!();
-                                      return;
-                                    }
-                                    Navigator.of(context).push(
-                                      MaterialPageRoute(
-                                        builder: (_) => const AdminSignUpScreen(),
-                                      ),
-                                    );
-                                  },
-                                  child: const Text('관리자 회원가입'),
-                                ),
-                              ],
-                            ),
-                          ),
-                          const SizedBox(height: 32),
-                          Text(
-                            '계속 진행하면 서비스 이용약관 및 개인정보 처리방침에 동의한 것으로 간주됩니다.',
-                            textAlign: TextAlign.center,
-                            style: TextStyle(
-                              color: DanjiColors.textSecondary.withValues(alpha: 0.9),
-                              fontSize: 12,
-                              height: 1.35,
-                            ),
+                          const _LoginLogoSection(),
+                          const SizedBox(height: 24),
+                          const _LoginHeadlineSection(),
+                          const SizedBox(height: 40),
+                          _KakaoLoginButton(
+                            onPressed: () {
+                              _toast(context, '카카오 로그인은 다음 단계에서 연결합니다.');
+                            },
                           ),
                           const SizedBox(height: 10),
+                          _NaverLoginButton(
+                            onPressed: () {
+                              _toast(context, '네이버 로그인은 다음 단계에서 연결합니다.');
+                            },
+                          ),
+                          const SizedBox(height: 10),
+                          const _EmailDivider(),
+                          const SizedBox(height: 10),
+                          _EmailLoginButton(
+                            onPressed: () {
+                              Navigator.of(context).push(
+                                MaterialPageRoute(
+                                  builder: (_) => const EmailLoginScreen(),
+                                ),
+                              );
+                            },
+                          ),
+                          const SizedBox(height: 28),
+                          _SignUpLink(onTap: () => _goSignUp(context)),
+                          const SizedBox(height: 6),
+                          _AdminLoginLink(onTap: () => _goAdminSignUp(context)),
+                          const SizedBox(height: 32),
+                          const _TermsNotice(),
+                          const SizedBox(height: 28),
                         ],
                       ),
                     ),
@@ -162,51 +127,26 @@ class LoginScreen extends StatelessWidget {
   }
 }
 
-class _Header extends StatelessWidget {
-  const _Header();
+class _LoginLogoSection extends StatelessWidget {
+  const _LoginLogoSection();
 
   @override
   Widget build(BuildContext context) {
     return Column(
+      crossAxisAlignment: CrossAxisAlignment.center,
       children: [
-        Container(
-          height: 72,
-          width: 72,
-          decoration: BoxDecoration(
-            color: DanjiColors.skyLight,
-            borderRadius: BorderRadius.circular(18),
-            border: Border.all(color: DanjiColors.border),
-          ),
-          child: const Center(
-            child: Text(
-              '단지카',
-              style: TextStyle(
-                color: DanjiColors.textPrimary,
-                fontWeight: FontWeight.w800,
-                letterSpacing: -0.2,
-              ),
-            ),
-          ),
+        const DanjiLogo(
+          size: 64,
+          variant: DanjiLogoVariant.full,
         ),
-        const SizedBox(height: 14),
+        const SizedBox(height: 10),
         const Text(
-          '우리 단지의 두 번째 차',
-          textAlign: TextAlign.center,
+          '단지카',
           style: TextStyle(
-            color: DanjiColors.textPrimary,
-            fontSize: 20,
-            fontWeight: FontWeight.w700,
+            fontSize: 18,
+            fontWeight: FontWeight.w500,
+            color: _LoginColors.headlineDark,
             height: 1.2,
-          ),
-        ),
-        const SizedBox(height: 8),
-        const Text(
-          '한 번의 인증, 간편한 예약.',
-          textAlign: TextAlign.center,
-          style: TextStyle(
-            color: DanjiColors.textSecondary,
-            fontSize: 14,
-            height: 1.3,
           ),
         ),
       ],
@@ -214,41 +154,331 @@ class _Header extends StatelessWidget {
   }
 }
 
-class _SocialButton extends StatelessWidget {
-  final String label;
-  final Color background;
-  final Color foreground;
-  final IconData icon;
+class _LoginHeadlineSection extends StatelessWidget {
+  const _LoginHeadlineSection();
+
+  @override
+  Widget build(BuildContext context) {
+    return const Column(
+      children: [
+        Text(
+          '우리 단지의 두 번째 차',
+          textAlign: TextAlign.center,
+          style: TextStyle(
+            color: _LoginColors.headlineDark,
+            fontSize: 20,
+            fontWeight: FontWeight.w500,
+            height: 1.3,
+          ),
+        ),
+        SizedBox(height: 8),
+        Text(
+          '한 번의 인증, 간편한 예약.',
+          textAlign: TextAlign.center,
+          style: TextStyle(
+            color: _LoginColors.subtitleGray,
+            fontSize: 13,
+            fontWeight: FontWeight.w400,
+            height: 1.35,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _KakaoLoginButton extends StatelessWidget {
   final VoidCallback onPressed;
 
-  const _SocialButton({
-    required this.label,
-    required this.background,
-    required this.foreground,
-    required this.icon,
-    required this.onPressed,
-  });
+  const _KakaoLoginButton({required this.onPressed});
 
   @override
   Widget build(BuildContext context) {
     return SizedBox(
-      height: 52,
+      height: 48,
+      width: double.infinity,
       child: FilledButton(
         onPressed: onPressed,
         style: FilledButton.styleFrom(
-          backgroundColor: background,
-          foregroundColor: foreground,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-          textStyle: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700),
+          backgroundColor: _LoginColors.kakaoYellow,
+          foregroundColor: _LoginColors.kakaoText,
+          elevation: 0,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+          ),
+          padding: const EdgeInsets.symmetric(horizontal: 16),
         ),
-        child: Row(
+        child: const Row(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(icon, size: 20),
-            const SizedBox(width: 10),
-            Text(label),
+            _KakaoIcon(),
+            SizedBox(width: 8),
+            Text(
+              '카카오 로그인',
+              style: TextStyle(
+                fontSize: 15,
+                fontWeight: FontWeight.w600,
+                color: _LoginColors.kakaoText,
+              ),
+            ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+class _KakaoIcon extends StatelessWidget {
+  const _KakaoIcon();
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      width: 20,
+      height: 20,
+      child: CustomPaint(
+        painter: _KakaoIconPainter(),
+      ),
+    );
+  }
+}
+
+class _KakaoIconPainter extends CustomPainter {
+  @override
+  void paint(Canvas canvas, Size size) {
+    final bubble = RRect.fromRectAndRadius(
+      Rect.fromLTWH(0, 2, size.width, size.height - 4),
+      const Radius.circular(5),
+    );
+    canvas.drawRRect(
+      bubble,
+      Paint()..color = _LoginColors.kakaoText,
+    );
+    final tail = Path()
+      ..moveTo(4, size.height - 2)
+      ..lineTo(0, size.height + 1)
+      ..lineTo(10, size.height - 2)
+      ..close();
+    canvas.drawPath(tail, Paint()..color = _LoginColors.kakaoText);
+  }
+
+  @override
+  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
+}
+
+class _NaverLoginButton extends StatelessWidget {
+  final VoidCallback onPressed;
+
+  const _NaverLoginButton({required this.onPressed});
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      height: 48,
+      width: double.infinity,
+      child: FilledButton(
+        onPressed: onPressed,
+        style: FilledButton.styleFrom(
+          backgroundColor: _LoginColors.naverGreen,
+          foregroundColor: Colors.white,
+          elevation: 0,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+          ),
+          padding: const EdgeInsets.symmetric(horizontal: 16),
+        ),
+        child: const Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            _NaverIcon(),
+            SizedBox(width: 8),
+            Text(
+              '네이버 로그인',
+              style: TextStyle(
+                fontSize: 15,
+                fontWeight: FontWeight.w600,
+                color: Colors.white,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _NaverIcon extends StatelessWidget {
+  const _NaverIcon();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 20,
+      height: 20,
+      alignment: Alignment.center,
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.22),
+        borderRadius: BorderRadius.circular(4),
+      ),
+      child: const Text(
+        'N',
+        style: TextStyle(
+          color: Colors.white,
+          fontSize: 13,
+          fontWeight: FontWeight.w800,
+          height: 1,
+        ),
+      ),
+    );
+  }
+}
+
+class _EmailDivider extends StatelessWidget {
+  const _EmailDivider();
+
+  @override
+  Widget build(BuildContext context) {
+    const line = Expanded(
+      child: Divider(
+        height: 1,
+        thickness: 1,
+        color: _LoginColors.dividerGray,
+      ),
+    );
+    return const Row(
+      children: [
+        line,
+        Padding(
+          padding: EdgeInsets.symmetric(horizontal: 12),
+          child: Text(
+            '또는 이메일로',
+            style: TextStyle(
+              fontSize: 12,
+              color: _LoginColors.subtitleGray,
+              fontWeight: FontWeight.w500,
+            ),
+          ),
+        ),
+        line,
+      ],
+    );
+  }
+}
+
+class _EmailLoginButton extends StatelessWidget {
+  final VoidCallback onPressed;
+
+  const _EmailLoginButton({required this.onPressed});
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      height: 48,
+      width: double.infinity,
+      child: OutlinedButton(
+        onPressed: onPressed,
+        style: OutlinedButton.styleFrom(
+          backgroundColor: _LoginColors.background,
+          foregroundColor: _LoginColors.brandBlue,
+          side: const BorderSide(color: _LoginColors.brandBlue, width: 1.5),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+          ),
+          padding: const EdgeInsets.symmetric(horizontal: 16),
+        ),
+        child: const Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(Icons.mail_outline_rounded, size: 20),
+            SizedBox(width: 8),
+            Text(
+              '이메일로 로그인',
+              style: TextStyle(
+                fontSize: 15,
+                fontWeight: FontWeight.w600,
+                color: _LoginColors.brandBlue,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _SignUpLink extends StatelessWidget {
+  final VoidCallback onTap;
+
+  const _SignUpLink({required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: GestureDetector(
+        onTap: onTap,
+        behavior: HitTestBehavior.opaque,
+        child: Text.rich(
+          TextSpan(
+            style: const TextStyle(
+              fontSize: 13,
+              color: _LoginColors.subtitleGray,
+              height: 1.4,
+            ),
+            children: [
+              const TextSpan(text: '처음이신가요? '),
+              TextSpan(
+                text: '회원가입',
+                style: TextStyle(
+                  color: _LoginColors.brandBlue,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ],
+          ),
+          textAlign: TextAlign.center,
+        ),
+      ),
+    );
+  }
+}
+
+class _AdminLoginLink extends StatelessWidget {
+  final VoidCallback onTap;
+
+  const _AdminLoginLink({required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: GestureDetector(
+        onTap: onTap,
+        behavior: HitTestBehavior.opaque,
+        child: const Text(
+          '관리자이신가요? 관리자 로그인',
+          style: TextStyle(
+            fontSize: 11,
+            color: _LoginColors.mutedGray,
+            height: 1.35,
+          ),
+          textAlign: TextAlign.center,
+        ),
+      ),
+    );
+  }
+}
+
+class _TermsNotice extends StatelessWidget {
+  const _TermsNotice();
+
+  @override
+  Widget build(BuildContext context) {
+    return const Text(
+      '계속 진행하면 서비스 이용약관 및 개인정보 처리방침에 동의한 것으로 간주됩니다.',
+      textAlign: TextAlign.center,
+      style: TextStyle(
+        fontSize: 11,
+        color: _LoginColors.mutedGray,
+        height: 1.45,
       ),
     );
   }

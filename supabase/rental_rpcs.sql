@@ -161,8 +161,9 @@ begin
 
   update public.reservations
   set
-    status = 'returned',
+    status = 'completed',
     returned_at = v_now,
+    actual_end_at = v_now,
     return_photos = p_return_photos,
     mileage_end = p_mileage_end,
     fuel_level_end = p_fuel_level_end,
@@ -176,8 +177,9 @@ begin
 
   return jsonb_build_object(
     'reservationId', v_id,
-    'status', 'returned',
-    'returnedAt', v_now
+    'status', 'completed',
+    'returnedAt', v_now,
+    'actualEndAt', v_now
   );
 end;
 $$;
