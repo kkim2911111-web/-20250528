@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../models/reservation.dart';
@@ -378,6 +379,102 @@ class ReservationService {
         '';
   }
 
+  /// 결제 금액 — URL amount → 결과 totalPrice → payment_orders → reservations
+  Future<int> resolveGrantAmount({
+    required String orderId,
+    required int paymentAmount,
+    int? resultTotalPrice,
+    String? reservationId,
+  }) async {
+    if (paymentAmount > 0) {
+      debugPrint('[payment/points] resolveGrantAmount: paymentAmount=$paymentAmount');
+      return paymentAmount;
+    }
+    if (resultTotalPrice != null && resultTotalPrice > 0) {
+      debugPrint(
+        '[payment/points] resolveGrantAmount: resultTotalPrice=$resultTotalPrice',
+      );
+      return resultTotalPrice;
+    }
+
+    final order = await findPaymentOrderByOrderId(orderId);
+    final fromOrder = (order?['total_price'] as num?)?.toInt() ?? 0;
+    if (fromOrder > 0) {
+      debugPrint('[payment/points] resolveGrantAmount: order.total_price=$fromOrder');
+      return fromOrder;
+    }
+
+    final rid = reservationId?.trim() ?? '';
+    if (rid.isNotEmpty) {
+      try {
+        final row = await supabase
+            .from('reservations')
+            .select('total_price')
+            .eq('id', rid)
+            .maybeSingle();
+        final fromReservation = (row?['total_price'] as num?)?.toInt() ?? 0;
+        if (fromReservation > 0) {
+          debugPrint(
+            '[payment/points] resolveGrantAmount: reservation.total_price=$fromReservation',
+          );
+          return fromReservation;
+        }
+      } on PostgrestException catch (e) {
+        debugPrint('[payment/points] resolveGrantAmount reservation lookup: $e');
+      }
+    }
+
+    debugPrint(
+      '[payment/points] resolveGrantAmount: no amount (payment=$paymentAmount, '
+      'resultTotalPrice=$resultTotalPrice, orderId=$orderId)',
+    );
+    return 0;
+  }
+
+  /// 결제 완료 포인트 적립 — RPC 내부 중복 방지, 실패해도 결제 흐름 유지
+  Future<void> tryGrantReservationPoints({
+    required String reservationId,
+    required int amount,
+  }) async {
+    final userId = supabase.auth.currentUser?.id;
+    debugPrint(
+      '[payment/points] tryGrantReservationPoints start: '
+      'reservationId=$reservationId, p_amount=$amount, userId=$userId',
+    );
+
+    if (userId == null) {
+      debugPrint('[payment/points] skip — not logged in');
+      return;
+    }
+    if (reservationId.isEmpty) {
+      debugPrint('[payment/points] skip — empty reservationId');
+      return;
+    }
+    if (amount <= 0) {
+      debugPrint('[payment/points] skip — p_amount is 0 or negative');
+      return;
+    }
+
+    try {
+      final data = await supabase.rpc(
+        'grant_reservation_points',
+        params: {
+          'p_user_id': userId,
+          'p_reservation_id': reservationId,
+          'p_amount': amount,
+        },
+      );
+      debugPrint('[payment/points] grant_reservation_points ok: $data');
+    } on PostgrestException catch (e) {
+      debugPrint(
+        '[payment/points] grant_reservation_points PostgrestException: '
+        '${e.code} ${e.message}',
+      );
+    } catch (e, st) {
+      debugPrint('[payment/points] grant_reservation_points error: $e\n$st');
+    }
+  }
+
   /// 결제 성공 콜백 — payment_orders → reservations 최종 저장
   Future<Map<String, dynamic>> saveReservationAfterPayment({
     required String paymentKey,
@@ -615,6 +712,7 @@ class ReservationService {
         'reservationId': row['id']?.toString() ?? '',
         'orderId': orderId,
         'paymentKey': row['payment_key']?.toString(),
+        'totalPrice': (row['total_price'] as num?)?.toInt(),
         'alreadyPaid': true,
       };
     } on PostgrestException catch (e) {
@@ -839,7 +937,7 @@ class ReservationService {
 String friendlyUpdateReservationError(PostgrestException error) {
   final msg = error.message.toLowerCase();
   if (msg.contains('change_too_late')) {
-    return ReservationCancelMessages.changeTooLate;
+    return '대여 시작 1시간 전부터는 예약 변경이 불가합니다.';
   }
   if (msg.contains('time_overlap') ||
       (msg.contains('overlap') && !msg.contains('change'))) {
@@ -869,7 +967,7 @@ String friendlyReservationError(Object error) {
   if (error is PostgrestException) {
     final msg = error.message.toLowerCase();
     if (msg.contains('change_too_late')) {
-      return ReservationCancelMessages.changeTooLate;
+      return '대여 시작 1시간 전부터는 예약 변경이 불가합니다.';
     }
     if (msg.contains('time_overlap')) {
       return '이미 예약된 시간입니다';

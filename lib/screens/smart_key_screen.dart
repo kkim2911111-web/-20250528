@@ -178,16 +178,41 @@ class _EmptyState extends StatelessWidget {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(
-              Icons.vpn_key_outlined,
-              size: 64,
-              color: DanjiColors.textSecondary.withValues(alpha: 0.5),
+            Container(
+              width: 64,
+              height: 64,
+              decoration: BoxDecoration(
+                color: const Color(0xFFF0F4FF),
+                borderRadius: BorderRadius.circular(20),
+              ),
+              alignment: Alignment.center,
+              child: const Icon(
+                Icons.vpn_key_outlined,
+                size: 32,
+                color: Color(0xFF3182F6),
+              ),
             ),
             const SizedBox(height: 20),
-            Text(
-              '현재 대여 중인 차량이 없습니다',
+            const Text(
+              '대여 중인 차량이 없어요',
               textAlign: TextAlign.center,
-              style: DanjiTypography.subtitleLarge,
+              style: TextStyle(
+                fontSize: 14,
+                fontWeight: FontWeight.w500,
+                color: Color(0xFF333333),
+                letterSpacing: -0.3,
+                height: 1.35,
+              ),
+            ),
+            const SizedBox(height: 8),
+            const Text(
+              '예약 후 대여를 시작해보세요',
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                fontSize: 12,
+                color: Color(0xFFAAAAAA),
+                height: 1.35,
+              ),
             ),
           ],
         ),

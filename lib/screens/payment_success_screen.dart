@@ -10,6 +10,7 @@ import '../config/payment_config.dart';
 import '../models/payment_confirm_result.dart';
 import '../services/payment_service.dart';
 import '../services/rental_service.dart';
+import '../services/reservation_service.dart';
 import '../supabase_client.dart';
 import '../theme/danji_colors.dart';
 import '../screens/rental_start_screen.dart';
@@ -35,6 +36,7 @@ class _PaymentSuccessScreenState extends State<PaymentSuccessScreen> {
   static final _bootstrappedOrderIds = <String>{};
 
   final _paymentService = PaymentService();
+  final _reservationService = ReservationService();
   final _won = NumberFormat('#,###');
 
   bool _loading = true;
@@ -158,6 +160,20 @@ class _PaymentSuccessScreenState extends State<PaymentSuccessScreen> {
       if (preResolved != null && preResolved.reservationId.isNotEmpty) {
         debugPrint(
           '[payment/success] already processed in DB — skip approval API',
+        );
+        final grantAmount = await _reservationService.resolveGrantAmount(
+          orderId: orderId,
+          paymentAmount: amount,
+          resultTotalPrice: preResolved.totalPrice,
+          reservationId: preResolved.reservationId,
+        );
+        debugPrint(
+          '[payment/points] preResolved path p_amount=$grantAmount '
+          '(url amount=$amount)',
+        );
+        await _reservationService.tryGrantReservationPoints(
+          reservationId: preResolved.reservationId,
+          amount: grantAmount,
         );
         await _onConfirmSuccess(
           result: preResolved,

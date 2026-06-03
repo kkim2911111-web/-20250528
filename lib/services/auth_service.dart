@@ -23,6 +23,22 @@ class AuthService {
       email: email.trim(),
       password: password,
     );
+    await _tryGrantWelcomeCoupon();
+  }
+
+  /// 웰컴 쿠폰 — RPC 내부 중복 방지, 실패해도 인증 흐름 유지
+  Future<void> _tryGrantWelcomeCoupon() async {
+    try {
+      final userId = supabase.auth.currentUser?.id;
+      if (userId != null) {
+        await supabase.rpc(
+          'grant_welcome_coupon',
+          params: {'p_user_id': userId},
+        );
+      }
+    } catch (e) {
+      // 쿠폰 지급 실패해도 로그인·가입은 정상 처리
+    }
   }
 
   /// 회원가입. true면 로그인 완료, false면 이메일 확인 후 인증 필요.
@@ -37,13 +53,17 @@ class AuthService {
       password: password,
     );
 
-    if (response.session != null) return true;
+    if (response.session != null) {
+      await _tryGrantWelcomeCoupon();
+      return true;
+    }
 
     try {
       await supabase.auth.signInWithPassword(
         email: trimmedEmail,
         password: password,
       );
+      await _tryGrantWelcomeCoupon();
       return true;
     } on AuthException catch (e) {
       if (e.message.toLowerCase().contains('email not confirmed')) {

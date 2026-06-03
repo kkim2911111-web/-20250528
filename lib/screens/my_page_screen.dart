@@ -10,7 +10,9 @@ import '../theme/danji_typography.dart';
 import '../widgets/danji_app_bar.dart';
 import 'license_info_readonly_screen.dart';
 import 'my_personal_info_screen.dart';
+import 'coupon_screen.dart';
 import 'my_reservations_screen.dart';
+import 'point_screen.dart';
 import 'resident_info_readonly_screen.dart';
 import 'support_pages.dart';
 
@@ -265,15 +267,28 @@ class _MyPageScreenState extends State<MyPageScreen> {
                       iconColor: DanjiColors.toneRed,
                       title: '보유 포인트',
                       trailing: '${_formatPoints(profile.points)}P',
-                      onTap: () =>
-                          _showInfo('포인트 적립·사용 내역은 준비 중입니다.'),
+                      onTap: () async {
+                        await Navigator.of(context).push(
+                          MaterialPageRoute(
+                            builder: (_) => const PointScreen(),
+                          ),
+                        );
+                        _reload();
+                      },
                     ),
                     _MenuItem(
                       icon: Icons.local_offer_outlined,
                       iconColor: DanjiColors.toneRed,
                       title: '쿠폰함',
                       trailing: '${profile.couponCount}장',
-                      onTap: () => _showInfo('쿠폰함은 준비 중입니다.'),
+                      onTap: () async {
+                        await Navigator.of(context).push(
+                          MaterialPageRoute(
+                            builder: (_) => const CouponScreen(),
+                          ),
+                        );
+                        _reload();
+                      },
                     ),
                     _MenuItem(
                       icon: Icons.receipt_long_outlined,

@@ -20,7 +20,6 @@ class ReservationCard extends StatelessWidget {
   final bool showManageButtons;
   final bool manageActionsEnabled;
   final VoidCallback? onCancelTap;
-  final VoidCallback? onChangeTap;
   final bool showCancelOnly;
   final VoidCallback? onCancelOnlyTap;
   final VoidCallback? onViewHistory;
@@ -36,7 +35,6 @@ class ReservationCard extends StatelessWidget {
     this.showManageButtons = false,
     this.manageActionsEnabled = true,
     this.onCancelTap,
-    this.onChangeTap,
     this.showCancelOnly = false,
     this.onCancelOnlyTap,
     this.onViewHistory,
@@ -142,28 +140,13 @@ class ReservationCard extends StatelessWidget {
           ),
           if (showManageButtons) ...[
             const SizedBox(height: 10),
-            Row(
-              children: [
-                Expanded(
-                  child: _CompactOutlineButton(
-                    label: '예약취소',
-                    icon: Icons.event_busy_outlined,
-                    foregroundColor: DanjiColors.accentRed,
-                    enabled: manageActionsEnabled,
-                    onPressed: onCancelTap,
-                  ),
-                ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: _CompactOutlineButton(
-                    label: '예약변경',
-                    icon: Icons.edit_calendar_outlined,
-                    foregroundColor: DanjiColors.buttonBlue,
-                    enabled: manageActionsEnabled,
-                    onPressed: onChangeTap,
-                  ),
-                ),
-              ],
+            _CompactOutlineButton(
+              label: '예약취소',
+              icon: Icons.event_busy_outlined,
+              foregroundColor: DanjiColors.accentRed,
+              enabled: manageActionsEnabled,
+              onPressed: onCancelTap,
+              fullWidth: true,
             ),
             if (!manageActionsEnabled) ...[
               const SizedBox(height: 8),

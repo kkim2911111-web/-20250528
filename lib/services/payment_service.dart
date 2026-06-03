@@ -433,6 +433,7 @@ class PaymentService {
       reservationId: linkedId,
       orderId: orderId,
       paymentKey: paymentKey ?? paymentOrder?['payment_key']?.toString() ?? '',
+      totalPrice: (paymentOrder?['total_price'] as num?)?.toInt(),
       alreadyPaid: true,
     );
   }
@@ -474,6 +475,7 @@ class PaymentService {
         PaymentConfirmResult.fromMap(existing),
         paymentKey: paymentKey,
         orderId: orderId,
+        amount: amount,
       );
     }
 
@@ -495,6 +497,7 @@ class PaymentService {
           ),
           paymentKey: paymentKey,
           orderId: orderId,
+          amount: amount,
         );
       }
       return _finalizePaymentResult(
@@ -505,6 +508,7 @@ class PaymentService {
         ),
         paymentKey: paymentKey,
         orderId: orderId,
+        amount: amount,
       );
     }
 
@@ -532,6 +536,7 @@ class PaymentService {
         edgeResult,
         paymentKey: paymentKey,
         orderId: orderId,
+        amount: amount,
       );
     }
 
@@ -548,6 +553,7 @@ class PaymentService {
           rpcResult,
           paymentKey: paymentKey,
           orderId: orderId,
+          amount: amount,
         );
       }
     } catch (e) {
@@ -561,6 +567,7 @@ class PaymentService {
         PaymentConfirmResult.fromMap(recovered),
         paymentKey: paymentKey,
         orderId: orderId,
+        amount: amount,
       );
     }
 
@@ -579,8 +586,18 @@ class PaymentService {
     PaymentConfirmResult result, {
     required String paymentKey,
     required String orderId,
+    required int amount,
   }) async {
-    if (result.reservationId.isEmpty) return result;
+    debugPrint(
+      '[payment/points] _finalizePaymentResult enter: '
+      'reservationId=${result.reservationId}, amount=$amount, '
+      'result.totalPrice=${result.totalPrice}, orderId=$orderId',
+    );
+
+    if (result.reservationId.isEmpty) {
+      debugPrint('[payment/points] _finalizePaymentResult skip — empty reservationId');
+      return result;
+    }
 
     await _reservationService.ensureReservationConfirmed(
       reservationId: result.reservationId,
@@ -588,6 +605,22 @@ class PaymentService {
       orderId: orderId,
     );
     await _reservationService.waitUntilReservationReady(result.reservationId);
+
+    final grantAmount = await _reservationService.resolveGrantAmount(
+      orderId: orderId,
+      paymentAmount: amount,
+      resultTotalPrice: result.totalPrice,
+      reservationId: result.reservationId,
+    );
+    debugPrint(
+      '[payment/points] _finalizePaymentResult calling RPC with '
+      'p_amount=$grantAmount',
+    );
+    await _reservationService.tryGrantReservationPoints(
+      reservationId: result.reservationId,
+      amount: grantAmount,
+    );
+
     return result;
   }
 
@@ -623,6 +656,8 @@ class PaymentService {
       reservationId: body['reservationId']?.toString() ?? '',
       orderId: body['orderId']?.toString() ?? orderId,
       paymentKey: body['paymentKey']?.toString() ?? paymentKey,
+      totalPrice: (body['totalPrice'] as num?)?.toInt() ??
+          (body['total_price'] as num?)?.toInt(),
       alreadyPaid: body['alreadyPaid'] == true,
     );
   }

@@ -37,6 +37,8 @@ class MyPageService {
       if (e.code != '42P01') rethrow;
     }
 
+    final couponCount = await _fetchAvailableCouponCount();
+
     if (row == null) {
       final resident = await _fetchResident(user.id);
       return MyPageProfile(
@@ -50,6 +52,7 @@ class MyPageService {
         residentComplexName: resident.complexName,
         residentBuilding: resident.building,
         residentUnit: resident.unit,
+        couponCount: couponCount,
       );
     }
 
@@ -69,7 +72,7 @@ class MyPageService {
           (row['toss_billing_key']?.toString().isNotEmpty ?? false),
       cardLast4: row['payment_card_last4']?.toString(),
       points: (row['points'] as num?)?.toInt() ?? 0,
-      couponCount: (row['coupon_count'] as num?)?.toInt() ?? 0,
+      couponCount: couponCount,
       signupCompleted: row['signup_completed'] == true,
       role: row['role']?.toString() ?? 'resident',
       residentApproved: resident.approved,
@@ -80,6 +83,15 @@ class MyPageService {
       residentBuilding: resident.building,
       residentUnit: resident.unit,
     );
+  }
+
+  /// 사용 가능 쿠폰 수 — user_coupons (RLS로 본인 행만 조회)
+  Future<int> _fetchAvailableCouponCount() async {
+    final result = await supabase
+        .from('user_coupons')
+        .select('id')
+        .eq('is_used', false);
+    return (result as List).length;
   }
 
   Future<({

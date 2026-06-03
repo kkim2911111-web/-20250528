@@ -144,7 +144,7 @@ class _ReservationScreenState extends State<ReservationScreen> {
         if (!mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text(ReservationCancelMessages.changeSuccess),
+            content: Text('예약이 변경되었습니다.'),
           ),
         );
         Navigator.of(context).pop(true);

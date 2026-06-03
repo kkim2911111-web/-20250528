@@ -205,28 +205,8 @@ class Reservation {
   bool get isCancelBlocked =>
       canShowCancelButton && !canCancel;
 
-  /// 예약취소 버튼 표시 — confirmed & 이용 시작 1시간 이전만
-  bool get shouldShowCancelButton =>
-      status == 'confirmed' && canCancel;
-
-  /// 예약 변경 버튼 표시 — 이용 대기(pending/confirmed), 대여 시작 전
-  bool get canShowChangeButton => canShowCancelButton;
-
-  /// 예약 변경 가능 — 취소 가능 조건과 동일
-  bool get canChangeReservation {
-    if (!canShowChangeButton) return false;
-    if (status == 'pending' && !isPaid) return true;
-    final start = _start;
-    if (start == null) return true;
-    return DateTime.now().add(const Duration(hours: 1)).isBefore(start);
-  }
-
-  /// 대여 시작 1시간(60분) 이내로 변경 불가
-  bool get isChangeBlocked =>
-      canShowChangeButton && !canChangeReservation;
-
-  /// 예약변경 버튼 표시 — pending/confirmed & 변경 가능 시각 전
-  bool get shouldShowChangeButton => canShowChangeButton;
+  /// 예약취소 버튼 표시 — 이용 대기(pending/confirmed), 대여 시작 전
+  bool get shouldShowCancelButton => canShowCancelButton;
 
   DateTime? get _start => startAt;
   DateTime? get _end => endAt;
@@ -373,7 +353,5 @@ abstract final class RentalStartMessages {
 abstract final class ReservationCancelMessages {
   static const success = '예약취소가 완료되었습니다.';
   static const tooLate = '대여예약 1시간(60분)이전에는 예약취소가 불가능합니다';
-  static const changeTooLate = '대여 시작 1시간 전부터는 예약 변경이 불가합니다.';
-  static const changeSuccess = '예약이 변경되었습니다.';
   static const waitingGuide = '대여 시작 1시간 전까지 취소 시 전액 환불됩니다.';
 }

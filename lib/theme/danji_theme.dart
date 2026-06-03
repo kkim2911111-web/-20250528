@@ -6,7 +6,13 @@ import 'danji_typography.dart';
 /// 단지카 공통 라이트 테마 — 토스 스타일 타이포그래피
 abstract final class DanjiTheme {
   static ThemeData get light {
-    final textTheme = DanjiTypography.materialTextTheme;
+    final base = DanjiTypography.materialTextTheme;
+    final textTheme = base.copyWith(
+      bodyMedium: base.bodyMedium?.copyWith(letterSpacing: -0.3),
+      bodyLarge: base.bodyLarge?.copyWith(letterSpacing: -0.3),
+      titleMedium: base.titleMedium?.copyWith(letterSpacing: -0.5),
+      titleLarge: base.titleLarge?.copyWith(letterSpacing: -0.5),
+    );
 
     return ThemeData(
       useMaterial3: true,

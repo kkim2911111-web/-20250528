@@ -477,6 +477,15 @@ String _formatTimeRemaining(DateTime end) {
   return '곧 종료';
 }
 
+/// 퀵메뉴 예약취소 — [Reservation.startAt]까지 60분 이상 남은 경우만 표시
+bool _canShowCancelButton(Reservation reservation) {
+  final reservationStartAt = reservation.startAt;
+  if (reservationStartAt == null) return false;
+  return DateTime.now()
+      .add(const Duration(hours: 1))
+      .isBefore(reservationStartAt);
+}
+
 class _HomeReservationSection extends StatefulWidget {
   final List<Reservation> reservations;
   final DateFormat timeFormat;
@@ -638,9 +647,13 @@ class _HomeReservationSectionState extends State<_HomeReservationSection> {
                     label: '내 예약',
                     onTap: widget.onReservations,
                   ),
-                  if (_current.shouldShowCancelButton)
+                  if (_canShowCancelButton(_current))
                     _QuickTileData(
-                      icon: Icons.event_busy_outlined,
+                      icon: Icons.cancel_outlined,
+                      iconColor: const Color(0xFFF04452),
+                      textColor: const Color(0xFFF04452),
+                      iconSize: 22,
+                      fontSize: 12,
                       label: '예약취소',
                       onTap: () => widget.onCancel(_current),
                     ),
@@ -658,12 +671,20 @@ class _QuickTileData {
   final String label;
   final VoidCallback onTap;
   final bool isAccident;
+  final Color? iconColor;
+  final Color? textColor;
+  final double iconSize;
+  final double fontSize;
 
   const _QuickTileData({
     required this.icon,
     required this.label,
     required this.onTap,
     this.isAccident = false,
+    this.iconColor,
+    this.textColor,
+    this.iconSize = 24,
+    this.fontSize = 11,
   });
 }
 
@@ -680,10 +701,7 @@ class _QuickGrid2x2 extends StatelessWidget {
           if (i > 0) const SizedBox(width: 6),
           Expanded(
             child: _QuickTile(
-              icon: tiles[i].icon,
-              label: tiles[i].label,
-              isAccident: tiles[i].isAccident,
-              onTap: tiles[i].onTap,
+              data: tiles[i],
             ),
           ),
         ],
@@ -746,7 +764,7 @@ class _HomeData {
 class _NaverClipBanner extends StatelessWidget {
   const _NaverClipBanner();
 
-  static const _clipUrl = 'https://clipcreators.naver.com/web/clip/3918515';
+  static const _clipUrl = 'https://naver.me/5T0Qo5CQ';
   static const Color _naverGreen = Color(0xFF03C75A);
 
   Future<void> _openClip(BuildContext context) async {
@@ -1581,17 +1599,9 @@ class _MainActionCard extends StatelessWidget {
 }
 
 class _QuickTile extends StatelessWidget {
-  final IconData icon;
-  final String label;
-  final VoidCallback onTap;
-  final bool isAccident;
+  final _QuickTileData data;
 
-  const _QuickTile({
-    required this.icon,
-    required this.label,
-    required this.onTap,
-    this.isAccident = false,
-  });
+  const _QuickTile({required this.data});
 
   static const _accidentColor = Color(0xFFF04452);
   static const _iconBlue = Color(0xFF3182F6);
@@ -1599,14 +1609,16 @@ class _QuickTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final iconColor = isAccident ? _accidentColor : _iconBlue;
-    final textColor = isAccident ? _accidentColor : _defaultTextColor;
+    final iconColor = data.iconColor ??
+        (data.isAccident ? _accidentColor : _iconBlue);
+    final textColor = data.textColor ??
+        (data.isAccident ? _accidentColor : _defaultTextColor);
 
     return Material(
       color: Colors.transparent,
       borderRadius: BorderRadius.circular(12),
       child: InkWell(
-        onTap: onTap,
+        onTap: data.onTap,
         borderRadius: BorderRadius.circular(12),
         splashColor: Colors.black.withValues(alpha: 0.06),
         highlightColor: Colors.black.withValues(alpha: 0.04),
@@ -1619,15 +1631,15 @@ class _QuickTile extends StatelessWidget {
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Icon(icon, size: 24, color: iconColor),
+              Icon(data.icon, size: data.iconSize, color: iconColor),
               const SizedBox(height: 4),
               Text(
-                label,
+                data.label,
                 textAlign: TextAlign.center,
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
                 style: TextStyle(
-                  fontSize: 11,
+                  fontSize: data.fontSize,
                   fontWeight: FontWeight.w500,
                   color: textColor,
                   height: 1.2,

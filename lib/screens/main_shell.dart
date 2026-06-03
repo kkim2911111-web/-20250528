@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../theme/danji_colors.dart';
+import '../widgets/smart_key_nav_icon.dart';
 import 'home_screen.dart';
 import 'my_page_screen.dart';
 import 'smart_key_screen.dart';
@@ -43,7 +44,7 @@ class _MainShellState extends State<MainShell> {
         ),
         child: NavigationBar(
           backgroundColor: DanjiColors.surface,
-          indicatorColor: DanjiColors.brandBlue.withValues(alpha: 0.1),
+          indicatorColor: Colors.transparent,
           elevation: 0,
           shadowColor: Colors.transparent,
           surfaceTintColor: Colors.transparent,
@@ -59,26 +60,78 @@ class _MainShellState extends State<MainShell> {
           labelBehavior: NavigationDestinationLabelBehavior.alwaysShow,
           destinations: [
             NavigationDestination(
-              icon: Icon(Icons.home_outlined, color: DanjiColors.navUnselected),
-              selectedIcon:
-                  const Icon(Icons.home, color: DanjiColors.navSelected),
+              icon: const _ShellNavIcon(
+                outlinedIcon: Icons.home_outlined,
+                filledIcon: Icons.home,
+                selected: false,
+              ),
+              selectedIcon: const _ShellNavIcon(
+                outlinedIcon: Icons.home_outlined,
+                filledIcon: Icons.home,
+                selected: true,
+              ),
               label: '홈',
             ),
             NavigationDestination(
-              icon: Icon(Icons.vpn_key_outlined, color: DanjiColors.navUnselected),
-              selectedIcon:
-                  const Icon(Icons.vpn_key, color: DanjiColors.navSelected),
+              icon: const SmartKeyNavIcon(selected: false),
+              selectedIcon: const SmartKeyNavIcon(selected: true),
               label: '스마트키',
             ),
             NavigationDestination(
-              icon: Icon(Icons.person_outline, color: DanjiColors.navUnselected),
-              selectedIcon:
-                  const Icon(Icons.person, color: DanjiColors.navSelected),
+              icon: const _ShellNavIcon(
+                outlinedIcon: Icons.person_outline,
+                filledIcon: Icons.person,
+                selected: false,
+              ),
+              selectedIcon: const _ShellNavIcon(
+                outlinedIcon: Icons.person_outline,
+                filledIcon: Icons.person,
+                selected: true,
+              ),
               label: '마이페이지',
             ),
           ],
         ),
       ),
+    );
+  }
+}
+
+class _ShellNavIcon extends StatelessWidget {
+  static const _activeBlue = Color(0xFF3182F6);
+  static const _inactiveGray = Color(0xFFBBBBBB);
+
+  final IconData outlinedIcon;
+  final IconData filledIcon;
+  final bool selected;
+
+  const _ShellNavIcon({
+    required this.outlinedIcon,
+    required this.filledIcon,
+    required this.selected,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final color = selected ? _activeBlue : _inactiveGray;
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Icon(
+          selected ? filledIcon : outlinedIcon,
+          size: 22,
+          color: color,
+        ),
+        const SizedBox(height: 4),
+        Container(
+          width: 4,
+          height: 4,
+          decoration: BoxDecoration(
+            color: selected ? _activeBlue : Colors.transparent,
+            borderRadius: BorderRadius.circular(2),
+          ),
+        ),
+      ],
     );
   }
 }

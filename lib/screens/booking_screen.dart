@@ -77,17 +77,60 @@ class _BookingScreenState extends State<BookingScreen> {
   DateTime? _selectedDay;
   int _startHour = 9;
   int _endHour = 10;
+  bool _endHourManuallySet = false;
   bool _loading = false;
   String? _error;
+  bool _autoBumpedEmptyList = false;
 
   @override
   void initState() {
     super.initState();
-    final today = _todayCalendarDate;
-    _selectedDay = today;
-    _focusedDay = today;
-    _normalizeHoursForSelectedDay();
+    _applyInitialDateTime();
     _vehiclesFuture = _loadVehicles();
+  }
+
+  /// 23:00 이전 — 오늘·현재시+1h / 23:00 이후 — 내일 00:00 시작
+  void _applyInitialDateTime() {
+    final now = DateTime.now();
+    if (now.hour >= 23) {
+      final tomorrow = _todayCalendarDate.add(const Duration(days: 1));
+      _selectedDay = tomorrow;
+      _focusedDay = tomorrow;
+      _startHour = 0;
+      _endHour = 1;
+    } else {
+      final today = _todayCalendarDate;
+      _selectedDay = today;
+      _focusedDay = today;
+      _startHour = (now.hour + 1).clamp(_minHour, _maxHour);
+      _endHour = _startHour + 1;
+    }
+    _endHourManuallySet = false;
+    _normalizeHoursForSelectedDay();
+    if (!_endHourManuallySet) {
+      _syncEndHourFromStart(force: true);
+    }
+  }
+
+  DateTime get _tomorrowCalendarDate =>
+      _todayCalendarDate.add(const Duration(days: 1));
+
+  bool get _isTomorrowMidnightSlot {
+    final day = _selectedDay;
+    if (day == null) return false;
+    return isSameDay(day, _tomorrowCalendarDate) && _startHour == 0;
+  }
+
+  void _applyTomorrowMidnightSlot() {
+    _selectedDay = _tomorrowCalendarDate;
+    _focusedDay = _tomorrowCalendarDate;
+    _startHour = 0;
+    _endHour = 1;
+    _endHourManuallySet = false;
+    _normalizeHoursForSelectedDay();
+    if (!_endHourManuallySet) {
+      _syncEndHourFromStart(force: true);
+    }
   }
 
   DateTime _dateOnly(DateTime dt) => DateTime(dt.year, dt.month, dt.day);
@@ -113,6 +156,7 @@ class _BookingScreenState extends State<BookingScreen> {
     final result = await _vehicleService.fetchVehiclesForMyComplex();
     _lastResult = result;
     _allVehicles = result.vehicles;
+
     _refreshAvailability();
     return result;
   }
@@ -201,6 +245,38 @@ class _BookingScreenState extends State<BookingScreen> {
     return end.difference(start).inHours >= 1;
   }
 
+  /// 종료 시각 = 시작 + 1시간 (유효한 종료 시각 목록 기준)
+  void _syncEndHourFromStart({bool force = false}) {
+    if (!force && _endHourManuallySet) return;
+
+    final day = _selectedDay;
+    if (day == null) return;
+
+    final start = _buildStartDateTime(day, _startHour);
+    if (start == null) return;
+
+    final targetEnd = start.add(const Duration(hours: 1));
+    var candidate = targetEnd.hour;
+
+    final ends = _endHourOptions;
+    if (ends.isEmpty) return;
+
+    if (ends.contains(candidate)) {
+      _endHour = candidate;
+      return;
+    }
+
+    for (final h in ends) {
+      final end = _buildEndDateTime(day, h);
+      if (end != null && end.difference(start).inHours == 1) {
+        _endHour = h;
+        return;
+      }
+    }
+
+    _endHour = ends.first;
+  }
+
   void _normalizeHoursForSelectedDay() {
     final starts = _startHourOptions;
     if (starts.isEmpty) return;
@@ -209,10 +285,13 @@ class _BookingScreenState extends State<BookingScreen> {
       _startHour = starts.first;
     }
 
+    _syncEndHourFromStart();
+
     final ends = _endHourOptions;
     if (ends.isEmpty) return;
     if (!ends.contains(_endHour)) {
       _endHour = ends.first;
+      _endHourManuallySet = false;
     }
   }
 
@@ -338,6 +417,25 @@ class _BookingScreenState extends State<BookingScreen> {
 
   void _onVehicleListUpdated(List<_BookingVehicleListEntry> entries) {
     if (!mounted) return;
+
+    if (entries.isEmpty &&
+        _durationHours >= 1 &&
+        !_autoBumpedEmptyList &&
+        !_isTomorrowMidnightSlot) {
+      _autoBumpedEmptyList = true;
+      setState(() {
+        _applyTomorrowMidnightSlot();
+        _selected = null;
+        _error = null;
+      });
+      _refreshAvailability();
+      return;
+    }
+
+    if (entries.isEmpty && _durationHours >= 1) {
+      _autoBumpedEmptyList = true;
+    }
+
     setState(() {
       if (_selected != null &&
           !entries.any(
@@ -654,7 +752,7 @@ class _BookingScreenState extends State<BookingScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: DanjiColors.background,
-      appBar: const DanjiAppBar(title: '차량 예약'),
+      appBar: DanjiAppBar(title: '차량 예약'),
       body: FutureBuilder<VehicleQueryResult>(
         future: _vehiclesFuture,
         builder: (context, snapshot) {
@@ -728,6 +826,7 @@ class _BookingScreenState extends State<BookingScreen> {
                                 onSelected: (hour) {
                                   setState(() {
                                     _startHour = hour;
+                                    _syncEndHourFromStart();
                                   });
                                   _onDateTimeChanged();
                                 },
@@ -751,6 +850,7 @@ class _BookingScreenState extends State<BookingScreen> {
                                 onSelected: (hour) {
                                   setState(() {
                                     _endHour = hour;
+                                    _endHourManuallySet = true;
                                   });
                                   _onDateTimeChanged();
                                 },
@@ -760,9 +860,9 @@ class _BookingScreenState extends State<BookingScreen> {
                         ],
                       ),
                       const SizedBox(height: 24),
-                      const Text(
+                      Text(
                         '이 시간에 예약 가능한 차량',
-                        style: TextStyle(
+                        style: const TextStyle(
                           color: DanjiColors.textSecondary,
                           fontSize: 14,
                           fontWeight: FontWeight.w600,
@@ -846,6 +946,7 @@ class _BookingScreenState extends State<BookingScreen> {
                 canSubmit: _canSubmit,
                 onSubmit: _submit,
                 formatWon: _formatWon,
+                submitLabel: '예약하기',
               ),
             ],
           );
@@ -1610,6 +1711,7 @@ class _BookingBottomBar extends StatelessWidget {
   final bool canSubmit;
   final VoidCallback onSubmit;
   final String Function(int) formatWon;
+  final String submitLabel;
 
   const _BookingBottomBar({
     required this.vehicleName,
@@ -1619,6 +1721,7 @@ class _BookingBottomBar extends StatelessWidget {
     required this.canSubmit,
     required this.onSubmit,
     required this.formatWon,
+    this.submitLabel = '예약하기',
   });
 
   @override
@@ -1695,9 +1798,9 @@ class _BookingBottomBar extends StatelessWidget {
                             color: Colors.white,
                           ),
                         )
-                      : const Text(
-                          '예약하기',
-                          style: TextStyle(
+                      : Text(
+                          submitLabel,
+                          style: const TextStyle(
                             fontSize: 16,
                             fontWeight: FontWeight.w600,
                             color: Colors.white,
