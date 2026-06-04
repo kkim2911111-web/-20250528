@@ -114,27 +114,47 @@ class _RentalContractScreenState extends State<RentalContractScreen> {
     }
   }
 
+  bool get _hasContractContent {
+    final text = _content?.trim();
+    return text != null && text.isNotEmpty;
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: DanjiColors.background,
-      appBar: DanjiAppBar(
-        title: '대여 계약서',
-        extraActions: [
-          if (_content != null && _content!.isNotEmpty)
-            TextButton(
-              onPressed: _sharingPdf ? null : _downloadPdf,
-              child: _sharingPdf
-                  ? const SizedBox(
-                      width: 18,
-                      height: 18,
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    )
-                  : const Text('PDF 다운로드'),
+      appBar: const DanjiAppBar(title: '대여 계약서'),
+      body: Column(
+        children: [
+          Expanded(child: _buildBody()),
+          SafeArea(
+            top: false,
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(20, 8, 20, 16),
+              child: SizedBox(
+                width: double.infinity,
+                height: 52,
+                child: FilledButton(
+                  onPressed: _hasContractContent && !_sharingPdf
+                      ? _downloadPdf
+                      : null,
+                  style: DanjiTheme.primaryButton,
+                  child: _sharingPdf
+                      ? const SizedBox(
+                          width: 22,
+                          height: 22,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: Colors.white,
+                          ),
+                        )
+                      : const Text('PDF 다운로드'),
+                ),
+              ),
             ),
+          ),
         ],
       ),
-      body: _buildBody(),
     );
   }
 
@@ -174,7 +194,7 @@ class _RentalContractScreenState extends State<RentalContractScreen> {
     }
 
     return SingleChildScrollView(
-      padding: const EdgeInsets.all(20),
+      padding: const EdgeInsets.fromLTRB(20, 20, 20, 8),
       child: Container(
         width: double.infinity,
         padding: const EdgeInsets.all(16),
