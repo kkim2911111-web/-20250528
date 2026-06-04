@@ -3,12 +3,31 @@ import 'package:flutter/material.dart';
 import '../models/reservation.dart';
 import '../screens/rental_return_screen.dart';
 import '../screens/rental_start_screen.dart';
+import '../services/reservation_service.dart';
+import '../widgets/booking_contract_bottom_sheet.dart';
 
-/// 대여하기 — 항상 [RentalStartScreen] (사진 → 면허 → 문열림)
+/// 대여하기 — 계약 동의 후 [RentalStartScreen] (사진 → 면허 → 문열림)
 Future<T?> openRentalOrUseScreen<T>(
   BuildContext context,
   Reservation reservation,
-) {
+) async {
+  // 이미 대여 중이면 동의 시트 생략 (문열림·이용 흐름)
+  if (reservation.status != 'in_use') {
+    final consent = await BookingContractBottomSheet.show(context);
+    if (consent == null || !consent.termsAgreed) return null;
+
+    try {
+      await ReservationService().applyContractConsentBeforeRentalStart(
+        reservationId: reservation.id,
+        consent: consent,
+      );
+    } catch (e) {
+      debugPrint('[contract] apply before rental start failed: $e');
+    }
+  }
+
+  if (!context.mounted) return null;
+
   return Navigator.of(context).push<T>(
     MaterialPageRoute(
       builder: (_) => RentalStartScreen(reservationId: reservation.id),

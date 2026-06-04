@@ -660,6 +660,34 @@ class ReservationService {
     }
   }
 
+  /// 대여 시작 전 — 제2운전자 저장 + 계약서 생성 RPC
+  Future<void> applyContractConsentBeforeRentalStart({
+    required String reservationId,
+    required BookingContractConsent consent,
+  }) async {
+    final userId = supabase.auth.currentUser?.id;
+    if (userId == null || reservationId.isEmpty) return;
+
+    if (consent.hasSecondDriverInfo) {
+      try {
+        await supabase
+            .from('reservations')
+            .update({
+              'second_driver_name': consent.secondDriverName!.trim(),
+              'second_driver_license': consent.secondDriverLicense!.trim(),
+            })
+            .eq('id', _reservationIdFilterForUpdate(reservationId))
+            .eq('user_id', userId);
+      } on PostgrestException catch (e) {
+        if (e.code != '42703' && e.code != 'PGRST204') {
+          debugPrint('[contract] second_driver update failed: $e');
+        }
+      }
+    }
+
+    await _tryGenerateRentalContract(reservationId);
+  }
+
   /// 예약 생성 후 제2운전자 반영 + 계약서 생성 RPC
   Future<void> applyBookingContractAfterReservation({
     required String reservationId,

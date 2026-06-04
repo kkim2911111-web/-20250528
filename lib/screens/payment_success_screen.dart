@@ -13,8 +13,9 @@ import '../services/rental_service.dart';
 import '../services/reservation_service.dart';
 import '../supabase_client.dart';
 import '../theme/danji_colors.dart';
-import '../screens/rental_start_screen.dart';
+import '../models/reservation.dart';
 import '../screens/main_shell.dart';
+import '../utils/rental_navigation.dart';
 import 'my_reservations_screen.dart';
 
 /// 토스 결제 성공 리다이렉트 → Edge Function 승인 → 예약 완료
@@ -454,12 +455,17 @@ class _PaymentSuccessScreenState extends State<PaymentSuccessScreen> {
                         if (_result != null &&
                             _result!.reservationId.isNotEmpty)
                           FilledButton(
-                            onPressed: () {
-                              Navigator.of(context).pushReplacement(
-                                MaterialPageRoute(
-                                  builder: (_) => RentalStartScreen(
-                                    reservationId: _result!.reservationId,
-                                  ),
+                            onPressed: () async {
+                              final userId =
+                                  supabase.auth.currentUser?.id ?? '';
+                              await openRentalOrUseScreen<void>(
+                                context,
+                                Reservation(
+                                  id: _result!.reservationId,
+                                  userId: userId,
+                                  vehicleId: '',
+                                  totalPrice: _result!.totalPrice ?? 0,
+                                  status: 'confirmed',
                                 ),
                               );
                             },

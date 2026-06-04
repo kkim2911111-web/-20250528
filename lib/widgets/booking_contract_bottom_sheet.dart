@@ -215,7 +215,7 @@ class _BookingContractBottomSheetState extends State<BookingContractBottomSheet>
                   child: FilledButton(
                     onPressed: _canSubmit ? _submit : null,
                     style: DanjiTheme.primaryButton,
-                    child: const Text('동의하고 결제하기'),
+                    child: const Text('동의하고 대여하기'),
                   ),
                 ),
               ),

@@ -16,7 +16,6 @@ import '../supabase_client.dart';
 import '../theme/danji_colors.dart';
 import '../theme/danji_typography.dart';
 import '../utils/rental_inquiry_flow.dart';
-import '../widgets/booking_contract_bottom_sheet.dart';
 import '../widgets/danji_app_bar.dart';
 import '../widgets/payment_method_sheet.dart';
 
@@ -846,11 +845,6 @@ class _BookingScreenState extends State<BookingScreen> {
       return;
     }
 
-    final contractConsent = await BookingContractBottomSheet.show(context);
-    if (contractConsent == null || !contractConsent.termsAgreed || !mounted) {
-      return;
-    }
-
     final isZeroAmount = totalPrice <= 0;
     TossPaymentMethod? method;
     if (!isZeroAmount) {
@@ -880,7 +874,6 @@ class _BookingScreenState extends State<BookingScreen> {
         userCouponId: _selectedUserCouponId,
         pointsUsed: _pointsDiscount,
         method: method ?? TossPaymentMethod.card,
-        contractConsent: contractConsent,
       );
     } catch (e) {
       if (!mounted) return;
