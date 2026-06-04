@@ -18,6 +18,7 @@ abstract final class DanjiColors {
   static const headerBlue = slateBlue;
 
   static const accentRed = toneRed;
+  static const success = Color(0xFF16B364);
   static const danger = toneRed;
   static const dangerBright = toneRed;
   static const dangerBrightDark = Color(0xFFC02030);

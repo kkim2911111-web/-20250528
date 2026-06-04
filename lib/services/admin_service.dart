@@ -170,6 +170,27 @@ class AdminService {
     );
   }
 
+  /// complex 소속 차량 중 status=in_use 예약이 걸린 vehicle_id
+  Future<Set<String>> fetchInUseVehicleIds(String complexId) async {
+    final vehicles = await supabase
+        .from('vehicles')
+        .select('id')
+        .eq('complex_id', complexId);
+    final ids = (vehicles as List).map((v) => v['id'].toString()).toList();
+    if (ids.isEmpty) return {};
+
+    final rows = await supabase
+        .from('reservations')
+        .select('vehicle_id')
+        .inFilter('vehicle_id', ids)
+        .eq('status', 'in_use');
+
+    return (rows as List)
+        .map((r) => r['vehicle_id']?.toString())
+        .whereType<String>()
+        .toSet();
+  }
+
   Future<List<AdminVehicleDetail>> fetchVehicles(String complexId) async {
     final complexDisplayName = await _resolveComplexDisplayName(complexId);
     final rows = await supabase
@@ -373,6 +394,16 @@ class AdminService {
       await supabase.rpc('complete_return_inspection_for_staff', params: {
         'p_reservation_id': reservationId,
       });
+    } on PostgrestException catch (e) {
+      throw AdminException(mapAdminPostgrestError(e));
+    }
+  }
+
+  Future<List<Map<String, dynamic>>> getAdminReservationsWithConflict() async {
+    try {
+      final data = await supabase.rpc('get_admin_reservations_with_conflict');
+      if (data == null) return [];
+      return List<Map<String, dynamic>>.from(data as List);
     } on PostgrestException catch (e) {
       throw AdminException(mapAdminPostgrestError(e));
     }

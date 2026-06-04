@@ -431,6 +431,61 @@ class ReservationService {
     return 0;
   }
 
+  /// 결제 주문에 저장된 쿠폰·포인트 사용 (결제 완료 후)
+  Future<void> tryApplyBookingDiscounts({
+    required String orderId,
+    required String reservationId,
+  }) async {
+    final userId = supabase.auth.currentUser?.id;
+    if (userId == null || reservationId.isEmpty) return;
+
+    Map<String, dynamic>? order;
+    try {
+      order = await supabase
+          .from('payment_orders')
+          .select('user_coupon_id, points_used')
+          .eq('order_id', orderId)
+          .eq('user_id', userId)
+          .maybeSingle();
+    } on PostgrestException catch (e) {
+      if (e.code == '42703' || e.code == 'PGRST204') return;
+      rethrow;
+    }
+
+    if (order == null) return;
+
+    final userCouponId = order['user_coupon_id']?.toString();
+    final pointsUsed = (order['points_used'] as num?)?.toInt() ?? 0;
+
+    if (userCouponId != null && userCouponId.isNotEmpty) {
+      try {
+        await supabase.rpc('consume_user_coupon_for_me', params: {
+          'p_user_coupon_id': userCouponId,
+          'p_reservation_id': reservationId,
+        });
+      } catch (e) {
+        debugPrint('[booking/checkout] consume_user_coupon_for_me: $e');
+      }
+    }
+
+    if (pointsUsed > 0) {
+      try {
+        await supabase.rpc('spend_booking_points_for_me', params: {
+          'p_user_id': userId,
+          'p_reservation_id': reservationId,
+          'p_points': pointsUsed,
+        });
+      } catch (e) {
+        debugPrint('[booking/checkout] spend_booking_points_for_me: $e');
+      }
+    }
+  }
+
+  /// 예약·결제 변경 후 홈·내 예약 목록 갱신
+  void notifyReservationListRefresh() {
+    RentalService.signalListRefresh();
+  }
+
   /// 결제 완료 포인트 적립 — RPC 내부 중복 방지, 실패해도 결제 흐름 유지
   Future<void> tryGrantReservationPoints({
     required String reservationId,
@@ -632,12 +687,55 @@ class ReservationService {
     }
 
     if (orderId != null && orderId.isNotEmpty) {
-      await supabase.from('payment_orders').update(
-        PaymentOrderPayload.markPaid(
-          paymentKey: paymentKey ?? '',
-          reservationId: reservationId,
-        ),
-      ).eq('order_id', orderId).eq('user_id', user.id);
+      await markPaymentOrderPaidSafe(
+        orderId: orderId,
+        paymentKey: paymentKey,
+        reservationId: reservationId,
+      );
+    }
+  }
+
+  /// payment_orders.status 는 paid 만 사용 (confirmed 등 금지)
+  Future<void> markPaymentOrderPaidSafe({
+    required String orderId,
+    String? paymentKey,
+    String? reservationId,
+  }) async {
+    final user = supabase.auth.currentUser;
+    if (user == null) return;
+
+    final payload = PaymentOrderPayload.markPaid(
+      paymentKey: paymentKey ?? '',
+      reservationId: reservationId,
+    );
+
+    try {
+      await supabase
+          .from('payment_orders')
+          .update(payload)
+          .eq('order_id', orderId)
+          .eq('user_id', user.id);
+    } on PostgrestException catch (e) {
+      final msg = e.message.toLowerCase();
+      if (!msg.contains('payment_orders_status_check') &&
+          !(msg.contains('payment_orders') && msg.contains('check constraint')) &&
+          !msg.contains('42703') &&
+          e.code != 'PGRST204') {
+        rethrow;
+      }
+      final minimal = <String, dynamic>{
+        'status': PaymentOrderStatus.paid,
+        'updated_at': DateTime.now().toUtc().toIso8601String(),
+      };
+      if (paymentKey != null && paymentKey.isNotEmpty) {
+        minimal['payment_key'] = paymentKey;
+        minimal['has_payment_key'] = true;
+      }
+      await supabase
+          .from('payment_orders')
+          .update(minimal)
+          .eq('order_id', orderId)
+          .eq('user_id', user.id);
     }
   }
 
@@ -917,12 +1015,11 @@ class ReservationService {
       }
     }
 
-    await supabase.from('payment_orders').update(
-      PaymentOrderPayload.markPaid(
-        paymentKey: paymentKey,
-        reservationId: reservationId,
-      ),
-    ).eq('order_id', orderId);
+    await markPaymentOrderPaidSafe(
+      orderId: orderId,
+      paymentKey: paymentKey,
+      reservationId: reservationId,
+    );
 
     return {
       'reservationId': reservationId,

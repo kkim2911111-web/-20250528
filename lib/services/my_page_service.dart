@@ -2,6 +2,7 @@ import 'package:flutter/foundation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../models/my_page_profile.dart';
+import 'coupon_service.dart';
 import '../supabase_client.dart';
 import '../utils/network_retry.dart';
 
@@ -85,13 +86,10 @@ class MyPageService {
     );
   }
 
-  /// 사용 가능 쿠폰 수 — user_coupons (RLS로 본인 행만 조회)
+  /// 사용 가능 쿠폰 수 — 미사용·미만료 (만료일 지난 건 제외)
   Future<int> _fetchAvailableCouponCount() async {
-    final result = await supabase
-        .from('user_coupons')
-        .select('id')
-        .eq('is_used', false);
-    return (result as List).length;
+    final all = await CouponService().fetchMyCoupons();
+    return all.where((c) => c.isCouponAvailableTab).length;
   }
 
   Future<({

@@ -8,6 +8,7 @@ import '../../theme/danji_colors.dart';
 import '../../widgets/section_card.dart';
 import 'admin_license_review_screen.dart';
 import 'admin_management_screens.dart';
+import 'admin_reservation_list_screen.dart';
 import 'admin_vehicle_form_screen.dart';
 
 class AdminDashboardScreen extends StatefulWidget {
@@ -25,7 +26,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
   final _won = NumberFormat('#,###');
 
   Future<BranchStats>? _statsFuture;
-  Future<List<AdminVehicleDetail>>? _vehiclesFuture;
+  Future<_DashboardVehicleData>? _vehiclesFuture;
 
   @override
   void initState() {
@@ -36,8 +37,42 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
   void _reload() {
     setState(() {
       _statsFuture = _admin.fetchBranchStats(widget.profile.complexId);
-      _vehiclesFuture = _admin.fetchVehicles(widget.profile.complexId);
+      _vehiclesFuture = _loadVehicleData();
     });
+  }
+
+  Future<_DashboardVehicleData> _loadVehicleData() async {
+    final complexId = widget.profile.complexId;
+    final vehicles = await _admin.fetchVehicles(complexId);
+    final inUseVehicleIds = await _admin.fetchInUseVehicleIds(complexId);
+    return _DashboardVehicleData(
+      vehicles: vehicles,
+      inUseVehicleIds: inUseVehicleIds,
+    );
+  }
+
+  List<_ComplexVehicleGroup> _groupByComplex(List<AdminVehicleDetail> vehicles) {
+    final buckets = <String, List<AdminVehicleDetail>>{};
+    final labels = <String, String>{};
+
+    for (final v in vehicles) {
+      final key = v.complexId.trim().isNotEmpty
+          ? v.complexId.trim()
+          : _complexLabel(v);
+      buckets.putIfAbsent(key, () => []).add(v);
+      labels[key] = _complexLabel(v);
+    }
+
+    final keys = buckets.keys.toList()
+      ..sort((a, b) => (labels[a] ?? '').compareTo(labels[b] ?? ''));
+
+    return [
+      for (final key in keys)
+        _ComplexVehicleGroup(
+          complexName: labels[key] ?? '단지',
+          vehicles: buckets[key]!,
+        ),
+    ];
   }
 
   String _complexLabel(AdminVehicleDetail vehicle) {
@@ -187,7 +222,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
               ),
             ),
             const SizedBox(height: 12),
-            FutureBuilder<List<AdminVehicleDetail>>(
+            FutureBuilder<_DashboardVehicleData>(
               future: _vehiclesFuture,
               builder: (context, snap) {
                 if (snap.connectionState == ConnectionState.waiting) {
@@ -209,53 +244,36 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                     child: Text(friendlyAdminError(snap.error!)),
                   );
                 }
-                final list = snap.data ?? [];
+                final data = snap.data;
+                final list = data?.vehicles ?? [];
                 if (list.isEmpty) {
                   return const SectionCard(
                     child: Text('등록된 차량이 없습니다. 아래에서 차량을 등록해주세요.'),
                   );
                 }
+                final inUseIds = data?.inUseVehicleIds ?? {};
+                final groups = _groupByComplex(list);
                 return Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    for (final v in list.take(5))
-                      Padding(
-                        padding: const EdgeInsets.only(bottom: 10),
-                        child: SectionCard(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 16,
-                            vertical: 10,
+                    for (var gi = 0; gi < groups.length; gi++) ...[
+                      if (gi > 0) const SizedBox(height: 16),
+                      _ComplexGroupHeader(
+                        group: groups[gi],
+                        inUseVehicleIds: inUseIds,
+                      ),
+                      const SizedBox(height: 10),
+                      for (var vi = 0; vi < groups[gi].vehicles.length; vi++)
+                        Padding(
+                          padding: EdgeInsets.only(
+                            bottom: vi < groups[gi].vehicles.length - 1 ? 10 : 0,
                           ),
-                          child: ListTile(
-                            contentPadding: EdgeInsets.zero,
-                            title: Text(
-                              v.name,
-                              style: const TextStyle(
-                                fontWeight: FontWeight.w800,
-                              ),
-                            ),
-                            subtitle: Text(
-                              '${_complexLabel(v)} · ${v.vehicleType} · '
-                              '${v.carNumber ?? '번호 미등록'}',
-                            ),
-                            trailing: Icon(
-                              v.isAvailable
-                                  ? Icons.check_circle
-                                  : Icons.pause_circle,
-                              color: v.isAvailable
-                                  ? const Color(0xFF43A047)
-                                  : DanjiColors.textMuted,
-                            ),
+                          child: _DashboardVehicleCard(
+                            vehicle: groups[gi].vehicles[vi],
+                            complexLabel: _complexLabel(groups[gi].vehicles[vi]),
                           ),
                         ),
-                      ),
-                    if (list.length > 5)
-                      Text(
-                        '외 ${list.length - 5}대 · 차량 관리에서 전체 보기',
-                        style: const TextStyle(
-                          color: DanjiColors.textSecondary,
-                          fontSize: 13,
-                        ),
-                      ),
+                    ],
                   ],
                 );
               },
@@ -275,6 +293,12 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
               title: '면허 심사',
               subtitle: '입주민 면허증 승인·거절',
               onTap: () => _open(AdminLicenseReviewScreen(profile: profile)),
+            ),
+            _MenuTile(
+              icon: Icons.event_note_outlined,
+              title: '예약 관리',
+              subtitle: '예약 목록, 충돌 위험 확인',
+              onTap: () => _open(const AdminReservationListScreen()),
             ),
             _MenuTile(
               icon: Icons.fact_check_outlined,
@@ -346,6 +370,100 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
 
   void _open(Widget screen) {
     Navigator.of(context).push(MaterialPageRoute(builder: (_) => screen));
+  }
+}
+
+class _DashboardVehicleData {
+  final List<AdminVehicleDetail> vehicles;
+  final Set<String> inUseVehicleIds;
+
+  const _DashboardVehicleData({
+    required this.vehicles,
+    required this.inUseVehicleIds,
+  });
+}
+
+class _ComplexVehicleGroup {
+  final String complexName;
+  final List<AdminVehicleDetail> vehicles;
+
+  const _ComplexVehicleGroup({
+    required this.complexName,
+    required this.vehicles,
+  });
+
+  int totalCount() => vehicles.length;
+
+  int inUseCount(Set<String> inUseVehicleIds) =>
+      vehicles.where((v) => inUseVehicleIds.contains(v.id)).length;
+
+  int availableCount(Set<String> inUseVehicleIds) {
+    var count = 0;
+    for (final v in vehicles) {
+      if (v.isAvailable && !inUseVehicleIds.contains(v.id)) count++;
+    }
+    return count;
+  }
+}
+
+class _ComplexGroupHeader extends StatelessWidget {
+  final _ComplexVehicleGroup group;
+  final Set<String> inUseVehicleIds;
+
+  const _ComplexGroupHeader({
+    required this.group,
+    required this.inUseVehicleIds,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final total = group.totalCount();
+    final inUse = group.inUseCount(inUseVehicleIds);
+    final available = group.availableCount(inUseVehicleIds);
+
+    return Text(
+      '${group.complexName} · 전체 ${total}대 · 대여중 ${inUse}대 · 가용 ${available}대',
+      style: const TextStyle(
+        color: DanjiColors.textPrimary,
+        fontWeight: FontWeight.w800,
+        fontSize: 15,
+        height: 1.4,
+      ),
+    );
+  }
+}
+
+class _DashboardVehicleCard extends StatelessWidget {
+  final AdminVehicleDetail vehicle;
+  final String complexLabel;
+
+  const _DashboardVehicleCard({
+    required this.vehicle,
+    required this.complexLabel,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return SectionCard(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+      child: ListTile(
+        contentPadding: EdgeInsets.zero,
+        title: Text(
+          vehicle.name,
+          style: const TextStyle(fontWeight: FontWeight.w800),
+        ),
+        subtitle: Text(
+          '$complexLabel · ${vehicle.vehicleType} · '
+          '${vehicle.carNumber ?? '번호 미등록'}',
+        ),
+        trailing: Icon(
+          vehicle.isAvailable ? Icons.check_circle : Icons.pause_circle,
+          color: vehicle.isAvailable
+              ? const Color(0xFF43A047)
+              : DanjiColors.textMuted,
+        ),
+      ),
+    );
   }
 }
 

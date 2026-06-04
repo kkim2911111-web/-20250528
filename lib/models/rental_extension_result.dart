@@ -85,6 +85,7 @@ abstract final class RentalExtensionMessages {
   static const tooEarly =
       '대여 종료 1시간 전부터 연장 신청이 가능합니다.';
   static const tooLate = '예약 종료 시각이 지나 연장할 수 없습니다.';
+  static const nextReservationExists = '다음 예약이 있어 연장할 수 없습니다.';
   static const applying = '연장 처리 중…';
   static const payingAndApplying = '결제 및 연장 처리 중…';
   static const checking = '연장 가능 여부 확인 중…';

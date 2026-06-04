@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:intl/intl.dart';
 
 import '../models/coupon.dart';
 import '../services/coupon_service.dart';
@@ -10,9 +9,11 @@ import '../widgets/danji_app_bar.dart';
 abstract final class _CouponColors {
   static const ticketBg = Color(0xFF12122A);
   static const gold = Color(0xFFD4AF37);
-  static const goldMuted = Color(0x99D4AF37);
   static const ticketText = Color(0xFFF5F0E6);
   static const ticketSub = Color(0xFFB8B0A0);
+  static const expiryGray = Color(0xFF8B95A1);
+  static const expiryOrange = Color(0xFFFF9800);
+  static const expiryRed = DanjiColors.toneRed;
 }
 
 class CouponScreen extends StatefulWidget {
@@ -25,15 +26,13 @@ class CouponScreen extends StatefulWidget {
 class _CouponScreenState extends State<CouponScreen>
     with SingleTickerProviderStateMixin {
   final _service = CouponService();
-  final _dateFormat = DateFormat('yyyy.MM.dd');
-
   late TabController _tabController;
   Future<List<UserCoupon>>? _future;
 
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 2, vsync: this);
+    _tabController = TabController(length: 3, vsync: this);
     _reload();
   }
 
@@ -47,6 +46,20 @@ class _CouponScreenState extends State<CouponScreen>
     setState(() {
       _future = _service.fetchMyCoupons();
     });
+  }
+
+  static List<UserCoupon> _sortAvailable(List<UserCoupon> list) {
+    final copy = List<UserCoupon>.from(list);
+    copy.sort((a, b) {
+      final aUrgent = a.isExpiringWithin7Days;
+      final bUrgent = b.isExpiringWithin7Days;
+      if (aUrgent != bUrgent) return aUrgent ? -1 : 1;
+      final ad = a.daysUntilExpiry ?? 99999;
+      final bd = b.daysUntilExpiry ?? 99999;
+      if (ad != bd) return ad.compareTo(bd);
+      return b.createdAt?.compareTo(a.createdAt ?? DateTime(1970)) ?? 0;
+    });
+    return copy;
   }
 
   @override
@@ -73,12 +86,16 @@ class _CouponScreenState extends State<CouponScreen>
               unselectedLabelColor: DanjiColors.textSecondary,
               indicatorColor: DanjiColors.brandBlue,
               indicatorWeight: 2.5,
+              isScrollable: true,
+              tabAlignment: TabAlignment.start,
               labelStyle: DanjiTypography.body.copyWith(
                 fontWeight: FontWeight.w700,
+                fontSize: 14,
               ),
               tabs: const [
                 Tab(text: '사용 가능'),
                 Tab(text: '사용 완료'),
+                Tab(text: '만료됨'),
               ],
             ),
           ),
@@ -97,10 +114,14 @@ class _CouponScreenState extends State<CouponScreen>
                 }
 
                 final all = snap.data ?? [];
-                final available =
-                    all.where((c) => c.isAvailable).toList(growable: false);
+                final available = _sortAvailable(
+                  all.where((c) => c.isCouponAvailableTab).toList(),
+                );
                 final used = all
-                    .where((c) => !c.isAvailable)
+                    .where((c) => c.isCouponUsedTab)
+                    .toList(growable: false);
+                final expired = all
+                    .where((c) => c.isCouponExpiredTab)
                     .toList(growable: false);
 
                 return TabBarView(
@@ -109,15 +130,22 @@ class _CouponScreenState extends State<CouponScreen>
                     _CouponList(
                       coupons: available,
                       emptyMessage: '사용 가능한 쿠폰이 없습니다.',
-                      dateFormat: _dateFormat,
                       onRefresh: () async => _reload(),
+                      groupExpiringSoon: true,
                     ),
                     _CouponList(
                       coupons: used,
                       emptyMessage: '사용 완료된 쿠폰이 없습니다.',
-                      dateFormat: _dateFormat,
                       onRefresh: () async => _reload(),
                       dimmed: true,
+                      preferUsedDate: true,
+                    ),
+                    _CouponList(
+                      coupons: expired,
+                      emptyMessage: '만료된 쿠폰이 없습니다.',
+                      onRefresh: () async => _reload(),
+                      dimmed: true,
+                      preferUsedDate: true,
                     ),
                   ],
                 );
@@ -133,16 +161,18 @@ class _CouponScreenState extends State<CouponScreen>
 class _CouponList extends StatelessWidget {
   final List<UserCoupon> coupons;
   final String emptyMessage;
-  final DateFormat dateFormat;
   final Future<void> Function() onRefresh;
   final bool dimmed;
+  final bool preferUsedDate;
+  final bool groupExpiringSoon;
 
   const _CouponList({
     required this.coupons,
     required this.emptyMessage,
-    required this.dateFormat,
     required this.onRefresh,
     this.dimmed = false,
+    this.preferUsedDate = false,
+    this.groupExpiringSoon = false,
   });
 
   @override
@@ -165,20 +195,64 @@ class _CouponList extends StatelessWidget {
       );
     }
 
+    final urgent = groupExpiringSoon
+        ? coupons.where((c) => c.isExpiringWithin7Days).toList()
+        : const <UserCoupon>[];
+    final rest = groupExpiringSoon
+        ? coupons.where((c) => !c.isExpiringWithin7Days).toList()
+        : coupons;
+
     return RefreshIndicator(
       onRefresh: onRefresh,
-      child: ListView.separated(
+      child: ListView(
         physics: const AlwaysScrollableScrollPhysics(),
         padding: const EdgeInsets.fromLTRB(20, 16, 20, 24),
-        itemCount: coupons.length,
-        separatorBuilder: (_, __) => const SizedBox(height: 14),
-        itemBuilder: (context, index) {
-          return _CouponTicketCard(
-            coupon: coupons[index],
-            dateFormat: dateFormat,
-            dimmed: dimmed,
-          );
-        },
+        children: [
+          if (urgent.isNotEmpty) ...[
+            _SectionLabel(text: '만료 임박'),
+            for (var i = 0; i < urgent.length; i++) ...[
+              if (i > 0) const SizedBox(height: 14),
+              _CouponTicketCard(
+                coupon: urgent[i],
+                dimmed: dimmed,
+                preferUsedDate: preferUsedDate,
+              ),
+            ],
+            if (rest.isNotEmpty) ...[
+              const SizedBox(height: 22),
+              _SectionLabel(text: '사용 가능'),
+            ],
+          ],
+          for (var i = 0; i < rest.length; i++) ...[
+            if (i > 0 || urgent.isNotEmpty) const SizedBox(height: 14),
+            _CouponTicketCard(
+              coupon: rest[i],
+              dimmed: dimmed,
+              preferUsedDate: preferUsedDate,
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+class _SectionLabel extends StatelessWidget {
+  final String text;
+
+  const _SectionLabel({required this.text});
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 10),
+      child: Text(
+        text,
+        style: DanjiTypography.subtitle.copyWith(
+          fontSize: 14,
+          fontWeight: FontWeight.w800,
+          color: DanjiColors.textPrimary,
+        ),
       ),
     );
   }
@@ -186,20 +260,35 @@ class _CouponList extends StatelessWidget {
 
 class _CouponTicketCard extends StatelessWidget {
   final UserCoupon coupon;
-  final DateFormat dateFormat;
   final bool dimmed;
+  final bool preferUsedDate;
 
   const _CouponTicketCard({
     required this.coupon,
-    required this.dateFormat,
     this.dimmed = false,
+    this.preferUsedDate = false,
   });
+
+  Color _validityColor(CouponValidityTone tone) {
+    switch (tone) {
+      case CouponValidityTone.urgentRed:
+        return _CouponColors.expiryRed;
+      case CouponValidityTone.urgentOrange:
+        return _CouponColors.expiryOrange;
+      case CouponValidityTone.normal:
+        return _CouponColors.expiryGray;
+      case CouponValidityTone.muted:
+        return _CouponColors.ticketSub;
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
     final benefit = coupon.displayBenefit;
-    final expires = coupon.expiresAt;
-    final used = coupon.usedAt;
+    final validity = CouponValidityDisplay.forCoupon(
+      coupon,
+      preferUsedDate: preferUsedDate,
+    );
 
     return Opacity(
       opacity: dimmed ? 0.72 : 1,
@@ -254,27 +343,24 @@ class _CouponTicketCard extends StatelessWidget {
                         ),
                       ),
                     ],
-                    const SizedBox(height: 8),
-                    if (used != null)
+                    if (validity != null) ...[
+                      const SizedBox(height: 8),
                       Text(
-                        '사용일 ${dateFormat.format(used)}',
-                        style: const TextStyle(
-                          color: _CouponColors.ticketSub,
-                          fontSize: 12,
-                        ),
-                      )
-                    else if (expires != null)
-                      Text(
-                        coupon.isExpired
-                            ? '만료 ${dateFormat.format(expires)}'
-                            : '~ ${dateFormat.format(expires)} 까지',
+                        validity.text,
                         style: TextStyle(
-                          color: coupon.isExpired
-                              ? _CouponColors.ticketSub
-                              : _CouponColors.goldMuted,
-                          fontSize: 12,
+                          color: _validityColor(validity.tone),
+                          fontSize: validity.tone == CouponValidityTone.urgentRed
+                              ? 13
+                              : 12,
+                          fontWeight:
+                              validity.tone == CouponValidityTone.urgentRed ||
+                                      validity.tone ==
+                                          CouponValidityTone.urgentOrange
+                                  ? FontWeight.w800
+                                  : FontWeight.w500,
                         ),
                       ),
+                    ],
                   ],
                 ),
               ),

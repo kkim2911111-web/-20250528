@@ -203,7 +203,7 @@ as $$
   from public.reservations r
   where r.vehicle_id::text = p_vehicle_id::text
     and r.id <> p_exclude_reservation_id
-    and coalesce(r.status, 'pending') in ('pending', 'confirmed', 'in_use')
+    and coalesce(r.status, 'pending') in ('confirmed', 'in_use')
     and coalesce(r.start_at, r.start_time) < p_window_end
     and public.reservation_effective_end(
           r.status,
@@ -237,6 +237,9 @@ declare
   v_new_end timestamptz;
   v_window_start timestamptz;
   v_block record;
+  v_next_id text;
+  v_next_start timestamptz;
+  v_next_status text;
   v_price_per_hour integer;
   v_added_price integer;
 begin
@@ -302,6 +305,37 @@ begin
 
   v_new_end := v_end + (p_extension_hours || ' hours')::interval;
 
+  -- 동일 차량 · 현재 예약 종료 시각 이후 confirmed/in_use 예약
+  select
+    r.id::text,
+    coalesce(r.start_at, r.start_time),
+    r.status
+  into v_next_id, v_next_start, v_next_status
+  from public.reservations r
+  where r.vehicle_id = v_row.vehicle_id
+    and r.id is distinct from v_row.id
+    and r.status in ('confirmed', 'in_use')
+    and coalesce(r.start_at, r.start_time) > v_end
+  order by coalesce(r.start_at, r.start_time)
+  limit 1;
+
+  if v_next_id is not null then
+    return jsonb_build_object(
+      'eligible', false,
+      'reason', 'next_reservation_exists',
+      'message', '다음 예약이 있어 연장할 수 없습니다.',
+      'blockingReservationId', v_next_id,
+      'blockingStartAt', v_next_start,
+      'blockingStatus', v_next_status,
+      'scheduledEndAt', v_end,
+      'requestedNewEndAt', v_new_end,
+      'extensionHours', p_extension_hours,
+      'emergencyPhone', public.get_emergency_phone(),
+      'showEmergencyConsultation', false
+    );
+  end if;
+
+  -- 연장 구간 (current_end, new_end] 과 겹치는 다른 예약 (confirmed/in_use)
   select *
   into v_block
   from public.reservation_blocks_extension_window(
@@ -325,7 +359,7 @@ begin
       'requestedNewEndAt', v_new_end,
       'extensionHours', p_extension_hours,
       'emergencyPhone', public.get_emergency_phone(),
-      'showEmergencyConsultation', true
+      'showEmergencyConsultation', false
     );
   end if;
 

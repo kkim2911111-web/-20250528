@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
@@ -5,6 +6,7 @@ import '../models/rental_extension_result.dart';
 import '../models/reservation.dart';
 import '../services/rental_service.dart';
 import '../services/support_contacts_service.dart';
+import '../supabase_client.dart';
 import '../theme/danji_colors.dart';
 import 'phone_launcher.dart';
 
@@ -102,7 +104,7 @@ String _messageForExtensionCheck(RentalExtensionCheckResult check) {
     case 'too_late':
       return RentalExtensionMessages.tooLate;
     case 'next_reservation_exists':
-      return '다음 예약이 있어 연장할 수 없습니다.';
+      return RentalExtensionMessages.nextReservationExists;
     default:
       break;
   }
@@ -200,9 +202,12 @@ Future<bool> _confirmAndApply(
     ),
   );
 
+  final reservationId = reservation.id;
+  final addedPrice = added;
+
   try {
-    await service.applyRentalExtension(
-      reservationId: reservation.id,
+    await service.payAndApplyRentalExtension(
+      reservationId: reservationId,
       extensionHours: extensionHours,
     );
   } catch (e) {
@@ -213,6 +218,30 @@ Future<bool> _confirmAndApply(
       );
     }
     return false;
+  }
+
+  debugPrint(
+    '[extension/points] extension payment ok — '
+    'reservationId=$reservationId, addedPrice=$addedPrice',
+  );
+  if (addedPrice > 0) {
+    final user = supabase.auth.currentUser;
+    if (user == null) {
+      debugPrint('[extension/points] skip — not logged in');
+    } else {
+      try {
+        await supabase.rpc('grant_extension_points', params: {
+          'p_user_id': user.id,
+          'p_reservation_id': reservationId,
+          'p_amount': addedPrice,
+        });
+        debugPrint('[extension/points] grant_extension_points ok');
+      } catch (e) {
+        debugPrint('[extension/points] grant_extension_points failed: $e');
+      }
+    }
+  } else {
+    debugPrint('[extension/points] skip — addedPrice is 0');
   }
 
   if (navigator.canPop()) navigator.pop();
@@ -260,7 +289,7 @@ Future<void> _showEmergencyDialog(
         () {
           final msg = _messageForExtensionCheck(check);
           if (msg.isNotEmpty && msg != '지금은 연장할 수 없습니다.') return msg;
-          return '다음 예약이 있어 연장할 수 없습니다.\n긴급 상담으로 문의해주세요.';
+          return RentalExtensionMessages.nextReservationExists;
         }(),
         style: const TextStyle(
           color: DanjiColors.textSecondary,

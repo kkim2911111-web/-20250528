@@ -39,4 +39,10 @@ class CouponService {
         .map((e) => UserCoupon.fromMap(Map<String, dynamic>.from(e as Map)))
         .toList();
   }
+
+  /// 예약 결제 — 미사용·미만료 쿠폰만
+  Future<List<UserCoupon>> fetchAvailableCoupons() async {
+    final all = await fetchMyCoupons();
+    return all.where((c) => c.isCouponAvailableTab).toList();
+  }
 }

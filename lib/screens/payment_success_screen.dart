@@ -171,7 +171,8 @@ class _PaymentSuccessScreenState extends State<PaymentSuccessScreen> {
           '[payment/points] preResolved path p_amount=$grantAmount '
           '(url amount=$amount)',
         );
-        await _reservationService.tryGrantReservationPoints(
+        await _paymentService.grantReservationPointsIfEligible(
+          orderId: orderId,
           reservationId: preResolved.reservationId,
           amount: grantAmount,
         );

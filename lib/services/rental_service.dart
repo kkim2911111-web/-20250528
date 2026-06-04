@@ -715,6 +715,7 @@ fuel_level_start,fuel_level_end,is_accident,accident_note,door_unlocked
         reservationId: reservationId,
       );
       await _assertReservationCancelled(reservationId);
+      await _runPostCancelRestoreRpcs(reservationId);
       RentalService.signalListRefresh();
       return result;
     } catch (e) {
@@ -832,6 +833,7 @@ fuel_level_start,fuel_level_end,is_accident,accident_note,door_unlocked
         'p_reservation_id': reservationId,
       });
       await _assertReservationCancelled(reservationId);
+      await _runPostCancelRestoreRpcs(reservationId);
       RentalService.signalListRefresh();
       return _asMap(data);
     } on PostgrestException catch (e) {
@@ -867,6 +869,7 @@ fuel_level_start,fuel_level_end,is_accident,accident_note,door_unlocked
         .eq('user_id', userId);
 
     await _assertReservationCancelled(reservationId);
+    await _runPostCancelRestoreRpcs(reservationId);
 
     if (orderId != null && orderId.isNotEmpty) {
       try {
@@ -880,6 +883,41 @@ fuel_level_start,fuel_level_end,is_accident,accident_note,door_unlocked
 
     RentalService.signalListRefresh();
     return {'reservationId': reservationId, 'deleted': true};
+  }
+
+  /// 예약 취소 후 포인트·쿠폰 복구 — 조건 분기 없이 3개 RPC 순서 호출 (DB가 스킵 처리).
+  Future<void> _runPostCancelRestoreRpcs(String reservationId) async {
+    final user = supabase.auth.currentUser;
+    if (user == null) {
+      debugPrint('[cancel] skip restore RPCs — not logged in');
+      return;
+    }
+
+    final params = {
+      'p_user_id': user.id,
+      'p_reservation_id': reservationId,
+    };
+
+    try {
+      final data = await supabase.rpc('cancel_reservation_points', params: params);
+      debugPrint('[cancel] cancel_reservation_points ok: $data');
+    } catch (e, st) {
+      debugPrint('[cancel] cancel_reservation_points failed: $e\n$st');
+    }
+
+    try {
+      final data = await supabase.rpc('restore_user_coupon', params: params);
+      debugPrint('[cancel] restore_user_coupon ok: $data');
+    } catch (e, st) {
+      debugPrint('[cancel] restore_user_coupon failed: $e\n$st');
+    }
+
+    try {
+      final data = await supabase.rpc('restore_used_points', params: params);
+      debugPrint('[cancel] restore_used_points ok: $data');
+    } catch (e, st) {
+      debugPrint('[cancel] restore_used_points failed: $e\n$st');
+    }
   }
 
   Future<RentalExtensionCheckResult> checkRentalExtension({
@@ -907,13 +945,67 @@ fuel_level_start,fuel_level_end,is_accident,accident_note,door_unlocked
         reservationId: reservationId,
         extensionHours: extensionHours,
       );
+      final map = _asMap(data);
       RentalService.signalListRefresh();
-      final result = data['result'];
+      final result = map['result'];
       if (result is Map) return _asMap(result);
-      return _asMap(data);
+      return map;
     } catch (e) {
       if (e is RentalException) rethrow;
       throw RentalException(e.toString().replaceFirst('Exception: ', ''));
+    }
+  }
+
+  int _extensionAmountFromResponse(Map<String, dynamic> data) {
+    final top = data['addedPrice'] ?? data['added_price'];
+    if (top is num) return top.toInt();
+    final result = data['result'];
+    if (result is Map) {
+      final nested = Map<String, dynamic>.from(result);
+      final nestedAmount = nested['addedPrice'] ?? nested['added_price'];
+      if (nestedAmount is num) return nestedAmount.toInt();
+    }
+    return 0;
+  }
+
+  /// 연장 결제 완료 포인트 적립 — 실패해도 연장 흐름 유지
+  Future<void> tryGrantExtensionPoints({
+    required String reservationId,
+    required int amount,
+  }) async {
+    final user = supabase.auth.currentUser;
+    debugPrint(
+      '[extension/points] tryGrantExtensionPoints start: '
+      'reservationId=$reservationId, p_amount=$amount, userId=${user?.id}',
+    );
+
+    if (user == null) {
+      debugPrint('[extension/points] skip — not logged in');
+      return;
+    }
+    if (reservationId.isEmpty) {
+      debugPrint('[extension/points] skip — empty reservationId');
+      return;
+    }
+    if (amount <= 0) {
+      debugPrint('[extension/points] skip — p_amount is 0 or negative');
+      return;
+    }
+
+    try {
+      final data = await supabase.rpc('grant_extension_points', params: {
+        'p_user_id': user.id,
+        'p_reservation_id': reservationId,
+        'p_amount': amount,
+      });
+      debugPrint('[extension/points] grant_extension_points ok: $data');
+    } on PostgrestException catch (e) {
+      debugPrint(
+        '[extension/points] grant_extension_points PostgrestException: '
+        '${e.code} ${e.message}',
+      );
+    } catch (e, st) {
+      debugPrint('[extension/points] grant_extension_points error: $e\n$st');
     }
   }
 

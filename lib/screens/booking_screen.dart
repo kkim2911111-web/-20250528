@@ -3,9 +3,13 @@ import 'package:intl/intl.dart';
 import 'package:table_calendar/table_calendar.dart';
 
 import '../config/payment_config.dart';
+import '../models/coupon.dart';
 import '../models/vehicle.dart';
 import '../models/vehicle_query_result.dart';
+import '../services/coupon_service.dart';
 import '../services/payment_service.dart';
+import '../services/point_service.dart';
+import '../utils/point_policy.dart';
 import '../services/reservation_service.dart';
 import '../services/vehicle_service.dart';
 import '../supabase_client.dart';
@@ -66,6 +70,8 @@ class _BookingScreenState extends State<BookingScreen> {
   final _vehicleService = VehicleService();
   final _reservationService = ReservationService();
   final _paymentService = PaymentService();
+  final _couponService = CouponService();
+  final _pointService = PointService();
   final _dateLabelFormat = DateFormat('yyyy년 M월 d일 (E)', 'ko_KR');
 
   Future<VehicleQueryResult>? _vehiclesFuture;
@@ -81,6 +87,14 @@ class _BookingScreenState extends State<BookingScreen> {
   bool _loading = false;
   String? _error;
   bool _autoBumpedEmptyList = false;
+
+  List<UserCoupon> _availableCoupons = [];
+  int _pointBalance = 0;
+  String? _selectedUserCouponId;
+  bool _usePoints = false;
+  int _pointsToUse = 0;
+  bool _checkoutExtrasLoaded = false;
+  bool _loadingCheckoutExtras = false;
 
   @override
   void initState() {
@@ -163,9 +177,13 @@ class _BookingScreenState extends State<BookingScreen> {
 
   int get _activeStep {
     if (_selected == null) return 1;
-    if (_canSubmit) return 3;
+    if (_durationHours >= 1 && _originalPrice != null) return 3;
     return 2;
   }
+
+  /// 3단계 확인/결제 — 차량 선택 후 쿠폰·포인트 패널 표시
+  bool get _showCheckoutDiscounts =>
+      _selected != null && _durationHours >= 1 && _originalPrice != null;
 
   int get _durationHours {
     final start = _buildStartDateTime(_selectedDay, _startHour);
@@ -327,14 +345,53 @@ class _BookingScreenState extends State<BookingScreen> {
     return _formatHourLabel(hour);
   }
 
-  int? get _totalPrice {
+  int? get _originalPrice {
     final vehicle = _selected;
     if (vehicle == null || _durationHours < 1) return null;
     return _durationHours * vehicle.pricePerHour;
   }
 
+  int get _couponDiscount {
+    final coupon = _selectedCoupon;
+    if (coupon == null) return 0;
+    return coupon.discountAmount;
+  }
+
+  int get _maxPointsUsable {
+    if (!PointPolicy.canUsePoints(_pointBalance)) return 0;
+    final original = _originalPrice;
+    if (original == null) return 0;
+    final afterCoupon = (original - _couponDiscount).clamp(0, original);
+    if (afterCoupon < PointPolicy.minUseAmount) return 0;
+    final cap = afterCoupon < _pointBalance ? afterCoupon : _pointBalance;
+    return cap;
+  }
+
+  int get _pointsDiscount {
+    if (!_usePoints) return 0;
+    final amount = _pointsToUse.clamp(0, _maxPointsUsable);
+    if (!PointPolicy.isValidUseAmount(amount)) return 0;
+    return amount;
+  }
+
+  int? get _finalPrice {
+    final original = _originalPrice;
+    if (original == null) return null;
+    final total = original - _couponDiscount - _pointsDiscount;
+    return total < 0 ? 0 : total;
+  }
+
+  UserCoupon? get _selectedCoupon {
+    final id = _selectedUserCouponId;
+    if (id == null || id.isEmpty) return null;
+    for (final c in _availableCoupons) {
+      if (c.id == id) return c;
+    }
+    return null;
+  }
+
   bool get _canSubmit {
-    if (_loading || _selected == null || _totalPrice == null) return false;
+    if (_loading || _selected == null || _originalPrice == null) return false;
     if (_durationHours < 1) return false;
     final start = _buildStartDateTime(_selectedDay, _startHour);
     if (start == null) return false;
@@ -344,6 +401,97 @@ class _BookingScreenState extends State<BookingScreen> {
       return false;
     }
     return true;
+  }
+
+  void _resetCheckoutSelection() {
+    _checkoutExtrasLoaded = false;
+    _availableCoupons = [];
+    _pointBalance = 0;
+    _selectedUserCouponId = null;
+    _usePoints = false;
+    _pointsToUse = 0;
+  }
+
+  void _clampPointsToUse() {
+    final max = _maxPointsUsable;
+    if (_pointsToUse > max) _pointsToUse = max;
+    if (_pointsToUse < 0) _pointsToUse = 0;
+    if (max == 0) {
+      _usePoints = false;
+      _pointsToUse = 0;
+    }
+  }
+
+  void _validateCouponForCurrentPrice() {
+    final coupon = _selectedCoupon;
+    final original = _originalPrice;
+    if (coupon == null || original == null) return;
+    if (!coupon.canApplyToOrderAmount(original)) {
+      _selectedUserCouponId = null;
+    }
+  }
+
+  void _scheduleCheckoutExtrasLoad() {
+    if (!_showCheckoutDiscounts) return;
+    if (_checkoutExtrasLoaded || _loadingCheckoutExtras) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _loadCheckoutExtras();
+    });
+  }
+
+  Future<void> _loadCheckoutExtras() async {
+    if (_loadingCheckoutExtras || !_showCheckoutDiscounts) return;
+    setState(() => _loadingCheckoutExtras = true);
+    try {
+      final coupons = await _couponService.fetchAvailableCoupons();
+      final balance = await _pointService.fetchBalance();
+      if (!mounted) return;
+      setState(() {
+        _availableCoupons = coupons;
+        _pointBalance = balance;
+        _checkoutExtrasLoaded = true;
+        _loadingCheckoutExtras = false;
+        _validateCouponForCurrentPrice();
+        _clampPointsToUse();
+      });
+    } catch (_) {
+      if (mounted) {
+        setState(() {
+          _loadingCheckoutExtras = false;
+          _checkoutExtrasLoaded = true;
+        });
+      }
+    }
+  }
+
+  void _onCouponSelected(String? userCouponId) {
+    setState(() {
+      _selectedUserCouponId = userCouponId;
+      _validateCouponForCurrentPrice();
+      _clampPointsToUse();
+    });
+  }
+
+  void _onPointsToggle(bool value) {
+    setState(() {
+      _usePoints = value;
+      if (value && _pointsToUse == 0) {
+        final max = _maxPointsUsable;
+        _pointsToUse = max >= PointPolicy.minUseAmount
+            ? PointPolicy.minUseAmount
+            : max;
+      }
+      if (!value) _pointsToUse = 0;
+      _clampPointsToUse();
+    });
+  }
+
+  void _onPointsAmountChanged(String text) {
+    final parsed = int.tryParse(text.replaceAll(RegExp(r'[^0-9]'), '')) ?? 0;
+    setState(() {
+      _pointsToUse = parsed.clamp(0, _maxPointsUsable);
+      _usePoints = _pointsToUse > 0;
+    });
   }
 
   void _refreshAvailability() {
@@ -450,15 +598,21 @@ class _BookingScreenState extends State<BookingScreen> {
     setState(() {
       _normalizeHoursForSelectedDay();
       _error = null;
+      _validateCouponForCurrentPrice();
+      _clampPointsToUse();
     });
     _refreshAvailability();
+    _scheduleCheckoutExtrasLoad();
   }
 
   void _selectVehicle(Vehicle vehicle) {
     setState(() {
       _selected = vehicle;
       _error = null;
+      _validateCouponForCurrentPrice();
+      _clampPointsToUse();
     });
+    _scheduleCheckoutExtrasLoad();
   }
 
   Future<void> _openDatePicker() async {
@@ -670,8 +824,11 @@ class _BookingScreenState extends State<BookingScreen> {
 
     final startTime = _buildStartDateTime(day, _startHour);
     final endTime = _buildEndDateTime(day, _endHour);
-    final totalPrice = _totalPrice;
-    if (startTime == null || endTime == null || totalPrice == null) return;
+    final originalPrice = _originalPrice;
+    final totalPrice = _finalPrice;
+    if (startTime == null || endTime == null || originalPrice == null || totalPrice == null) {
+      return;
+    }
 
     if (_isToday(day) && !_isStartTimeInFuture(startTime)) {
       setState(() => _error = '시작 시간은 현재 시각 이후로 선택해주세요.');
@@ -688,8 +845,12 @@ class _BookingScreenState extends State<BookingScreen> {
       return;
     }
 
-    final method = await showPaymentMethodSheet(context);
-    if (method == null || !mounted) return;
+    final isZeroAmount = totalPrice <= 0;
+    TossPaymentMethod? method;
+    if (!isZeroAmount) {
+      method = await showPaymentMethodSheet(context);
+      if (method == null || !mounted) return;
+    }
 
     setState(() {
       _loading = true;
@@ -709,7 +870,10 @@ class _BookingScreenState extends State<BookingScreen> {
         startTime: startTime,
         endTime: endTime,
         totalPrice: totalPrice,
-        method: method,
+        originalPrice: originalPrice,
+        userCouponId: _selectedUserCouponId,
+        pointsUsed: _pointsDiscount,
+        method: method ?? TossPaymentMethod.card,
       );
     } catch (e) {
       if (!mounted) return;
@@ -934,6 +1098,27 @@ class _BookingScreenState extends State<BookingScreen> {
                   ),
                 ),
               ),
+              if (_showCheckoutDiscounts)
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+                  child: _BookingCheckoutDiscounts(
+                    loading: _loadingCheckoutExtras,
+                    coupons: _availableCoupons,
+                    selectedUserCouponId: _selectedUserCouponId,
+                    originalPrice: _originalPrice ?? 0,
+                    couponDiscount: _couponDiscount,
+                    pointBalance: _pointBalance,
+                    usePoints: _usePoints,
+                    pointsToUse: _pointsToUse,
+                    maxPointsUsable: _maxPointsUsable,
+                    pointsDiscount: _pointsDiscount,
+                    onCouponSelected: _onCouponSelected,
+                    onPointsToggle: _onPointsToggle,
+                    onPointsAmountChanged: _onPointsAmountChanged,
+                    formatWon: _formatWon,
+                    extrasLoaded: _checkoutExtrasLoaded,
+                  ),
+                ),
               const Padding(
                 padding: EdgeInsets.fromLTRB(16, 4, 16, 8),
                 child: _BookingLongTermRentalInquiryLink(),
@@ -941,7 +1126,10 @@ class _BookingScreenState extends State<BookingScreen> {
               _BookingBottomBar(
                 vehicleName: _selected?.name,
                 durationHours: _durationHours,
-                totalPrice: _totalPrice,
+                originalPrice: _originalPrice,
+                couponDiscount: _couponDiscount,
+                pointsDiscount: _pointsDiscount,
+                finalPrice: _finalPrice,
                 loading: _loading,
                 canSubmit: _canSubmit,
                 onSubmit: _submit,
@@ -1703,10 +1891,339 @@ class _BookingLongTermRentalInquiryLink extends StatelessWidget {
   }
 }
 
+class _BookingCheckoutDiscounts extends StatefulWidget {
+  final bool loading;
+  final bool extrasLoaded;
+  final List<UserCoupon> coupons;
+  final String? selectedUserCouponId;
+  final int originalPrice;
+  final int couponDiscount;
+  final int pointBalance;
+  final bool usePoints;
+  final int pointsToUse;
+  final int maxPointsUsable;
+  final int pointsDiscount;
+  final ValueChanged<String?> onCouponSelected;
+  final ValueChanged<bool> onPointsToggle;
+  final ValueChanged<String> onPointsAmountChanged;
+  final String Function(int) formatWon;
+
+  const _BookingCheckoutDiscounts({
+    required this.loading,
+    required this.extrasLoaded,
+    required this.coupons,
+    required this.selectedUserCouponId,
+    required this.originalPrice,
+    required this.couponDiscount,
+    required this.pointBalance,
+    required this.usePoints,
+    required this.pointsToUse,
+    required this.maxPointsUsable,
+    required this.pointsDiscount,
+    required this.onCouponSelected,
+    required this.onPointsToggle,
+    required this.onPointsAmountChanged,
+    required this.formatWon,
+  });
+
+  @override
+  State<_BookingCheckoutDiscounts> createState() =>
+      _BookingCheckoutDiscountsState();
+}
+
+class _BookingCheckoutDiscountsState extends State<_BookingCheckoutDiscounts> {
+  final _pointsController = TextEditingController();
+
+  @override
+  void didUpdateWidget(covariant _BookingCheckoutDiscounts oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.pointsToUse != int.tryParse(_pointsController.text)) {
+      _pointsController.text =
+          widget.pointsToUse > 0 ? '${widget.pointsToUse}' : '';
+    }
+  }
+
+  @override
+  void dispose() {
+    _pointsController.dispose();
+    super.dispose();
+  }
+
+  String? get _safeCouponDropdownValue {
+    final selected = widget.selectedUserCouponId;
+    if (selected == null) return null;
+    for (final c in widget.coupons) {
+      if (c.id == selected &&
+          c.canApplyToOrderAmount(widget.originalPrice)) {
+        return selected;
+      }
+    }
+    return null;
+  }
+
+  /// 쿠폰 할인 후 잔여 결제금액이 0원인 경우 (포인트 사용 불가)
+  bool get _isFullyDiscountedByCoupon =>
+      widget.originalPrice > 0 &&
+      widget.couponDiscount > 0 &&
+      widget.originalPrice - widget.couponDiscount <= 0;
+
+  static const _pointsHintStyle = TextStyle(
+    fontSize: 12,
+    color: DanjiColors.success,
+    height: 1.45,
+  );
+
+  static const _pointsWarnStyle = TextStyle(
+    fontSize: 12,
+    color: DanjiColors.accentRed,
+    fontWeight: FontWeight.w600,
+    height: 1.45,
+  );
+
+  bool get _balanceBelowMinUse =>
+      !PointPolicy.canUsePoints(widget.pointBalance);
+
+  bool get _pointsAmountBelowMin =>
+      widget.usePoints &&
+      widget.pointsToUse > 0 &&
+      widget.pointsToUse < PointPolicy.minUseAmount;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        const Text(
+          '확인 / 결제',
+          style: TextStyle(
+            fontSize: 16,
+            fontWeight: FontWeight.w800,
+            color: DanjiColors.textPrimary,
+          ),
+        ),
+        const SizedBox(height: 8),
+        const Text(
+          '쿠폰 또는 포인트 사용 시 포인트가 적립되지 않습니다.',
+          style: TextStyle(
+            fontSize: 12,
+            color: DanjiColors.textSecondary,
+            height: 1.45,
+          ),
+        ),
+        const SizedBox(height: 12),
+        _checkoutCard(
+          title: '쿠폰 선택',
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              if (widget.loading && !widget.extrasLoaded)
+                const Padding(
+                  padding: EdgeInsets.symmetric(vertical: 12),
+                  child: Center(
+                    child: SizedBox(
+                      width: 22,
+                      height: 22,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    ),
+                  ),
+                )
+              else ...[
+              DropdownButtonFormField<String?>(
+                key: ValueKey('coupon-${widget.coupons.length}-$_safeCouponDropdownValue'),
+                initialValue: _safeCouponDropdownValue,
+                decoration: InputDecoration(
+                  labelText: '쿠폰',
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  contentPadding:
+                      const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                ),
+                items: [
+                  const DropdownMenuItem<String?>(
+                    value: null,
+                    child: Text('쿠폰 사용 안 함'),
+                  ),
+                  for (final c in widget.coupons)
+                    DropdownMenuItem<String?>(
+                      value: c.id,
+                      enabled: c.canApplyToOrderAmount(widget.originalPrice),
+                      child: Text(
+                        c.displayTitle,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                ],
+                onChanged: widget.onCouponSelected,
+              ),
+              ],
+              if (widget.couponDiscount > 0) ...[
+                const SizedBox(height: 8),
+                Text(
+                  '-₩${widget.formatWon(widget.couponDiscount)}',
+                  style: const TextStyle(
+                    color: DanjiColors.accentRed,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ],
+              for (final c in widget.coupons)
+                if (!c.canApplyToOrderAmount(widget.originalPrice) &&
+                    c.minPaymentAmount > 0)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 6),
+                    child: Text(
+                      '${c.displayTitle}: '
+                      '₩${widget.formatWon(c.minPaymentAmount)} 이상 결제 시 사용 가능',
+                      style: const TextStyle(
+                        fontSize: 12,
+                        color: DanjiColors.textSecondary,
+                      ),
+                    ),
+                  ),
+              if (widget.coupons.isEmpty)
+                const Padding(
+                  padding: EdgeInsets.only(top: 6),
+                  child: Text(
+                    '사용 가능한 쿠폰이 없습니다.',
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: DanjiColors.textSecondary,
+                    ),
+                  ),
+                ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 12),
+        _checkoutCard(
+          title: '포인트 사용',
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              if (widget.loading && !widget.extrasLoaded)
+                const SizedBox.shrink()
+              else ...[
+              Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      '보유 ${widget.formatWon(widget.pointBalance)}P',
+                      style: const TextStyle(
+                        fontWeight: FontWeight.w600,
+                        color: DanjiColors.textPrimary,
+                      ),
+                    ),
+                  ),
+                  Switch(
+                    value: widget.usePoints &&
+                        widget.maxPointsUsable > 0 &&
+                        !_balanceBelowMinUse,
+                    onChanged: !_balanceBelowMinUse &&
+                            widget.maxPointsUsable > 0
+                        ? widget.onPointsToggle
+                        : null,
+                  ),
+                ],
+              ),
+              if (_balanceBelowMinUse) ...[
+                Text(
+                  '5,000P 이상부터 사용 가능합니다. '
+                  '(보유 ${widget.formatWon(widget.pointBalance)}P)',
+                  style: const TextStyle(
+                    fontSize: 12,
+                    color: DanjiColors.textSecondary,
+                    height: 1.45,
+                  ),
+                ),
+              ] else if (widget.maxPointsUsable > 0) ...[
+                TextField(
+                  controller: _pointsController,
+                  keyboardType: TextInputType.number,
+                  enabled: widget.usePoints,
+                  decoration: InputDecoration(
+                    labelText:
+                        '사용 포인트 (최소 ${widget.formatWon(PointPolicy.minUseAmount)}P · '
+                        '최대 ${widget.maxPointsUsable}P)',
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    errorText: _pointsAmountBelowMin
+                        ? '최소 ${widget.formatWon(PointPolicy.minUseAmount)}P 이상 입력해주세요.'
+                        : null,
+                  ),
+                  onChanged: widget.onPointsAmountChanged,
+                ),
+              ] else if (_isFullyDiscountedByCoupon) ...[
+                const Text(
+                  '쿠폰으로 전액 할인되었습니다 🎉',
+                  style: _pointsHintStyle,
+                ),
+                const SizedBox(height: 4),
+                const Text(
+                  '포인트는 잔여 결제금액이 있을 때 사용 가능합니다.',
+                  style: _pointsHintStyle,
+                ),
+              ] else
+                const Text(
+                  '포인트를 사용할 수 없습니다.',
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: DanjiColors.textSecondary,
+                  ),
+                ),
+              if (widget.pointsDiscount > 0) ...[
+                const SizedBox(height: 8),
+                Text(
+                  '-${widget.formatWon(widget.pointsDiscount)}P',
+                  style: const TextStyle(
+                    color: DanjiColors.accentRed,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ],
+              ],
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _checkoutCard({required String title, required Widget child}) {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: DanjiColors.border),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            title,
+            style: const TextStyle(
+              fontWeight: FontWeight.w800,
+              color: DanjiColors.textPrimary,
+            ),
+          ),
+          const SizedBox(height: 12),
+          child,
+        ],
+      ),
+    );
+  }
+}
+
 class _BookingBottomBar extends StatelessWidget {
   final String? vehicleName;
   final int durationHours;
-  final int? totalPrice;
+  final int? originalPrice;
+  final int couponDiscount;
+  final int pointsDiscount;
+  final int? finalPrice;
   final bool loading;
   final bool canSubmit;
   final VoidCallback onSubmit;
@@ -1716,7 +2233,10 @@ class _BookingBottomBar extends StatelessWidget {
   const _BookingBottomBar({
     required this.vehicleName,
     required this.durationHours,
-    required this.totalPrice,
+    required this.originalPrice,
+    required this.couponDiscount,
+    required this.pointsDiscount,
+    required this.finalPrice,
     required this.loading,
     required this.canSubmit,
     required this.onSubmit,
@@ -1726,10 +2246,11 @@ class _BookingBottomBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final hasSelection = vehicleName != null && totalPrice != null;
+    final hasSelection = vehicleName != null && finalPrice != null;
     final summaryLine = hasSelection
         ? '$vehicleName · ${durationHours}시간'
         : '차량과 시간을 선택해주세요';
+    final hasDiscount = couponDiscount > 0 || pointsDiscount > 0;
 
     return DecoratedBox(
       decoration: BoxDecoration(
@@ -1758,12 +2279,53 @@ class _BookingBottomBar extends StatelessWidget {
                       ),
                     ),
                   ),
-                  const SizedBox(width: 12),
-                  Text(
-                    hasSelection ? '₩${formatWon(totalPrice!)}' : '—',
+                ],
+              ),
+              if (hasSelection && hasDiscount) ...[
+                const SizedBox(height: 8),
+                if (originalPrice != null)
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      const Text(
+                        '주문 금액',
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: DanjiColors.textSecondary,
+                        ),
+                      ),
+                      Text(
+                        '₩${formatWon(originalPrice!)}',
+                        style: const TextStyle(
+                          fontSize: 12,
+                          color: DanjiColors.textSecondary,
+                          decoration: TextDecoration.lineThrough,
+                        ),
+                      ),
+                    ],
+                  ),
+                if (couponDiscount > 0)
+                  _discountRow('쿠폰', '-₩${formatWon(couponDiscount)}'),
+                if (pointsDiscount > 0)
+                  _discountRow('포인트', '-${formatWon(pointsDiscount)}P'),
+              ],
+              const SizedBox(height: 8),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  const Text(
+                    '결제 금액',
                     style: TextStyle(
-                      fontSize: 18,
-                      fontWeight: FontWeight.w500,
+                      fontSize: 14,
+                      fontWeight: FontWeight.w700,
+                      color: DanjiColors.textPrimary,
+                    ),
+                  ),
+                  Text(
+                    hasSelection ? '₩${formatWon(finalPrice!)}' : '—',
+                    style: TextStyle(
+                      fontSize: 20,
+                      fontWeight: FontWeight.w800,
                       color: hasSelection
                           ? _BookingCardColors.totalBlack
                           : Colors.grey.shade400,
@@ -1811,6 +2373,32 @@ class _BookingBottomBar extends StatelessWidget {
             ],
           ),
         ),
+      ),
+    );
+  }
+
+  Widget _discountRow(String label, String value) {
+    return Padding(
+      padding: const EdgeInsets.only(top: 4),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Text(
+            label,
+            style: const TextStyle(
+              fontSize: 12,
+              color: DanjiColors.textSecondary,
+            ),
+          ),
+          Text(
+            value,
+            style: const TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
+              color: DanjiColors.accentRed,
+            ),
+          ),
+        ],
       ),
     );
   }

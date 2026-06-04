@@ -3,7 +3,8 @@ class PaymentOrderColumns {
   PaymentOrderColumns._();
 
   static const selectSummary =
-      'order_id, status, payment_key, has_payment_key, reservation_id, total_price';
+      'order_id, status, payment_key, has_payment_key, reservation_id, total_price, '
+      'user_coupon_id, points_used';
 
   static const selectDetail =
       'id, order_id, user_id, vehicle_id, vehicle_name, start_time, end_time, '

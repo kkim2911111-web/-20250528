@@ -7,6 +7,8 @@ import '../constants/payment_order_status.dart';
 import '../models/payment_confirm_result.dart';
 import '../models/reservation.dart';
 import '../models/vehicle.dart';
+import '../screens/main_shell.dart';
+import '../screens/my_reservations_screen.dart';
 import '../screens/payment_fail_screen.dart';
 import '../screens/payment_success_screen.dart';
 import '../screens/toss_billing_webview_screen.dart';
@@ -19,6 +21,20 @@ import 'toss_payments.dart';
 /// 결제카드(빌링키) 등록·변경 성공 안내 — 마이페이지·온보딩·웹 리다이렉트 공통
 const paymentCardRegistrationSuccessMessage =
     '결제카드 등록이 완료되었습니다.';
+
+/// 쿠폰+포인트로 결제금액 0원일 때 안내
+const zeroAmountBookingSnackMessage =
+    '🎉 쿠폰과 포인트로 전액 할인되었습니다!\n'
+    '결제 없이 예약이 완료됩니다.';
+
+bool isPaymentOrderStatusConstraintError(Object error) {
+  final msg = error is PostgrestException
+      ? error.message.toLowerCase()
+      : error.toString().toLowerCase();
+  return msg.contains('payment_orders_status_check') ||
+      (msg.contains('payment_orders') && msg.contains('check constraint')) ||
+      msg.contains('payment_orders status');
+}
 
 class PreparePaymentResult {
   final String orderId;
@@ -148,6 +164,9 @@ class PaymentService {
     required DateTime startTime,
     required DateTime endTime,
     required int totalPrice,
+    required int originalPrice,
+    String? userCouponId,
+    int pointsUsed = 0,
   }) async {
     if (!isSupabaseInitialized) {
       throw StateError(
@@ -167,6 +186,9 @@ class PaymentService {
           'p_start_time': startTime.toUtc().toIso8601String(),
           'p_end_time': endTime.toUtc().toIso8601String(),
           'p_total_price': totalPrice,
+          'p_user_coupon_id': userCouponId,
+          'p_points_used': pointsUsed,
+          'p_original_price': originalPrice,
         }),
       );
 
@@ -266,6 +288,9 @@ class PaymentService {
     required DateTime startTime,
     required DateTime endTime,
     required int totalPrice,
+    required int originalPrice,
+    String? userCouponId,
+    int pointsUsed = 0,
     required TossPaymentMethod method,
   }) async {
     if (!PaymentConfig.isConfigured) {
@@ -286,11 +311,79 @@ class PaymentService {
       startTime: startTime,
       endTime: endTime,
       totalPrice: totalPrice,
+      originalPrice: originalPrice,
+      userCouponId: userCouponId,
+      pointsUsed: pointsUsed,
     );
+
+    if (totalPrice <= 0) {
+      await _completeZeroAmountBooking(
+        context: context,
+        prepared: prepared,
+        userCouponId: userCouponId,
+        pointsUsed: pointsUsed,
+      );
+      return;
+    }
+
     await openTossPayment(
       context: context,
       prepared: prepared,
       method: method,
+    );
+  }
+
+  Future<void> _completeZeroAmountBooking({
+    required BuildContext context,
+    required PreparePaymentResult prepared,
+    String? userCouponId,
+    int pointsUsed = 0,
+  }) async {
+    final paymentKey = 'free_${prepared.orderId}';
+    final saved = await _reservationService.saveReservationAfterPayment(
+      paymentKey: paymentKey,
+      orderId: prepared.orderId,
+      amount: 0,
+    );
+
+    final reservationId = saved['reservationId']?.toString() ??
+        saved['reservation_id']?.toString() ??
+        '';
+    if (reservationId.isNotEmpty) {
+      await _reservationService.tryApplyBookingDiscounts(
+        orderId: prepared.orderId,
+        reservationId: reservationId,
+      );
+      await _reservationService.markPaymentOrderPaidSafe(
+        orderId: prepared.orderId,
+        paymentKey: paymentKey,
+        reservationId: reservationId,
+      );
+    } else {
+      await _reservationService.markPaymentOrderPaidSafe(
+        orderId: prepared.orderId,
+        paymentKey: paymentKey,
+      );
+    }
+
+    if (!context.mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text(zeroAmountBookingSnackMessage),
+        duration: Duration(seconds: 4),
+      ),
+    );
+
+    _reservationService.notifyReservationListRefresh();
+    Navigator.of(context).pushAndRemoveUntil(
+      MaterialPageRoute(builder: (_) => const MainShell()),
+      (route) => false,
+    );
+    if (!context.mounted) return;
+    await Navigator.of(context).push<void>(
+      MaterialPageRoute(
+        builder: (_) => const MyReservationsScreen(forceRefreshOnOpen: true),
+      ),
     );
   }
 
@@ -582,6 +675,36 @@ class PaymentService {
     );
   }
 
+  /// 쿠폰·포인트 미사용 주문만 예약 적립 RPC 호출
+  Future<void> grantReservationPointsIfEligible({
+    required String orderId,
+    required String reservationId,
+    required int amount,
+  }) async {
+    if (await _orderBlocksPointGrant(orderId)) {
+      debugPrint(
+        '[payment/points] skip grant_reservation_points — '
+        'coupon or points used (orderId=$orderId)',
+      );
+      return;
+    }
+    await _reservationService.tryGrantReservationPoints(
+      reservationId: reservationId,
+      amount: amount,
+    );
+  }
+
+  Future<bool> _orderBlocksPointGrant(String orderId) async {
+    final order = await _reservationService.findPaymentOrderByOrderId(orderId);
+    if (order == null) return false;
+
+    final couponId = order['user_coupon_id']?.toString();
+    if (couponId != null && couponId.isNotEmpty) return true;
+
+    final pointsUsed = (order['points_used'] as num?)?.toInt() ?? 0;
+    return pointsUsed > 0;
+  }
+
   Future<PaymentConfirmResult> _finalizePaymentResult(
     PaymentConfirmResult result, {
     required String paymentKey,
@@ -606,20 +729,33 @@ class PaymentService {
     );
     await _reservationService.waitUntilReservationReady(result.reservationId);
 
-    final grantAmount = await _reservationService.resolveGrantAmount(
+    await _reservationService.tryApplyBookingDiscounts(
       orderId: orderId,
-      paymentAmount: amount,
-      resultTotalPrice: result.totalPrice,
       reservationId: result.reservationId,
     );
-    debugPrint(
-      '[payment/points] _finalizePaymentResult calling RPC with '
-      'p_amount=$grantAmount',
-    );
-    await _reservationService.tryGrantReservationPoints(
-      reservationId: result.reservationId,
-      amount: grantAmount,
-    );
+
+    if (!await _orderBlocksPointGrant(orderId)) {
+      final grantAmount = await _reservationService.resolveGrantAmount(
+        orderId: orderId,
+        paymentAmount: amount,
+        resultTotalPrice: result.totalPrice,
+        reservationId: result.reservationId,
+      );
+      debugPrint(
+        '[payment/points] _finalizePaymentResult calling RPC with '
+        'p_amount=$grantAmount',
+      );
+      await grantReservationPointsIfEligible(
+        orderId: orderId,
+        reservationId: result.reservationId,
+        amount: grantAmount,
+      );
+    } else {
+      debugPrint(
+        '[payment/points] _finalizePaymentResult skip grant — '
+        'coupon or points on order',
+      );
+    }
 
     return result;
   }
