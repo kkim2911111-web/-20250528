@@ -10,6 +10,7 @@ import '../models/vehicle.dart';
 import '../supabase_client.dart';
 import 'payment_service.dart';
 import 'reservation_refresh_bus.dart';
+import 'reservation_service.dart';
 
 class RentalException implements Exception {
   final String message;
@@ -363,17 +364,23 @@ fuel_level_start,fuel_level_end,is_accident,accident_note,door_unlocked
     );
 
     if (historyOnly) {
+      final pricing = await ReservationService()
+          .fetchPaymentPricingForReservations(finished);
       return GroupedReservations(
         operating: const [],
         waiting: const [],
         finished: finished,
+        paymentPricing: pricing,
       );
     }
 
+    final pricing = await ReservationService()
+        .fetchPaymentPricingForReservations([...operating, ...waiting]);
     return GroupedReservations(
       operating: operating,
       waiting: waiting,
       finished: const [],
+      paymentPricing: pricing,
     );
   }
 

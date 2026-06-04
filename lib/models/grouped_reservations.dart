@@ -1,14 +1,17 @@
 import '../models/reservation.dart';
+import '../models/reservation_payment_pricing.dart';
 
 class GroupedReservations {
   final List<Reservation> operating;
   final List<Reservation> waiting;
   final List<Reservation> finished;
+  final Map<String, ReservationPaymentPricing> paymentPricing;
 
   const GroupedReservations({
     required this.operating,
     required this.waiting,
     required this.finished,
+    this.paymentPricing = const {},
   });
 
   bool get isEmpty =>

@@ -6,11 +6,14 @@ import '../models/reservation.dart';
 import '../theme/danji_colors.dart';
 import '../theme/danji_theme.dart';
 import '../theme/danji_typography.dart';
+import '../models/reservation_payment_pricing.dart';
+import '../widgets/reservation_price_display.dart';
 import '../widgets/smart_key_door_buttons.dart';
 
 /// 홈·내 예약 공통 예약 카드
 class ReservationCard extends StatelessWidget {
   final Reservation reservation;
+  final ReservationPaymentPricing? pricing;
   final ReservationCardPhase phase;
   final DateFormat dateFormat;
   final NumberFormat won;
@@ -27,6 +30,7 @@ class ReservationCard extends StatelessWidget {
   const ReservationCard({
     super.key,
     required this.reservation,
+    this.pricing,
     required this.phase,
     required this.dateFormat,
     required this.won,
@@ -120,11 +124,14 @@ class ReservationCard extends StatelessWidget {
               ),
             ),
           ],
-          if (reservation.totalPrice > 0) ...[
+          if (reservation.totalPrice > 0 ||
+              (pricing != null && pricing!.finalPrice > 0)) ...[
             const SizedBox(height: 4),
-            Text(
-              '₩${won.format(reservation.totalPrice)}',
-              style: const TextStyle(
+            ReservationPriceDisplay(
+              reservationTotalPrice: reservation.totalPrice,
+              pricing: pricing,
+              won: won,
+              priceStyle: const TextStyle(
                 color: DanjiColors.textPrimary,
                 fontWeight: FontWeight.w600,
               ),

@@ -9,7 +9,9 @@ import '../theme/danji_colors.dart';
 import '../theme/danji_theme.dart';
 import '../theme/danji_typography.dart';
 import '../widgets/danji_app_bar.dart';
+import '../widgets/reservation_price_display.dart';
 import '../utils/rental_navigation.dart';
+import '../models/reservation_payment_pricing.dart';
 class MyReservationsScreen extends StatefulWidget {
   /// true: 마이페이지 이용내역 (종료된 예약만)
   final bool historyOnly;
@@ -71,6 +73,7 @@ class _MyReservationsScreenState extends State<MyReservationsScreen> {
       operating: grouped.operating.where(show).toList(),
       waiting: grouped.waiting.where(show).toList(),
       finished: grouped.finished.where(show).toList(),
+      paymentPricing: grouped.paymentPricing,
     );
   }
 
@@ -284,6 +287,7 @@ class _MyReservationsScreenState extends State<MyReservationsScreen> {
                       padding: const EdgeInsets.only(bottom: 12),
                       child: _ReservationCard(
                         reservation: item,
+                        pricing: groupedRaw.paymentPricing[item.id],
                         dateFormat: _dateFormat,
                         won: _won,
                         variant: _CardVariant.operating,
@@ -321,6 +325,7 @@ class _MyReservationsScreenState extends State<MyReservationsScreen> {
                       padding: const EdgeInsets.only(bottom: 12),
                       child: _ReservationCard(
                         reservation: item,
+                        pricing: groupedRaw.paymentPricing[item.id],
                         dateFormat: _dateFormat,
                         won: _won,
                         variant: _CardVariant.waiting,
@@ -353,6 +358,7 @@ class _MyReservationsScreenState extends State<MyReservationsScreen> {
                       padding: const EdgeInsets.only(bottom: 12),
                       child: _ReservationCard(
                         reservation: item,
+                        pricing: groupedRaw.paymentPricing[item.id],
                         dateFormat: _dateFormat,
                         won: _won,
                         variant: _CardVariant.finished,
@@ -413,6 +419,7 @@ class _SectionHeader extends StatelessWidget {
 
 class _ReservationCard extends StatelessWidget {
   final Reservation reservation;
+  final ReservationPaymentPricing? pricing;
   final DateFormat dateFormat;
   final NumberFormat won;
   final _CardVariant variant;
@@ -425,6 +432,7 @@ class _ReservationCard extends StatelessWidget {
 
   const _ReservationCard({
     required this.reservation,
+    this.pricing,
     required this.dateFormat,
     required this.won,
     required this.variant,
@@ -568,13 +576,13 @@ class _ReservationCard extends StatelessWidget {
               style: DanjiTypography.secondary,
             ),
           ],
-          if (reservation.totalPrice > 0) ...[
+          if (reservation.totalPrice > 0 ||
+              (pricing != null && pricing!.finalPrice > 0)) ...[
             const SizedBox(height: 4),
-            Text(
-              '₩${won.format(reservation.totalPrice)}',
-              style: DanjiTypography.body.copyWith(
-                fontWeight: FontWeight.w600,
-              ),
+            ReservationPriceDisplay(
+              reservationTotalPrice: reservation.totalPrice,
+              pricing: pricing,
+              won: won,
             ),
           ],
           if (onUseVehicle != null || onReturn != null) ...[

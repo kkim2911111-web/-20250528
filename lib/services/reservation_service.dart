@@ -2,6 +2,7 @@ import 'package:flutter/foundation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../models/reservation.dart';
+import '../models/reservation_payment_pricing.dart';
 import '../supabase_client.dart';
 import '../constants/payment_order_status.dart';
 import '../utils/booking_eligibility.dart';
@@ -481,6 +482,111 @@ class ReservationService {
     }
   }
 
+  /// 예약 카드 — payment_orders 할인 정보 (reservation_id / order_id 매칭)
+  Future<Map<String, ReservationPaymentPricing>> fetchPaymentPricingForReservations(
+    Iterable<Reservation> reservations,
+  ) async {
+    final userId = supabase.auth.currentUser?.id;
+    if (userId == null) return {};
+
+    final byReservationId = <String, Reservation>{};
+    final orderIds = <String>[];
+    for (final r in reservations) {
+      if (r.id.isEmpty) continue;
+      byReservationId[r.id] = r;
+      final oid = r.orderId?.trim();
+      if (oid != null && oid.isNotEmpty) orderIds.add(oid);
+    }
+    if (byReservationId.isEmpty) return {};
+
+    final rows = <Map<String, dynamic>>[];
+
+    try {
+      final byRes = await supabase
+          .from('payment_orders')
+          .select(PaymentOrderColumns.selectPricing)
+          .eq('user_id', userId)
+          .inFilter('reservation_id', byReservationId.keys.toList());
+      for (final row in byRes as List) {
+        rows.add(Map<String, dynamic>.from(row));
+      }
+    } on PostgrestException catch (e) {
+      if (e.code != '42703' && e.code != 'PGRST204') {
+        debugPrint('[reservation/pricing] by reservation_id: $e');
+      }
+    }
+
+    final foundResIds = rows
+        .map((r) => r['reservation_id']?.toString())
+        .whereType<String>()
+        .where((id) => id.isNotEmpty)
+        .toSet();
+    final missingOrderIds = <String>{};
+    for (final r in byReservationId.values) {
+      if (foundResIds.contains(r.id)) continue;
+      final oid = r.orderId?.trim();
+      if (oid != null && oid.isNotEmpty) missingOrderIds.add(oid);
+    }
+    if (missingOrderIds.isNotEmpty) {
+      try {
+        final byOrder = await supabase
+            .from('payment_orders')
+            .select(PaymentOrderColumns.selectPricing)
+            .eq('user_id', userId)
+            .inFilter('order_id', missingOrderIds.toList());
+        for (final row in byOrder as List) {
+          rows.add(Map<String, dynamic>.from(row));
+        }
+      } on PostgrestException catch (e) {
+        if (e.code != '42703' && e.code != 'PGRST204') {
+          debugPrint('[reservation/pricing] by order_id: $e');
+        }
+      }
+    }
+
+    final bestByReservation = <String, Map<String, dynamic>>{};
+    for (final row in rows) {
+      var rid = row['reservation_id']?.toString() ?? '';
+      if (rid.isEmpty) {
+        final oid = row['order_id']?.toString();
+        if (oid != null) {
+          for (final r in byReservationId.values) {
+            if (r.orderId == oid) {
+              rid = r.id;
+              break;
+            }
+          }
+        }
+      }
+      if (rid.isEmpty || !byReservationId.containsKey(rid)) continue;
+
+      final existing = bestByReservation[rid];
+      if (existing == null || _pricingRowRank(row) > _pricingRowRank(existing)) {
+        bestByReservation[rid] = row;
+      }
+    }
+
+    final out = <String, ReservationPaymentPricing>{};
+    for (final entry in bestByReservation.entries) {
+      final pricing = ReservationPaymentPricing.fromPaymentOrderRow(
+        entry.value,
+        fallbackPrice: byReservationId[entry.key]!.totalPrice,
+      );
+      if (pricing != null) out[entry.key] = pricing;
+    }
+    return out;
+  }
+
+  int _pricingRowRank(Map<String, dynamic> row) {
+    final status = row['status']?.toString() ?? '';
+    var rank = 0;
+    if (PaymentOrderStatus.isPaid(status)) rank += 100;
+    if (row['original_price'] != null) rank += 10;
+    if ((row['user_coupon_id']?.toString() ?? '').isNotEmpty) rank += 5;
+    if (((row['points_used'] as num?)?.toInt() ?? 0) > 0) rank += 5;
+    return rank;
+  }
+
   /// 예약·결제 변경 후 홈·내 예약 목록 갱신
   void notifyReservationListRefresh() {
     RentalService.signalListRefresh();
@@ -602,6 +708,10 @@ class ReservationService {
   }) async {
     final reservationId = _reservationIdFrom(result);
     if (reservationId.isNotEmpty) {
+      await linkPaymentOrderReservation(
+        orderId: orderId,
+        reservationId: reservationId,
+      );
       await ensureReservationConfirmed(
         reservationId: reservationId,
         paymentKey: paymentKey,
@@ -609,6 +719,38 @@ class ReservationService {
       );
     }
     return result;
+  }
+
+  /// 예약 저장 후 payment_orders.reservation_id 연결 (bigint/uuid 모두 text 저장)
+  Future<void> linkPaymentOrderReservation({
+    required String orderId,
+    required String reservationId,
+  }) async {
+    final user = supabase.auth.currentUser;
+    if (user == null) return;
+
+    final rid = reservationId.trim();
+    final oid = orderId.trim();
+    if (rid.isEmpty || oid.isEmpty) return;
+
+    try {
+      await supabase
+          .from('payment_orders')
+          .update({
+            'reservation_id': rid,
+            'updated_at': DateTime.now().toUtc().toIso8601String(),
+          })
+          .eq('order_id', oid)
+          .eq('user_id', user.id);
+      debugPrint(
+        '[payment] payment_orders.reservation_id linked: '
+        'orderId=$oid reservationId=$rid',
+      );
+    } catch (e, st) {
+      debugPrint(
+        '[payment] payment_orders.reservation_id link failed: $e\n$st',
+      );
+    }
   }
 
   /// pending → confirmed 보장 + payment_orders paid 연동
@@ -731,11 +873,22 @@ class ReservationService {
         minimal['payment_key'] = paymentKey;
         minimal['has_payment_key'] = true;
       }
+      final rid = reservationId?.trim();
+      if (rid != null && rid.isNotEmpty) {
+        minimal['reservation_id'] = rid;
+      }
       await supabase
           .from('payment_orders')
           .update(minimal)
           .eq('order_id', orderId)
           .eq('user_id', user.id);
+    }
+
+    if (reservationId != null && reservationId.trim().isNotEmpty) {
+      await linkPaymentOrderReservation(
+        orderId: orderId,
+        reservationId: reservationId,
+      );
     }
   }
 

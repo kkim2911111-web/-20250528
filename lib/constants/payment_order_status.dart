@@ -4,7 +4,11 @@ class PaymentOrderColumns {
 
   static const selectSummary =
       'order_id, status, payment_key, has_payment_key, reservation_id, total_price, '
-      'user_coupon_id, points_used';
+      'original_price, user_coupon_id, points_used';
+
+  static const selectPricing =
+      'reservation_id, order_id, status, total_price, original_price, '
+      'user_coupon_id, points_used, updated_at';
 
   static const selectDetail =
       'id, order_id, user_id, vehicle_id, vehicle_name, start_time, end_time, '
@@ -93,13 +97,13 @@ class PaymentOrderPayload {
     required String paymentKey,
     String? reservationId,
   }) {
+    final rid = reservationId?.trim();
     return {
       'status': PaymentOrderStatus.paid,
       'payment_key': paymentKey,
       'has_payment_key': paymentKey.isNotEmpty,
       'updated_at': _nowIso(),
-      if (reservationId != null && isUuid(reservationId))
-        'reservation_id': reservationId,
+      if (rid != null && rid.isNotEmpty) 'reservation_id': rid,
     };
   }
 
