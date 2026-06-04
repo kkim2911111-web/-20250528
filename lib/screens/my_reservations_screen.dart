@@ -11,6 +11,7 @@ import '../theme/danji_typography.dart';
 import '../widgets/danji_app_bar.dart';
 import '../widgets/reservation_price_display.dart';
 import '../utils/rental_navigation.dart';
+import 'rental_contract_screen.dart';
 import '../models/reservation_payment_pricing.dart';
 class MyReservationsScreen extends StatefulWidget {
   /// true: 마이페이지 이용내역 (종료된 예약만)
@@ -362,6 +363,7 @@ class _MyReservationsScreenState extends State<MyReservationsScreen> {
                         dateFormat: _dateFormat,
                         won: _won,
                         variant: _CardVariant.finished,
+                        showContractButton: widget.historyOnly,
                       ),
                     ),
                   ),
@@ -429,6 +431,7 @@ class _ReservationCard extends StatelessWidget {
   final bool showCancelButton;
   final bool cancelBlocked;
   final bool useVehicleEnabled;
+  final bool showContractButton;
 
   const _ReservationCard({
     required this.reservation,
@@ -442,7 +445,20 @@ class _ReservationCard extends StatelessWidget {
     this.showCancelButton = false,
     this.cancelBlocked = false,
     this.useVehicleEnabled = true,
+    this.showContractButton = false,
   });
+
+  void _openContract(BuildContext context) {
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => RentalContractScreen(
+          reservationId: reservation.id,
+          vehicleName: reservation.vehicle?.name,
+          initialContent: reservation.contractContent,
+        ),
+      ),
+    );
+  }
 
   Color get _accentColor {
     switch (variant) {
@@ -616,6 +632,25 @@ class _ReservationCard extends StatelessWidget {
                     ),
                   ),
               ],
+            ),
+          ],
+          if (showContractButton) ...[
+            const SizedBox(height: 10),
+            SizedBox(
+              width: double.infinity,
+              child: OutlinedButton.icon(
+                onPressed: () => _openContract(context),
+                icon: const Icon(Icons.description_outlined, size: 18),
+                label: const Text('계약서 보기'),
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: DanjiColors.buttonBlue,
+                  side: const BorderSide(color: DanjiColors.border),
+                  padding: const EdgeInsets.symmetric(vertical: 13),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                ),
+              ),
             ),
           ],
           if (showCancelButton) ...[

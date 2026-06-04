@@ -29,7 +29,8 @@ id,user_id,vehicle_id,start_at,end_at,start_time,end_time,total_price,status,
 payment_key,order_id,payment_status,rental_started_at,returned_at,actual_end_at,
 return_type,early_return_confirmed_at,
 pickup_photos,return_photos,mileage_start,mileage_end,
-fuel_level_start,fuel_level_end,is_accident,accident_note,door_unlocked
+fuel_level_start,fuel_level_end,is_accident,accident_note,door_unlocked,
+contract_content
 ''';
 
   static const _selectCore =
@@ -239,6 +240,7 @@ fuel_level_start,fuel_level_end,is_accident,accident_note,door_unlocked
                     isAccident: r.isAccident,
                     accidentNote: r.accidentNote,
                     doorUnlocked: r.doorUnlocked,
+                    contractContent: r.contractContent,
                     vehicle: byId[r.vehicleId],
                   ),
           )
@@ -511,6 +513,29 @@ fuel_level_start,fuel_level_end,is_accident,accident_note,door_unlocked
       return int.parse(reservationId.trim());
     }
     return reservationId;
+  }
+
+  /// 이용내역 — 계약서 본문 (없으면 null)
+  Future<String?> fetchContractContent(String reservationId) async {
+    final user = supabase.auth.currentUser;
+    if (user == null) {
+      throw const AuthException('로그인이 필요합니다.');
+    }
+
+    try {
+      final row = await supabase
+          .from('reservations')
+          .select('contract_content')
+          .eq('id', _reservationIdFilter(reservationId))
+          .eq('user_id', user.id)
+          .maybeSingle();
+      final text = row?['contract_content']?.toString().trim();
+      if (text == null || text.isEmpty) return null;
+      return text;
+    } on PostgrestException catch (e) {
+      if (e.code == '42703' || e.code == 'PGRST204') return null;
+      rethrow;
+    }
   }
 
   Future<Map<String, dynamic>> startRental({

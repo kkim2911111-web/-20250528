@@ -1,0 +1,197 @@
+import 'package:flutter/material.dart';
+import 'package:pdf/widgets.dart' as pw;
+import 'package:printing/printing.dart';
+
+import '../services/rental_service.dart';
+import '../theme/danji_colors.dart';
+import '../theme/danji_theme.dart';
+import '../widgets/danji_app_bar.dart';
+
+/// 대여 계약서 열람·PDF 저장
+class RentalContractScreen extends StatefulWidget {
+  final String reservationId;
+  final String? vehicleName;
+  final String? initialContent;
+
+  const RentalContractScreen({
+    super.key,
+    required this.reservationId,
+    this.vehicleName,
+    this.initialContent,
+  });
+
+  @override
+  State<RentalContractScreen> createState() => _RentalContractScreenState();
+}
+
+class _RentalContractScreenState extends State<RentalContractScreen> {
+  final _rentalService = RentalService();
+  String? _content;
+  bool _loading = true;
+  String? _error;
+  bool _sharingPdf = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    final cached = widget.initialContent?.trim();
+    if (cached != null && cached.isNotEmpty) {
+      setState(() {
+        _content = cached;
+        _loading = false;
+      });
+      return;
+    }
+
+    try {
+      final text = await _rentalService.fetchContractContent(
+        widget.reservationId,
+      );
+      if (!mounted) return;
+      setState(() {
+        _content = text;
+        _loading = false;
+        _error = text == null ? '계약서가 아직 준비되지 않았습니다.' : null;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _loading = false;
+        _error = e.toString();
+      });
+    }
+  }
+
+  Future<void> _downloadPdf() async {
+    final text = _content?.trim();
+    if (text == null || text.isEmpty) return;
+
+    setState(() => _sharingPdf = true);
+    try {
+      final font = await PdfGoogleFonts.notoSansKRRegular();
+      final doc = pw.Document();
+      doc.addPage(
+        pw.MultiPage(
+          theme: pw.ThemeData.withFont(base: font),
+          build: (context) => [
+            pw.Text(
+              '단지카 대여 계약서',
+              style: pw.TextStyle(font: font, fontSize: 18, fontWeight: pw.FontWeight.bold),
+            ),
+            if (widget.vehicleName != null) ...[
+              pw.SizedBox(height: 8),
+              pw.Text(
+                '차량: ${widget.vehicleName}',
+                style: pw.TextStyle(font: font, fontSize: 11),
+              ),
+            ],
+            pw.SizedBox(height: 8),
+            pw.Text(
+              '예약 ID: ${widget.reservationId}',
+              style: pw.TextStyle(font: font, fontSize: 10),
+            ),
+            pw.SizedBox(height: 16),
+            pw.Text(text, style: pw.TextStyle(font: font, fontSize: 10)),
+          ],
+        ),
+      );
+
+      await Printing.sharePdf(
+        bytes: await doc.save(),
+        filename: 'danjicar_contract_${widget.reservationId}.pdf',
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('PDF 저장 실패: $e')),
+      );
+    } finally {
+      if (mounted) setState(() => _sharingPdf = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: DanjiColors.background,
+      appBar: DanjiAppBar(
+        title: '대여 계약서',
+        extraActions: [
+          if (_content != null && _content!.isNotEmpty)
+            TextButton(
+              onPressed: _sharingPdf ? null : _downloadPdf,
+              child: _sharingPdf
+                  ? const SizedBox(
+                      width: 18,
+                      height: 18,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : const Text('PDF 다운로드'),
+            ),
+        ],
+      ),
+      body: _buildBody(),
+    );
+  }
+
+  Widget _buildBody() {
+    if (_loading) {
+      return const Center(child: CircularProgressIndicator());
+    }
+
+    if (_error != null) {
+      return Center(
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                _error!,
+                textAlign: TextAlign.center,
+                style: const TextStyle(color: DanjiColors.textSecondary),
+              ),
+              const SizedBox(height: 16),
+              FilledButton(
+                onPressed: () {
+                  setState(() {
+                    _loading = true;
+                    _error = null;
+                  });
+                  _load();
+                },
+                style: DanjiTheme.primaryButton,
+                child: const Text('다시 불러오기'),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
+    return SingleChildScrollView(
+      padding: const EdgeInsets.all(20),
+      child: Container(
+        width: double.infinity,
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: DanjiColors.surface,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: DanjiColors.border),
+        ),
+        child: SelectableText(
+          _content!,
+          style: const TextStyle(
+            color: DanjiColors.textPrimary,
+            fontSize: 14,
+            height: 1.55,
+          ),
+        ),
+      ),
+    );
+  }
+}

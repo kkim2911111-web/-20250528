@@ -29,6 +29,7 @@ class Reservation {
   final bool photosUploaded;
   final bool licenseVerified;
   final Vehicle? vehicle;
+  final String? contractContent;
 
   const Reservation({
     required this.id,
@@ -56,6 +57,7 @@ class Reservation {
     this.photosUploaded = false,
     this.licenseVerified = false,
     this.vehicle,
+    this.contractContent,
   });
 
   factory Reservation.fromMap(Map<String, dynamic> map) {
@@ -91,7 +93,13 @@ class Reservation {
       photosUploaded: map['photos_uploaded'] == true,
       licenseVerified: map['license_verified'] == true,
       vehicle: vehicle,
+      contractContent: map['contract_content']?.toString(),
     );
+  }
+
+  bool get hasContractContent {
+    final c = contractContent?.trim();
+    return c != null && c.isNotEmpty;
   }
 
   static DateTime? _parseDate(Object? value) {

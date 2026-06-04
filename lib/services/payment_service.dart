@@ -701,6 +701,15 @@ class PaymentService {
       reservationId: result.reservationId,
     );
 
+    try {
+      await supabase.rpc('generate_rental_contract', params: {
+        'p_reservation_id': int.parse(result.reservationId),
+      });
+      debugPrint('[contract] generate_rental_contract ok');
+    } catch (e) {
+      debugPrint('[contract] generate_rental_contract failed: $e');
+    }
+
     return result;
   }
 
