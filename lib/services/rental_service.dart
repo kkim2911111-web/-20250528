@@ -885,7 +885,7 @@ fuel_level_start,fuel_level_end,is_accident,accident_note,door_unlocked
     return {'reservationId': reservationId, 'deleted': true};
   }
 
-  /// 예약 취소 후 포인트·쿠폰 복구 — 조건 분기 없이 3개 RPC 순서 호출 (DB가 스킵 처리).
+  /// 예약 취소 후 쿠폰 복구 (DB가 스킵 처리).
   Future<void> _runPostCancelRestoreRpcs(String reservationId) async {
     final user = supabase.auth.currentUser;
     if (user == null) {
@@ -899,24 +899,10 @@ fuel_level_start,fuel_level_end,is_accident,accident_note,door_unlocked
     };
 
     try {
-      final data = await supabase.rpc('cancel_reservation_points', params: params);
-      debugPrint('[cancel] cancel_reservation_points ok: $data');
-    } catch (e, st) {
-      debugPrint('[cancel] cancel_reservation_points failed: $e\n$st');
-    }
-
-    try {
       final data = await supabase.rpc('restore_user_coupon', params: params);
       debugPrint('[cancel] restore_user_coupon ok: $data');
     } catch (e, st) {
       debugPrint('[cancel] restore_user_coupon failed: $e\n$st');
-    }
-
-    try {
-      final data = await supabase.rpc('restore_used_points', params: params);
-      debugPrint('[cancel] restore_used_points ok: $data');
-    } catch (e, st) {
-      debugPrint('[cancel] restore_used_points failed: $e\n$st');
     }
   }
 
@@ -1070,6 +1056,7 @@ fuel_level_start,fuel_level_end,is_accident,accident_note,door_unlocked
         'p_accident_note': accidentNote,
       });
       await _assertReservationReturnCompleted(reservationId);
+      await _grantReservationPointsAfterReturn(reservationId);
       RentalService.signalListRefresh();
       return _asMap(data);
     } on PostgrestException catch (e) {
@@ -1084,6 +1071,7 @@ fuel_level_start,fuel_level_end,is_accident,accident_note,door_unlocked
           isAccident: isAccident,
           accidentNote: accidentNote,
         );
+        await _grantReservationPointsAfterReturn(reservationId);
         RentalService.signalListRefresh();
         return {
           'reservationId': reservationId,
@@ -1175,6 +1163,22 @@ fuel_level_start,fuel_level_end,is_accident,accident_note,door_unlocked
   bool _isReturnCompletedStatus(String? status) {
     final s = status?.trim().toLowerCase();
     return s == 'completed' || s == 'returned';
+  }
+
+  Future<void> _grantReservationPointsAfterReturn(String reservationId) async {
+    final user = supabase.auth.currentUser;
+    if (user == null) return;
+
+    try {
+      await supabase.rpc('grant_reservation_points', params: {
+        'p_user_id': user.id,
+        'p_reservation_id': reservationId.toString(),
+        'p_amount': 0,
+      });
+      debugPrint('[rental/points] grant_reservation_points ok');
+    } catch (e) {
+      debugPrint('[rental/points] grant_reservation_points failed: $e');
+    }
   }
 
   Future<void> _assertReservationReturnCompleted(String reservationId) async {

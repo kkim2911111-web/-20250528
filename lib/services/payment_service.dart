@@ -675,53 +675,20 @@ class PaymentService {
     );
   }
 
-  /// 쿠폰·포인트 미사용 주문만 예약 적립 RPC 호출
-  Future<void> grantReservationPointsIfEligible({
-    required String orderId,
-    required String reservationId,
-    required int amount,
-  }) async {
-    if (await _orderBlocksPointGrant(orderId)) {
-      debugPrint(
-        '[payment/points] skip grant_reservation_points — '
-        'coupon or points used (orderId=$orderId)',
-      );
-      return;
-    }
-    await _reservationService.tryGrantReservationPoints(
-      reservationId: reservationId,
-      amount: amount,
-    );
-  }
-
-  Future<bool> _orderBlocksPointGrant(String orderId) async {
-    final order = await _reservationService.findPaymentOrderByOrderId(orderId);
-    if (order == null) return false;
-
-    final couponId = order['user_coupon_id']?.toString();
-    if (couponId != null && couponId.isNotEmpty) return true;
-
-    final pointsUsed = (order['points_used'] as num?)?.toInt() ?? 0;
-    return pointsUsed > 0;
-  }
-
   Future<PaymentConfirmResult> _finalizePaymentResult(
     PaymentConfirmResult result, {
     required String paymentKey,
     required String orderId,
     required int amount,
   }) async {
-    debugPrint(
-      '[payment/points] _finalizePaymentResult enter: '
-      'reservationId=${result.reservationId}, amount=$amount, '
-      'result.totalPrice=${result.totalPrice}, orderId=$orderId',
-    );
-
     if (result.reservationId.isEmpty) {
-      debugPrint('[payment/points] _finalizePaymentResult skip — empty reservationId');
       return result;
     }
 
+    await _reservationService.linkPaymentOrderReservation(
+      orderId: orderId,
+      reservationId: result.reservationId,
+    );
     await _reservationService.ensureReservationConfirmed(
       reservationId: result.reservationId,
       paymentKey: paymentKey,
@@ -733,29 +700,6 @@ class PaymentService {
       orderId: orderId,
       reservationId: result.reservationId,
     );
-
-    if (!await _orderBlocksPointGrant(orderId)) {
-      final grantAmount = await _reservationService.resolveGrantAmount(
-        orderId: orderId,
-        paymentAmount: amount,
-        resultTotalPrice: result.totalPrice,
-        reservationId: result.reservationId,
-      );
-      debugPrint(
-        '[payment/points] _finalizePaymentResult calling RPC with '
-        'p_amount=$grantAmount',
-      );
-      await grantReservationPointsIfEligible(
-        orderId: orderId,
-        reservationId: result.reservationId,
-        amount: grantAmount,
-      );
-    } else {
-      debugPrint(
-        '[payment/points] _finalizePaymentResult skip grant — '
-        'coupon or points on order',
-      );
-    }
 
     return result;
   }

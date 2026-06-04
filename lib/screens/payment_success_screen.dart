@@ -161,21 +161,6 @@ class _PaymentSuccessScreenState extends State<PaymentSuccessScreen> {
         debugPrint(
           '[payment/success] already processed in DB — skip approval API',
         );
-        final grantAmount = await _reservationService.resolveGrantAmount(
-          orderId: orderId,
-          paymentAmount: amount,
-          resultTotalPrice: preResolved.totalPrice,
-          reservationId: preResolved.reservationId,
-        );
-        debugPrint(
-          '[payment/points] preResolved path p_amount=$grantAmount '
-          '(url amount=$amount)',
-        );
-        await _paymentService.grantReservationPointsIfEligible(
-          orderId: orderId,
-          reservationId: preResolved.reservationId,
-          amount: grantAmount,
-        );
         await _onConfirmSuccess(
           result: preResolved,
           orderId: orderId,

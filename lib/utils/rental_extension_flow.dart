@@ -221,28 +221,8 @@ Future<bool> _confirmAndApply(
   }
 
   debugPrint(
-    '[extension/points] extension payment ok — '
-    'reservationId=$reservationId, addedPrice=$addedPrice',
+    '[extension] payment ok — reservationId=$reservationId, addedPrice=$addedPrice',
   );
-  if (addedPrice > 0) {
-    final user = supabase.auth.currentUser;
-    if (user == null) {
-      debugPrint('[extension/points] skip — not logged in');
-    } else {
-      try {
-        await supabase.rpc('grant_extension_points', params: {
-          'p_user_id': user.id,
-          'p_reservation_id': reservationId,
-          'p_amount': addedPrice,
-        });
-        debugPrint('[extension/points] grant_extension_points ok');
-      } catch (e) {
-        debugPrint('[extension/points] grant_extension_points failed: $e');
-      }
-    }
-  } else {
-    debugPrint('[extension/points] skip — addedPrice is 0');
-  }
 
   if (navigator.canPop()) navigator.pop();
   if (!context.mounted) return false;
