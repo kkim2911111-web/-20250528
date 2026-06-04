@@ -4,6 +4,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../config/payment_config.dart';
 import '../constants/payment_order_status.dart';
+import '../models/booking_contract_consent.dart';
 import '../models/payment_confirm_result.dart';
 import '../models/reservation.dart';
 import '../models/vehicle.dart';
@@ -292,6 +293,7 @@ class PaymentService {
     String? userCouponId,
     int pointsUsed = 0,
     required TossPaymentMethod method,
+    BookingContractConsent? contractConsent,
   }) async {
     if (!PaymentConfig.isConfigured) {
       throw StateError('TOSS_CLIENT_KEY가 필요합니다.');
@@ -315,6 +317,13 @@ class PaymentService {
       userCouponId: userCouponId,
       pointsUsed: pointsUsed,
     );
+
+    if (contractConsent != null) {
+      await _reservationService.storeContractConsentOnOrder(
+        orderId: prepared.orderId,
+        consent: contractConsent,
+      );
+    }
 
     if (totalPrice <= 0) {
       await _completeZeroAmountBooking(
@@ -353,6 +362,10 @@ class PaymentService {
       await _reservationService.tryApplyBookingDiscounts(
         orderId: prepared.orderId,
         reservationId: reservationId,
+      );
+      await _reservationService.applyBookingContractAfterReservation(
+        reservationId: reservationId,
+        orderId: prepared.orderId,
       );
       await _reservationService.markPaymentOrderPaidSafe(
         orderId: prepared.orderId,
@@ -701,14 +714,10 @@ class PaymentService {
       reservationId: result.reservationId,
     );
 
-    try {
-      await supabase.rpc('generate_rental_contract', params: {
-        'p_reservation_id': int.parse(result.reservationId),
-      });
-      debugPrint('[contract] generate_rental_contract ok');
-    } catch (e) {
-      debugPrint('[contract] generate_rental_contract failed: $e');
-    }
+    await _reservationService.applyBookingContractAfterReservation(
+      reservationId: result.reservationId,
+      orderId: orderId,
+    );
 
     return result;
   }

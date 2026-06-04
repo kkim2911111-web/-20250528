@@ -102,6 +102,9 @@ class Reservation {
     return c != null && c.isNotEmpty;
   }
 
+  /// 계약서 보기 — 대여 중·이용 완료
+  bool get canViewContract => isInUse || isFinished;
+
   static DateTime? _parseDate(Object? value) {
     if (value == null) return null;
     if (value is DateTime) return value.toLocal();

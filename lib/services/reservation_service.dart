@@ -1,6 +1,7 @@
 import 'package:flutter/foundation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../models/booking_contract_consent.dart';
 import '../models/reservation.dart';
 import '../models/reservation_payment_pricing.dart';
 import '../supabase_client.dart';
@@ -633,6 +634,78 @@ class ReservationService {
       );
     } catch (e, st) {
       debugPrint('[payment/points] grant_reservation_points error: $e\n$st');
+    }
+  }
+
+  /// 결제 주문에 제2운전자 정보 임시 저장 (예약 생성 전)
+  Future<void> storeContractConsentOnOrder({
+    required String orderId,
+    required BookingContractConsent consent,
+  }) async {
+    final userId = supabase.auth.currentUser?.id;
+    if (userId == null || !consent.hasSecondDriverInfo) return;
+
+    try {
+      await supabase
+          .from('payment_orders')
+          .update({
+            'second_driver_name': consent.secondDriverName!.trim(),
+            'second_driver_license': consent.secondDriverLicense!.trim(),
+          })
+          .eq('order_id', orderId)
+          .eq('user_id', userId);
+    } on PostgrestException catch (e) {
+      if (e.code == '42703' || e.code == 'PGRST204') return;
+      rethrow;
+    }
+  }
+
+  /// 예약 생성 후 제2운전자 반영 + 계약서 생성 RPC
+  Future<void> applyBookingContractAfterReservation({
+    required String reservationId,
+    required String orderId,
+  }) async {
+    final userId = supabase.auth.currentUser?.id;
+    if (userId == null || reservationId.isEmpty) return;
+
+    final order = await findPaymentOrderByOrderId(orderId);
+    final name = order?['second_driver_name']?.toString().trim();
+    final license = order?['second_driver_license']?.toString().trim();
+
+    if (name != null && name.isNotEmpty && license != null && license.isNotEmpty) {
+      try {
+        await supabase
+            .from('reservations')
+            .update({
+              'second_driver_name': name,
+              'second_driver_license': license,
+            })
+            .eq('id', _reservationIdFilterForUpdate(reservationId))
+            .eq('user_id', userId);
+      } on PostgrestException catch (e) {
+        if (e.code != '42703' && e.code != 'PGRST204') {
+          debugPrint('[contract] second_driver update failed: $e');
+        }
+      }
+    }
+
+    await _tryGenerateRentalContract(reservationId);
+  }
+
+  Object _reservationIdFilterForUpdate(String reservationId) {
+    final parsed = int.tryParse(reservationId.trim());
+    return parsed ?? reservationId;
+  }
+
+  Future<void> _tryGenerateRentalContract(String reservationId) async {
+    try {
+      final id = int.parse(reservationId.trim());
+      await supabase.rpc('generate_rental_contract', params: {
+        'p_reservation_id': id,
+      });
+      debugPrint('[contract] generate_rental_contract ok');
+    } catch (e) {
+      debugPrint('[contract] generate_rental_contract failed: $e');
     }
   }
 

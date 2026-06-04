@@ -298,6 +298,7 @@ class _MyReservationsScreenState extends State<MyReservationsScreen> {
                         onReturn: item.canReturn && item.isOperating
                             ? () => _openReturn(item)
                             : null,
+                        showContractButton: item.canViewContract,
                       ),
                     ),
                   ),
@@ -363,7 +364,7 @@ class _MyReservationsScreenState extends State<MyReservationsScreen> {
                         dateFormat: _dateFormat,
                         won: _won,
                         variant: _CardVariant.finished,
-                        showContractButton: widget.historyOnly,
+                        showContractButton: item.canViewContract,
                       ),
                     ),
                   ),
