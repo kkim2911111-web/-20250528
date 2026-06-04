@@ -25,6 +25,7 @@ import '../utils/booking_eligibility.dart';
 import '../widgets/danji_brand_title.dart';
 import '../widgets/danji_logo.dart';
 import '../utils/danji_snackbar.dart';
+import '../widgets/home_promo_banners.dart';
 import '../widgets/rental_inquiry_button.dart';
 import '../widgets/smart_key_door_buttons.dart';
 
@@ -251,6 +252,8 @@ class HomeScreenState extends State<HomeScreen> {
                 const _NaverClipBanner(),
                 const SizedBox(height: 16),
                 const RentalInquiryButton(),
+                const SizedBox(height: 12),
+                const HomePromoBannersRow(),
               ],
             );
           },
