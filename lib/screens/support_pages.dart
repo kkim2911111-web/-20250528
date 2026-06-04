@@ -89,12 +89,16 @@ class FaqScreen extends StatelessWidget {
 }
 
 class TermsPolicyScreen extends StatelessWidget {
-  const TermsPolicyScreen({super.key});
+  /// 0: 이용약관, 1: 개인정보처리방침
+  final int initialTabIndex;
+
+  const TermsPolicyScreen({super.key, this.initialTabIndex = 0});
 
   @override
   Widget build(BuildContext context) {
     return DefaultTabController(
       length: 2,
+      initialIndex: initialTabIndex.clamp(0, 1),
       child: Scaffold(
         backgroundColor: DanjiColors.background,
         appBar: const DanjiAppBar(title: '약관 및 정책'),

@@ -372,6 +372,16 @@ class MyPageService {
     await _upsert({'onboarding_step': clamped});
   }
 
+  /// 회원가입 시 약관·마케팅 동의 시각 저장
+  Future<void> saveTermsConsent({required bool marketingAgreed}) async {
+    final now = DateTime.now().toUtc().toIso8601String();
+    await _upsert({
+      'terms_agreed_at': now,
+      'privacy_agreed_at': now,
+      'marketing_agreed_at': marketingAgreed ? now : null,
+    });
+  }
+
   Future<void> _upsert(Map<String, dynamic> fields) async {
     final user = supabase.auth.currentUser!;
     await supabase.from('user_profiles').upsert({

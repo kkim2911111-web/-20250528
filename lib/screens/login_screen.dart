@@ -1,10 +1,12 @@
 import 'package:flutter/material.dart';
 
 import '../services/auth_service.dart';
+import '../services/my_page_service.dart';
 import '../theme/danji_colors.dart';
 import '../theme/danji_theme.dart';
 import '../widgets/danji_app_bar.dart';
 import '../widgets/danji_logo.dart';
+import '../widgets/terms_consent_section.dart';
 import 'admin/admin_sign_up_screen.dart';
 
 /// 로그인 화면 전용 색상 (디자인 스펙)
@@ -101,8 +103,6 @@ class LoginScreen extends StatelessWidget {
                           _SignUpLink(onTap: () => _goSignUp(context)),
                           const SizedBox(height: 6),
                           _AdminLoginLink(onTap: () => _goAdminSignUp(context)),
-                          const SizedBox(height: 32),
-                          const _TermsNotice(),
                           const SizedBox(height: 28),
                         ],
                       ),
@@ -467,23 +467,6 @@ class _AdminLoginLink extends StatelessWidget {
   }
 }
 
-class _TermsNotice extends StatelessWidget {
-  const _TermsNotice();
-
-  @override
-  Widget build(BuildContext context) {
-    return const Text(
-      '계속 진행하면 서비스 이용약관 및 개인정보 처리방침에 동의한 것으로 간주됩니다.',
-      textAlign: TextAlign.center,
-      style: TextStyle(
-        fontSize: 11,
-        color: _LoginColors.mutedGray,
-        height: 1.45,
-      ),
-    );
-  }
-}
-
 class EmailLoginScreen extends StatefulWidget {
   const EmailLoginScreen({super.key});
 
@@ -651,10 +634,16 @@ class SignUpScreen extends StatefulWidget {
 
 class _SignUpScreenState extends State<SignUpScreen> {
   final _auth = AuthService();
+  final _myPageService = MyPageService();
   final _email = TextEditingController();
   final _password = TextEditingController();
   bool _loading = false;
   String? _error;
+  bool _agreeTerms = false;
+  bool _agreePrivacy = false;
+  bool _agreeMarketing = false;
+
+  bool get _requiredConsentGiven => _agreeTerms && _agreePrivacy;
 
   @override
   void dispose() {
@@ -693,6 +682,14 @@ class _SignUpScreenState extends State<SignUpScreen> {
         );
         Navigator.of(context).pop();
         return;
+      }
+
+      try {
+        await _myPageService.saveTermsConsent(
+          marketingAgreed: _agreeMarketing,
+        );
+      } catch (_) {
+        // 프로필·컬럼 미준비 시에도 가입 흐름 유지
       }
 
       Navigator.of(context).popUntil((route) => route.isFirst);
@@ -770,10 +767,23 @@ class _SignUpScreenState extends State<SignUpScreen> {
                             style: const TextStyle(color: DanjiColors.accentRed),
                           ),
                         ),
+                      TermsConsentSection(
+                        agreeTerms: _agreeTerms,
+                        agreePrivacy: _agreePrivacy,
+                        agreeMarketing: _agreeMarketing,
+                        onTermsChanged: (v) => setState(() => _agreeTerms = v),
+                        onPrivacyChanged: (v) =>
+                            setState(() => _agreePrivacy = v),
+                        onMarketingChanged: (v) =>
+                            setState(() => _agreeMarketing = v),
+                      ),
+                      const SizedBox(height: 14),
                       SizedBox(
                         height: 52,
                         child: FilledButton(
-                          onPressed: _loading ? null : _submit,
+                          onPressed: _loading || !_requiredConsentGiven
+                              ? null
+                              : _submit,
                           style: DanjiTheme.primaryButton,
                           child: _loading
                               ? const SizedBox(
