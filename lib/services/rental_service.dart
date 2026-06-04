@@ -892,7 +892,7 @@ fuel_level_start,fuel_level_end,is_accident,accident_note,door_unlocked
     return {'reservationId': reservationId, 'deleted': true};
   }
 
-  /// 예약 취소 후 쿠폰 복구 (DB가 스킵 처리).
+  /// 예약 취소 후 쿠폰·포인트 복구 (DB가 스킵 처리).
   Future<void> _runPostCancelRestoreRpcs(String reservationId) async {
     final user = supabase.auth.currentUser;
     if (user == null) {
@@ -910,6 +910,16 @@ fuel_level_start,fuel_level_end,is_accident,accident_note,door_unlocked
       debugPrint('[cancel] restore_user_coupon ok: $data');
     } catch (e, st) {
       debugPrint('[cancel] restore_user_coupon failed: $e\n$st');
+    }
+
+    try {
+      await supabase.rpc('restore_used_points', params: {
+        'p_user_id': supabase.auth.currentUser!.id,
+        'p_reservation_id': reservationId.toString(),
+      });
+      debugPrint('[cancel] restore_used_points ok');
+    } catch (e) {
+      debugPrint('[cancel] restore_used_points failed: $e');
     }
   }
 
