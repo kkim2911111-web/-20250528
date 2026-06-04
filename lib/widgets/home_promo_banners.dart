@@ -107,7 +107,8 @@ class _CouponPromoBanner extends StatelessWidget {
                             height: 1.25,
                           ),
                         ),
-                        const Spacer(minLength: 8),
+                        const SizedBox(height: 8),
+                        const Spacer(),
                         Row(
                           children: [
                             Text(
@@ -195,7 +196,8 @@ class _PointPromoBanner extends StatelessWidget {
                       height: 1.3,
                     ),
                   ),
-                  const Spacer(minLength: 8),
+                  const SizedBox(height: 8),
+                  const Spacer(),
                   Row(
                     children: [
                       const Text(
