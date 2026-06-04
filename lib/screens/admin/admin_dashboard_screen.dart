@@ -6,6 +6,7 @@ import '../../services/admin_service.dart';
 import '../../services/auth_service.dart';
 import '../../theme/danji_colors.dart';
 import '../../widgets/section_card.dart';
+import 'admin_complex_info_screen.dart';
 import 'admin_license_review_screen.dart';
 import 'admin_management_screens.dart';
 import 'admin_reservation_list_screen.dart';
@@ -288,6 +289,12 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
               ),
             ),
             const SizedBox(height: 12),
+            _MenuTile(
+              icon: Icons.apartment_outlined,
+              title: '단지 정보',
+              subtitle: '업체명·사업자등록번호·주소·대표자',
+              onTap: () => _open(AdminComplexInfoScreen(profile: profile)),
+            ),
             _MenuTile(
               icon: Icons.badge_outlined,
               title: '면허 심사',

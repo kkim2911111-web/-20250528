@@ -25,6 +25,7 @@ class AdminVehicleFormScreen extends StatefulWidget {
 class _AdminVehicleFormScreenState extends State<AdminVehicleFormScreen> {
   final _admin = AdminService();
   final _name = TextEditingController();
+  final _ownerName = TextEditingController();
   final _carNumber = TextEditingController();
   final _price = TextEditingController();
   final _parking = TextEditingController();
@@ -46,6 +47,7 @@ class _AdminVehicleFormScreenState extends State<AdminVehicleFormScreen> {
     final v = widget.initial;
     if (v != null) {
       _name.text = v.name;
+      _ownerName.text = v.ownerName ?? '';
       _carNumber.text = v.carNumber ?? '';
       _price.text = v.pricePerHour.toString();
       _parking.text = v.parkingLocation ?? '';
@@ -63,6 +65,7 @@ class _AdminVehicleFormScreenState extends State<AdminVehicleFormScreen> {
   @override
   void dispose() {
     _name.dispose();
+    _ownerName.dispose();
     _carNumber.dispose();
     _price.dispose();
     _parking.dispose();
@@ -113,6 +116,7 @@ class _AdminVehicleFormScreenState extends State<AdminVehicleFormScreen> {
       fuelType: _fuelType,
       pricePerHour: price,
       parkingLocation: _parking.text.trim().isEmpty ? null : _parking.text.trim(),
+      ownerName: _ownerName.text.trim().isEmpty ? null : _ownerName.text.trim(),
       carNumber: _carNumber.text.trim().isEmpty ? null : _carNumber.text.trim(),
       isAvailable: _available,
       insuranceCompany: _insuranceCompany.text.trim().isEmpty
@@ -156,6 +160,8 @@ class _AdminVehicleFormScreenState extends State<AdminVehicleFormScreen> {
           _dropdown('유종', _fuelType, AdminService.fuelTypes, (v) {
             setState(() => _fuelType = v);
           }),
+          const SizedBox(height: 12),
+          _field('임대인(업체명)', _ownerName, hint: 'GT컴퍼니'),
           const SizedBox(height: 12),
           _field('차량번호', _carNumber, hint: '12가 3456'),
           const SizedBox(height: 12),

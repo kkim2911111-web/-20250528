@@ -538,6 +538,25 @@ contract_content
     }
   }
 
+  /// 계약서 RPC 생성 후 본문 반환 (이미 있으면 RPC 생략)
+  Future<String?> ensureContractContent(String reservationId) async {
+    final cached = await fetchContractContent(reservationId);
+    if (cached != null && cached.isNotEmpty) return cached;
+
+    await generateRentalContract(reservationId);
+    return fetchContractContent(reservationId);
+  }
+
+  Future<void> generateRentalContract(String reservationId) async {
+    final id = int.tryParse(reservationId.trim());
+    if (id == null) {
+      throw RentalException('유효하지 않은 예약번호입니다.');
+    }
+    await supabase.rpc('generate_rental_contract', params: {
+      'p_reservation_id': id,
+    });
+  }
+
   Future<Map<String, dynamic>> startRental({
     required String reservationId,
     required List<Uint8List> photos,

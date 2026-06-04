@@ -22,6 +22,14 @@ class ReservationPaymentPricing {
     return '';
   }
 
+  /// 이용내역 등 — 할인 종류 문구
+  String get discountDetailLabel {
+    final parts = <String>[];
+    if (hasCoupon) parts.add('쿠폰 할인');
+    if (hasPoints) parts.add('포인트 할인');
+    return parts.join(' · ');
+  }
+
   static ReservationPaymentPricing? fromPaymentOrderRow(
     Map<String, dynamic> row, {
     required int fallbackPrice,

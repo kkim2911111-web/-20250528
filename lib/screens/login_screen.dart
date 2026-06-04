@@ -641,9 +641,11 @@ class _SignUpScreenState extends State<SignUpScreen> {
   String? _error;
   bool _agreeTerms = false;
   bool _agreePrivacy = false;
+  bool _agreeCarRental = false;
   bool _agreeMarketing = false;
 
-  bool get _requiredConsentGiven => _agreeTerms && _agreePrivacy;
+  bool get _requiredConsentGiven =>
+      _agreeTerms && _agreePrivacy && _agreeCarRental;
 
   @override
   void dispose() {
@@ -770,10 +772,13 @@ class _SignUpScreenState extends State<SignUpScreen> {
                       TermsConsentSection(
                         agreeTerms: _agreeTerms,
                         agreePrivacy: _agreePrivacy,
+                        agreeCarRental: _agreeCarRental,
                         agreeMarketing: _agreeMarketing,
                         onTermsChanged: (v) => setState(() => _agreeTerms = v),
                         onPrivacyChanged: (v) =>
                             setState(() => _agreePrivacy = v),
+                        onCarRentalChanged: (v) =>
+                            setState(() => _agreeCarRental = v),
                         onMarketingChanged: (v) =>
                             setState(() => _agreeMarketing = v),
                       ),

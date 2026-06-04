@@ -296,6 +296,44 @@ class AdminService {
     return id;
   }
 
+  static const _complexBusinessSelect =
+      'id, name, business_name, business_registration_number, '
+      'business_address, business_representative, business_phone';
+
+  /// 본인 단지(complexes) 사업자 정보 조회
+  Future<AdminComplexBusinessInfo> fetchComplexBusinessInfo() async {
+    final complexId = await _requireStaffComplexId();
+    final row = await supabase
+        .from('complexes')
+        .select(_complexBusinessSelect)
+        .eq('id', complexId)
+        .single();
+    return AdminComplexBusinessInfo.fromMap(
+      Map<String, dynamic>.from(row),
+    );
+  }
+
+  /// 본인 단지(complexes) 사업자 정보 저장
+  Future<AdminComplexBusinessInfo> updateComplexBusinessInfo(
+    AdminComplexBusinessInfo info,
+  ) async {
+    final complexId = await _requireStaffComplexId();
+    if (info.complexId != complexId) {
+      throw const AdminException('다른 단지 정보는 수정할 수 없습니다.');
+    }
+
+    final row = await supabase
+        .from('complexes')
+        .update(info.toUpdateMap())
+        .eq('id', complexId)
+        .select(_complexBusinessSelect)
+        .single();
+
+    return AdminComplexBusinessInfo.fromMap(
+      Map<String, dynamic>.from(row),
+    );
+  }
+
   Future<Map<String, dynamic>> _upsertVehicleRow({
     Map<String, dynamic>? insert,
     Map<String, dynamic>? update,
@@ -345,6 +383,7 @@ class AdminService {
     final withoutOptional = Map<String, dynamic>.from(withoutLegacy)
       ..remove('vehicle_type')
       ..remove('fuel_type')
+      ..remove('owner_name')
       ..remove('insurance_company')
       ..remove('insurance_policy_number')
       ..remove('insurance_expires_at');

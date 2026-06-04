@@ -102,6 +102,66 @@ class _MyReservationsScreenState extends State<MyReservationsScreen> {
   bool _showsRentalStartButton(Reservation item) =>
       item.showRentalStartButton || item.canUseVehicle;
 
+  /// 이용완료(finished) 카드 — 취소 제외 항상 표시
+  bool _showContractOnFinishedCard(Reservation item) =>
+      item.status != 'cancelled';
+
+  /// returned / completed / in_use
+  bool _showContractByStatus(Reservation item) {
+    if (item.status == 'cancelled') return false;
+    const allowed = {'returned', 'completed', 'in_use'};
+    return allowed.contains(item.status);
+  }
+
+  bool _showContractButton(Reservation item, {_CardVariant? variant}) {
+    if (variant == _CardVariant.finished) {
+      return _showContractOnFinishedCard(item);
+    }
+    return _showContractByStatus(item);
+  }
+
+  Future<void> _openContract(Reservation reservation) async {
+    var content = reservation.hasContractContent
+        ? reservation.contractContent!.trim()
+        : null;
+
+    if (content == null || content.isEmpty) {
+      showDialog<void>(
+        context: context,
+        barrierDismissible: false,
+        builder: (_) => const Center(child: CircularProgressIndicator()),
+      );
+      try {
+        content = await _service.ensureContractContent(reservation.id);
+      } catch (e) {
+        if (!mounted) return;
+        Navigator.of(context).pop();
+        _showCancelSnack(
+          e.toString().replaceFirst('RentalException: ', ''),
+        );
+        return;
+      }
+      if (!mounted) return;
+      Navigator.of(context).pop();
+    }
+
+    if (!mounted) return;
+    if (content == null || content.isEmpty) {
+      _showCancelSnack('계약서를 불러오지 못했습니다.');
+      return;
+    }
+
+    await Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => RentalContractScreen(
+          reservationId: reservation.id,
+          vehicleName: reservation.vehicle?.name,
+          initialContent: content,
+        ),
+      ),
+    );
+  }
+
   Future<void> _openReturn(Reservation reservation) async {
     final result = await openRentalReturn<bool>(context, reservation);
     if (result == true) _reload();
@@ -298,7 +358,16 @@ class _MyReservationsScreenState extends State<MyReservationsScreen> {
                         onReturn: item.canReturn && item.isOperating
                             ? () => _openReturn(item)
                             : null,
-                        showContractButton: item.canViewContract,
+                        showContractButton: _showContractButton(
+                          item,
+                          variant: _CardVariant.operating,
+                        ),
+                        onContractTap: _showContractButton(
+                          item,
+                          variant: _CardVariant.operating,
+                        )
+                            ? () => _openContract(item)
+                            : null,
                       ),
                     ),
                   ),
@@ -343,6 +412,16 @@ class _MyReservationsScreenState extends State<MyReservationsScreen> {
                         onCancelTap: item.shouldShowCancelButton
                             ? () => _onCancelTap(item)
                             : null,
+                        showContractButton: _showContractButton(
+                          item,
+                          variant: _CardVariant.waiting,
+                        ),
+                        onContractTap: _showContractButton(
+                          item,
+                          variant: _CardVariant.waiting,
+                        )
+                            ? () => _openContract(item)
+                            : null,
                       ),
                     ),
                   ),
@@ -364,7 +443,12 @@ class _MyReservationsScreenState extends State<MyReservationsScreen> {
                         dateFormat: _dateFormat,
                         won: _won,
                         variant: _CardVariant.finished,
-                        showContractButton: item.canViewContract,
+                        showReservationId: true,
+                        showDiscountDetail: true,
+                        showContractButton: _showContractOnFinishedCard(item),
+                        onContractTap: _showContractOnFinishedCard(item)
+                            ? () => _openContract(item)
+                            : null,
                       ),
                     ),
                   ),
@@ -433,6 +517,9 @@ class _ReservationCard extends StatelessWidget {
   final bool cancelBlocked;
   final bool useVehicleEnabled;
   final bool showContractButton;
+  final VoidCallback? onContractTap;
+  final bool showReservationId;
+  final bool showDiscountDetail;
 
   const _ReservationCard({
     required this.reservation,
@@ -447,19 +534,10 @@ class _ReservationCard extends StatelessWidget {
     this.cancelBlocked = false,
     this.useVehicleEnabled = true,
     this.showContractButton = false,
+    this.onContractTap,
+    this.showReservationId = false,
+    this.showDiscountDetail = false,
   });
-
-  void _openContract(BuildContext context) {
-    Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (_) => RentalContractScreen(
-          reservationId: reservation.id,
-          vehicleName: reservation.vehicle?.name,
-          initialContent: reservation.contractContent,
-        ),
-      ),
-    );
-  }
 
   Color get _accentColor {
     switch (variant) {
@@ -569,6 +647,16 @@ class _ReservationCard extends StatelessWidget {
               ),
             ],
           ),
+          if (showReservationId) ...[
+            const SizedBox(height: 6),
+            Text(
+              '예약번호 ${reservation.id}',
+              style: DanjiTypography.caption.copyWith(
+                color: DanjiColors.textSecondary,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ],
           if (start != null && end != null) ...[
             const SizedBox(height: 8),
             Text(
@@ -601,6 +689,18 @@ class _ReservationCard extends StatelessWidget {
               pricing: pricing,
               won: won,
             ),
+            if (showDiscountDetail &&
+                pricing != null &&
+                pricing!.hasDiscount) ...[
+              const SizedBox(height: 4),
+              Text(
+                pricing!.discountDetailLabel,
+                style: DanjiTypography.caption.copyWith(
+                  color: DanjiColors.buttonBlue,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ],
           ],
           if (onUseVehicle != null || onReturn != null) ...[
             const SizedBox(height: 14),
@@ -640,7 +740,7 @@ class _ReservationCard extends StatelessWidget {
             SizedBox(
               width: double.infinity,
               child: OutlinedButton.icon(
-                onPressed: () => _openContract(context),
+                onPressed: onContractTap,
                 icon: const Icon(Icons.description_outlined, size: 18),
                 label: const Text('계약서 보기'),
                 style: OutlinedButton.styleFrom(

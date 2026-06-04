@@ -89,7 +89,7 @@ class FaqScreen extends StatelessWidget {
 }
 
 class TermsPolicyScreen extends StatelessWidget {
-  /// 0: 이용약관, 1: 개인정보처리방침
+  /// 0: 이용약관, 1: 개인정보처리방침, 2: 자동차대여약관
   final int initialTabIndex;
 
   const TermsPolicyScreen({super.key, this.initialTabIndex = 0});
@@ -97,8 +97,8 @@ class TermsPolicyScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return DefaultTabController(
-      length: 2,
-      initialIndex: initialTabIndex.clamp(0, 1),
+      length: 3,
+      initialIndex: initialTabIndex.clamp(0, 2),
       child: Scaffold(
         backgroundColor: DanjiColors.background,
         appBar: const DanjiAppBar(title: '약관 및 정책'),
@@ -110,9 +110,12 @@ class TermsPolicyScreen extends StatelessWidget {
                 labelColor: DanjiColors.buttonBlue,
                 unselectedLabelColor: DanjiColors.textMuted,
                 indicatorColor: DanjiColors.buttonBlue,
+                isScrollable: true,
+                tabAlignment: TabAlignment.start,
                 tabs: const [
                   Tab(text: '이용약관'),
                   Tab(text: '개인정보처리방침'),
+                  Tab(text: '자동차대여약관'),
                 ],
               ),
             ),
@@ -121,6 +124,7 @@ class TermsPolicyScreen extends StatelessWidget {
                 children: [
                   _PolicyBody(text: _termsOfService),
                   _PolicyBody(text: _privacyPolicy),
+                  _PolicyBody(text: _carRentalTerms),
                 ],
               ),
             ),
@@ -168,6 +172,42 @@ class TermsPolicyScreen extends StatelessWidget {
 
 5. 이용자 권리
 - 개인정보 열람·정정·삭제를 고객센터를 통해 요청할 수 있습니다.
+''';
+
+  static const _carRentalTerms = '''
+단지카 자동차대여약관
+
+제1조(목적)
+GT컴퍼니가 운영하는 단지카 플랫폼을 통해 아파트 단지 내 차량 공유를 중개함에 있어 이용자와 회사 간의 권리·의무를 규정합니다. 회사는 차량 공유 중개 플랫폼을 운영하며 차량의 직접 소유자가 아닙니다.
+
+제2조(이용 자격)
+① 본인 명의 운전면허 소지자
+② 해당 아파트 단지 입주민 인증 완료자
+③ 본인 명의 결제수단 등록자
+
+제3조(보험)
+① 등록 차량은 자동차종합보험(대인·대물·자손)에 가입되어 있습니다.
+② 대인: 무한 / 대물: 2,000만원 / 자손: 1,500만원
+③ 자차: 가입(보험증권별 차량보상 설정금액)
+④ 수리비 50만원 미만: 전액 본인 부담(제조사 서비스센터 견적 참조)
+⑤ 수리비 50만원 이상: 면책금 50만원 납부 후 보험처리
+
+제4조(고객의 의무)
+① 음주·무면허·고의사고 시 보험처리 불가
+② 계약자 본인만 운전 가능(제2임차인 등록 시 제외)
+③ 반납 지연 시 추가 요금 발생
+④ 흡연·반려동물 오염 시 세차비 150,000원 및 휴차료 청구
+⑤ GPS 위치추적 및 시동차단 장치 임의 훼손 금지
+
+제5조(사고 처리)
+사고 발생 시 즉시 회사 고객센터에 연락하고 보험 처리 절차에 따릅니다.
+
+제6조(회사의 책임 한계)
+① 회사는 차량 공유 중개 서비스를 제공하며 차량 자체의 하자로 인한 손해는 차량 소유자가 책임을 집니다.
+② 이용자의 법규 위반으로 인한 사고는 회사가 책임지지 않습니다.
+
+제7조(분쟁 해결)
+본 약관에 관한 분쟁은 회사 소재지 관할 법원을 전속 관할로 합니다.
 ''';
 }
 

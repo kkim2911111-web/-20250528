@@ -297,6 +297,7 @@ class _AdminPriceScreenState extends State<AdminPriceScreen> {
           pricePerHour: price,
           parkingLocation: vehicle.parkingLocation,
           carNumber: vehicle.carNumber,
+          ownerName: vehicle.ownerName,
           isAvailable: vehicle.isAvailable,
           insuranceCompany: vehicle.insuranceCompany,
           insurancePolicyNumber: vehicle.insurancePolicyNumber,

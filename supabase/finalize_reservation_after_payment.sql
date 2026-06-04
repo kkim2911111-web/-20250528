@@ -184,18 +184,9 @@ begin
     status = 'paid',
     payment_key = p_payment_key,
     has_payment_key = true,
+    reservation_id = v_res_id,
     updated_at = now()
   where order_id = p_order_id;
-
-  begin
-    update public.payment_orders
-    set reservation_id = v_res_id::uuid
-    where order_id = p_order_id
-      and v_res_id ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$';
-  exception
-    when others then
-      null;
-  end;
 
   return jsonb_build_object(
     'reservationId', v_res_id,

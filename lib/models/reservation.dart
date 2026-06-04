@@ -102,8 +102,9 @@ class Reservation {
     return c != null && c.isNotEmpty;
   }
 
-  /// 계약서 보기 — 대여 중·이용 완료
-  bool get canViewContract => isInUse || isFinished;
+  /// 계약서 보기 — 대여 중(in_use)·이용 완료(completed)
+  bool get canViewContract =>
+      status == 'in_use' || status == 'completed';
 
   static DateTime? _parseDate(Object? value) {
     if (value == null) return null;

@@ -63,6 +63,76 @@ class BranchStats {
   );
 }
 
+/// 관리자 — 단지 사업자 정보 (complexes)
+class AdminComplexBusinessInfo {
+  final String complexId;
+  final String? complexName;
+  final String? businessName;
+  final String? businessRegistrationNumber;
+  final String? businessAddress;
+  final String? businessRepresentative;
+  final String? businessPhone;
+
+  const AdminComplexBusinessInfo({
+    required this.complexId,
+    this.complexName,
+    this.businessName,
+    this.businessRegistrationNumber,
+    this.businessAddress,
+    this.businessRepresentative,
+    this.businessPhone,
+  });
+
+  factory AdminComplexBusinessInfo.fromMap(Map<String, dynamic> map) {
+    return AdminComplexBusinessInfo(
+      complexId: map['id']?.toString() ?? '',
+      complexName: map['name']?.toString(),
+      businessName: map['business_name']?.toString(),
+      businessRegistrationNumber:
+          map['business_registration_number']?.toString(),
+      businessAddress: map['business_address']?.toString(),
+      businessRepresentative: map['business_representative']?.toString(),
+      businessPhone: map['business_phone']?.toString(),
+    );
+  }
+
+  Map<String, dynamic> toUpdateMap() {
+    String? emptyToNull(String? v) {
+      final t = v?.trim();
+      return t == null || t.isEmpty ? null : t;
+    }
+
+    return {
+      'business_name': emptyToNull(businessName),
+      'business_registration_number':
+          emptyToNull(businessRegistrationNumber),
+      'business_address': emptyToNull(businessAddress),
+      'business_representative': emptyToNull(businessRepresentative),
+      'business_phone': emptyToNull(businessPhone),
+    };
+  }
+
+  AdminComplexBusinessInfo copyWith({
+    String? businessName,
+    String? businessRegistrationNumber,
+    String? businessAddress,
+    String? businessRepresentative,
+    String? businessPhone,
+  }) {
+    return AdminComplexBusinessInfo(
+      complexId: complexId,
+      complexName: complexName,
+      businessName: businessName ?? this.businessName,
+      businessRegistrationNumber:
+          businessRegistrationNumber ?? this.businessRegistrationNumber,
+      businessAddress: businessAddress ?? this.businessAddress,
+      businessRepresentative:
+          businessRepresentative ?? this.businessRepresentative,
+      businessPhone: businessPhone ?? this.businessPhone,
+    );
+  }
+}
+
 class AdminVehicleDetail {
   final String id;
   final String complexId;
@@ -73,6 +143,7 @@ class AdminVehicleDetail {
   final int pricePerHour;
   final String? parkingLocation;
   final String? carNumber;
+  final String? ownerName;
   final bool isAvailable;
   final String? insuranceCompany;
   final String? insurancePolicyNumber;
@@ -91,6 +162,7 @@ class AdminVehicleDetail {
     required this.pricePerHour,
     this.parkingLocation,
     this.carNumber,
+    this.ownerName,
     required this.isAvailable,
     this.insuranceCompany,
     this.insurancePolicyNumber,
@@ -121,6 +193,7 @@ class AdminVehicleDetail {
           0,
       parkingLocation: map['parking_location']?.toString(),
       carNumber: map['car_number']?.toString(),
+      ownerName: map['owner_name']?.toString(),
       isAvailable: map['is_available'] as bool? ??
           map['is_active'] as bool? ??
           true,
@@ -143,6 +216,7 @@ class AdminVehicleDetail {
       'hourly_rate': pricePerHour,
       'parking_location': parkingLocation,
       'car_number': carNumber,
+      'owner_name': ownerName,
       'is_available': isAvailable,
       'is_active': isAvailable,
       'insurance_company': insuranceCompany,
@@ -162,6 +236,7 @@ class AdminVehicleDetail {
       'hourly_rate': pricePerHour,
       'parking_location': parkingLocation,
       'car_number': carNumber,
+      'owner_name': ownerName,
       'is_available': isAvailable,
       'is_active': isAvailable,
       'insurance_company': insuranceCompany,
@@ -201,6 +276,7 @@ class AdminVehicleDetail {
       pricePerHour: pricePerHour,
       parkingLocation: parkingLocation,
       carNumber: carNumber,
+      ownerName: ownerName,
       isAvailable: isAvailable,
       insuranceCompany: insuranceCompany,
       insurancePolicyNumber: insurancePolicyNumber,

@@ -14,7 +14,7 @@ create table if not exists public.payment_orders (
   total_price integer,
   status text default 'pending',
   payment_key text,
-  reservation_id uuid,
+  reservation_id text,
   created_at timestamptz default now(),
   updated_at timestamptz default now(),
   has_payment_key boolean default false

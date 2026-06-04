@@ -7,18 +7,22 @@ import '../theme/danji_colors.dart';
 class TermsConsentSection extends StatelessWidget {
   final bool agreeTerms;
   final bool agreePrivacy;
+  final bool agreeCarRental;
   final bool agreeMarketing;
   final ValueChanged<bool> onTermsChanged;
   final ValueChanged<bool> onPrivacyChanged;
+  final ValueChanged<bool> onCarRentalChanged;
   final ValueChanged<bool> onMarketingChanged;
 
   const TermsConsentSection({
     super.key,
     required this.agreeTerms,
     required this.agreePrivacy,
+    required this.agreeCarRental,
     required this.agreeMarketing,
     required this.onTermsChanged,
     required this.onPrivacyChanged,
+    required this.onCarRentalChanged,
     required this.onMarketingChanged,
   });
 
@@ -46,6 +50,12 @@ class TermsConsentSection extends StatelessWidget {
           onChanged: onPrivacyChanged,
           label: '[필수] 개인정보 처리방침에 동의합니다',
           onView: () => _openPolicy(context, 1),
+        ),
+        _ConsentRow(
+          value: agreeCarRental,
+          onChanged: onCarRentalChanged,
+          label: '[필수] 자동차대여약관에 동의합니다',
+          onView: () => _openPolicy(context, 2),
         ),
         _ConsentRow(
           value: agreeMarketing,

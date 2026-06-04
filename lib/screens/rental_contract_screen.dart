@@ -5,7 +5,9 @@ import 'package:printing/printing.dart';
 import '../services/rental_service.dart';
 import '../theme/danji_colors.dart';
 import '../theme/danji_theme.dart';
+import '../utils/rental_contract_parser.dart';
 import '../widgets/danji_app_bar.dart';
+import '../widgets/rental_contract_cards.dart';
 
 /// 대여 계약서 열람·PDF 저장
 class RentalContractScreen extends StatefulWidget {
@@ -66,6 +68,55 @@ class _RentalContractScreenState extends State<RentalContractScreen> {
     }
   }
 
+  RentalContractParsed _parsedContent() {
+    final parsed = RentalContractParsed.parse(_content ?? '');
+    if (parsed.vehicleName == null &&
+        widget.vehicleName?.trim().isNotEmpty == true) {
+      return RentalContractParsed(
+        companyName: parsed.companyName,
+        reservationId:
+            parsed.reservationId.isNotEmpty ? parsed.reservationId : widget.reservationId,
+        vehicleName: widget.vehicleName,
+        rentalPeriod: parsed.rentalPeriod,
+        renterName: parsed.renterName,
+        renterPhone: parsed.renterPhone,
+        licenseNumber: parsed.licenseNumber,
+        secondDriverName: parsed.secondDriverName,
+        secondDriverLicense: parsed.secondDriverLicense,
+        originalPrice: parsed.originalPrice,
+        paidPrice: parsed.paidPrice,
+        extraFeeLines: parsed.extraFeeLines,
+        insuranceIntro: parsed.insuranceIntro,
+        insuranceCoverage: parsed.insuranceCoverage,
+        insuranceNotes: parsed.insuranceNotes,
+        complianceItems: parsed.complianceItems,
+        generatedAt: parsed.generatedAt,
+      );
+    }
+    if (parsed.reservationId.isEmpty) {
+      return RentalContractParsed(
+        companyName: parsed.companyName,
+        reservationId: widget.reservationId,
+        vehicleName: parsed.vehicleName ?? widget.vehicleName,
+        rentalPeriod: parsed.rentalPeriod,
+        renterName: parsed.renterName,
+        renterPhone: parsed.renterPhone,
+        licenseNumber: parsed.licenseNumber,
+        secondDriverName: parsed.secondDriverName,
+        secondDriverLicense: parsed.secondDriverLicense,
+        originalPrice: parsed.originalPrice,
+        paidPrice: parsed.paidPrice,
+        extraFeeLines: parsed.extraFeeLines,
+        insuranceIntro: parsed.insuranceIntro,
+        insuranceCoverage: parsed.insuranceCoverage,
+        insuranceNotes: parsed.insuranceNotes,
+        complianceItems: parsed.complianceItems,
+        generatedAt: parsed.generatedAt,
+      );
+    }
+    return parsed;
+  }
+
   Future<void> _downloadPdf() async {
     final text = _content?.trim();
     if (text == null || text.isEmpty) return;
@@ -80,7 +131,11 @@ class _RentalContractScreenState extends State<RentalContractScreen> {
           build: (context) => [
             pw.Text(
               '단지카 대여 계약서',
-              style: pw.TextStyle(font: font, fontSize: 18, fontWeight: pw.FontWeight.bold),
+              style: pw.TextStyle(
+                font: font,
+                fontSize: 18,
+                fontWeight: pw.FontWeight.bold,
+              ),
             ),
             if (widget.vehicleName != null) ...[
               pw.SizedBox(height: 8),
@@ -193,25 +248,34 @@ class _RentalContractScreenState extends State<RentalContractScreen> {
       );
     }
 
-    return SingleChildScrollView(
-      padding: const EdgeInsets.fromLTRB(20, 20, 20, 8),
-      child: Container(
-        width: double.infinity,
-        padding: const EdgeInsets.all(16),
-        decoration: BoxDecoration(
-          color: DanjiColors.surface,
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: DanjiColors.border),
-        ),
-        child: SelectableText(
-          _content!,
-          style: const TextStyle(
-            color: DanjiColors.textPrimary,
-            fontSize: 14,
-            height: 1.55,
+    final parsed = _parsedContent();
+
+    if (!parsed.hasStructuredLayout) {
+      return SingleChildScrollView(
+        padding: const EdgeInsets.fromLTRB(20, 20, 20, 8),
+        child: Container(
+          width: double.infinity,
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: DanjiColors.surface,
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: DanjiColors.border),
+          ),
+          child: SelectableText(
+            _content!,
+            style: const TextStyle(
+              color: DanjiColors.textPrimary,
+              fontSize: 14,
+              height: 1.55,
+            ),
           ),
         ),
-      ),
+      );
+    }
+
+    return SingleChildScrollView(
+      padding: const EdgeInsets.fromLTRB(20, 16, 20, 8),
+      child: RentalContractCardView(parsed: parsed),
     );
   }
 }
