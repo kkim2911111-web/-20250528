@@ -216,6 +216,7 @@ Deno.serve(async (req) => {
         admin,
         userId: user.id,
         vehicleName: order.vehicle_name || '차량',
+        reservationId,
       });
     } catch (pushError) {
       console.error('FCM push failed:', pushError);

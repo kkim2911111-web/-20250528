@@ -77,6 +77,10 @@ class AuthService {
     await supabase.auth.signOut();
     onSignedOut?.call(toSignUp);
   }
+
+  Future<void> resetPasswordForEmail({required String email}) async {
+    await supabase.auth.resetPasswordForEmail(email.trim());
+  }
 }
 
 String friendlyAuthError(Object e) {

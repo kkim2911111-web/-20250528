@@ -10,11 +10,14 @@ import '../resident_profile_screen.dart';
 import '../services/license_service.dart';
 import '../services/my_page_service.dart';
 import '../services/payment_service.dart';
+import '../services/push_notification_service.dart';
 import '../services/signup_onboarding_service.dart';
 import '../supabase_client.dart';
 import '../theme/danji_colors.dart';
 import '../theme/danji_theme.dart';
+import '../widgets/kakao_address_field.dart';
 import '../widgets/resident_verification_pending.dart';
+
 /// 이메일 가입 후 5단계 온보딩 (입주민 → 개인정보 → 면허 → 결제 → 완료)
 class SignUpWizardScreen extends StatefulWidget {
   final int initialStep;
@@ -236,6 +239,8 @@ class _SignUpWizardScreenState extends State<SignUpWizardScreen> {
         unit: u,
       );
       await _myPageService.markResidentVerificationRequested();
+      await PushNotificationService.instance
+          .staffResidentReviewRequest(complexId: complexId);
       if (!mounted) return;
       setState(() {
         _loading = false;
@@ -363,6 +368,12 @@ class _SignUpWizardScreenState extends State<SignUpWizardScreen> {
 
     try {
       await _myPageService.markSignupComplete();
+      final push = PushNotificationService.instance;
+      await push.customerSignupComplete();
+      final complexId = _complexId;
+      if (complexId != null && complexId.isNotEmpty) {
+        await push.staffNewSignup(complexId: complexId);
+      }
       if (!mounted) return;
       widget.onCompleted?.call();
     } catch (e) {
@@ -679,7 +690,17 @@ class _PersonalStep extends StatelessWidget {
           keyboardType: TextInputType.phone,
           inputFormatters: [FilteringTextInputFormatter.digitsOnly],
         ),
-        _WizardField(label: '주소', controller: address),
+        KakaoAddressField(
+          controller: address,
+          padding: const EdgeInsets.only(bottom: 14),
+          decoration: InputDecoration(
+            labelText: '주소',
+            hintText: '탭하여 주소 검색',
+            filled: true,
+            fillColor: DanjiColors.surface,
+            border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+          ),
+        ),
       ],
     );
   }

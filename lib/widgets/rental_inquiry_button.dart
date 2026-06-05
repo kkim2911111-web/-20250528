@@ -49,7 +49,7 @@ class RentalInquiryButton extends StatelessWidget {
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     Text(
-                      '일반 렌트 문의',
+                      '일반렌트문의',
                       style: TextStyle(
                         fontSize: 14,
                         fontWeight: FontWeight.w500,
@@ -59,7 +59,7 @@ class RentalInquiryButton extends StatelessWidget {
                     ),
                     SizedBox(height: 2),
                     Text(
-                      '24시간 이상 대여 상담',
+                      '24시간 이상 대여 시 문의주세요.',
                       style: TextStyle(
                         fontSize: 11,
                         color: Color(0xFF888888),

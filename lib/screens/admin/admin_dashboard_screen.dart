@@ -21,13 +21,19 @@ class AdminDashboardScreen extends StatefulWidget {
   State<AdminDashboardScreen> createState() => _AdminDashboardScreenState();
 }
 
+abstract final class _DashboardUiColors {
+  static const totalBlue = Color(0xFF3182F6);
+  static const availableGreen = Color(0xFF22C55E);
+  static const inUseOrange = Color(0xFFF97316);
+  static const todayPurple = Color(0xFFA855F7);
+}
+
 class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
   final _admin = AdminService();
   final _auth = AuthService();
   final _won = NumberFormat('#,###');
 
   Future<BranchStats>? _statsFuture;
-  Future<_DashboardVehicleData>? _vehiclesFuture;
 
   @override
   void initState() {
@@ -38,50 +44,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
   void _reload() {
     setState(() {
       _statsFuture = _admin.fetchBranchStats(widget.profile.complexId);
-      _vehiclesFuture = _loadVehicleData();
     });
-  }
-
-  Future<_DashboardVehicleData> _loadVehicleData() async {
-    final complexId = widget.profile.complexId;
-    final vehicles = await _admin.fetchVehicles(complexId);
-    final inUseVehicleIds = await _admin.fetchInUseVehicleIds(complexId);
-    return _DashboardVehicleData(
-      vehicles: vehicles,
-      inUseVehicleIds: inUseVehicleIds,
-    );
-  }
-
-  List<_ComplexVehicleGroup> _groupByComplex(List<AdminVehicleDetail> vehicles) {
-    final buckets = <String, List<AdminVehicleDetail>>{};
-    final labels = <String, String>{};
-
-    for (final v in vehicles) {
-      final key = v.complexId.trim().isNotEmpty
-          ? v.complexId.trim()
-          : _complexLabel(v);
-      buckets.putIfAbsent(key, () => []).add(v);
-      labels[key] = _complexLabel(v);
-    }
-
-    final keys = buckets.keys.toList()
-      ..sort((a, b) => (labels[a] ?? '').compareTo(labels[b] ?? ''));
-
-    return [
-      for (final key in keys)
-        _ComplexVehicleGroup(
-          complexName: labels[key] ?? '단지',
-          vehicles: buckets[key]!,
-        ),
-    ];
-  }
-
-  String _complexLabel(AdminVehicleDetail vehicle) {
-    final name = vehicle.complexName?.trim();
-    if (name != null && name.isNotEmpty) return name;
-    final fallback = widget.profile.complexName?.trim();
-    if (fallback != null && fallback.isNotEmpty) return fallback;
-    return '단지';
   }
 
   Future<void> _logout() async {
@@ -92,194 +55,143 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
   Widget build(BuildContext context) {
     final profile = widget.profile;
 
+    final complexName = profile.complexName?.trim().isNotEmpty == true
+        ? profile.complexName!.trim()
+        : '단지';
+
     return Scaffold(
       backgroundColor: DanjiColors.background,
-      appBar: AppBar(
-        backgroundColor: DanjiColors.background,
-        elevation: 0,
-        scrolledUnderElevation: 0,
-        title: const Text(
-          '지점 관리',
-          style: TextStyle(
-            color: DanjiColors.buttonBlue,
-            fontWeight: FontWeight.w800,
-            fontSize: 22,
-          ),
-        ),
-        actions: [
-          TextButton.icon(
-            onPressed: _logout,
-            icon: const Icon(Icons.logout, size: 18),
-            label: const Text('로그아웃'),
-            style: TextButton.styleFrom(foregroundColor: DanjiColors.textSecondary),
-          ),
-        ],
-      ),
-      body: RefreshIndicator(
-        color: DanjiColors.buttonBlue,
-        onRefresh: () async => _reload(),
-        child: ListView(
-          physics: const AlwaysScrollableScrollPhysics(),
-          padding: const EdgeInsets.fromLTRB(20, 0, 20, 24),
-          children: [
-            const Text(
-              '지점 현황',
-              style: TextStyle(
-                color: DanjiColors.textPrimary,
-                fontWeight: FontWeight.w800,
-                fontSize: 18,
-              ),
-            ),
-            const SizedBox(height: 4),
-            Text(
-              '${profile.displayName}님의 지점 · ${profile.complexName ?? '단지'}',
-              style: const TextStyle(color: DanjiColors.textSecondary),
-            ),
-            const SizedBox(height: 16),
-            FutureBuilder<BranchStats>(
-              future: _statsFuture,
-              builder: (context, snap) {
-                final stats = snap.data ?? BranchStats.empty;
-                return GridView.count(
-                  crossAxisCount: 2,
-                  shrinkWrap: true,
-                  physics: const NeverScrollableScrollPhysics(),
-                  mainAxisSpacing: 12,
-                  crossAxisSpacing: 12,
-                  childAspectRatio: 1.35,
-                  children: [
-                    _StatCard(
-                      label: '전체 차량',
-                      value: '${stats.totalVehicles}',
-                      icon: Icons.directions_car_filled_outlined,
-                      color: DanjiColors.buttonBlue,
-                    ),
-                    _StatCard(
-                      label: '가용 차량',
-                      value: '${stats.availableVehicles.clamp(0, 999)}',
-                      icon: Icons.check_circle_outline,
-                      color: const Color(0xFF43A047),
-                    ),
-                    _StatCard(
-                      label: '대여 중',
-                      value: '${stats.inOperation}',
-                      icon: Icons.navigation_outlined,
-                      color: const Color(0xFFFB8C00),
-                    ),
-                    _StatCard(
-                      label: '오늘 예약',
-                      value: '${stats.todayReservations}',
-                      icon: Icons.calendar_today_outlined,
-                      color: const Color(0xFF8E24AA),
-                    ),
-                  ],
-                );
-              },
-            ),
-            const SizedBox(height: 12),
-            SectionCard(
-              child: Row(
+      body: SafeArea(
+        child: RefreshIndicator(
+          color: DanjiColors.buttonBlue,
+          onRefresh: () async => _reload(),
+          child: ListView(
+            physics: const AlwaysScrollableScrollPhysics(),
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 20),
+            children: [
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Icon(Icons.payments_outlined, color: DanjiColors.buttonBlue),
-                  const SizedBox(width: 12),
                   Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        const Text(
-                          '이번 달 매출',
-                          style: TextStyle(
-                            color: DanjiColors.textSecondary,
-                            fontWeight: FontWeight.w600,
+                        Text(
+                          complexName,
+                          style: const TextStyle(
+                            color: DanjiColors.textPrimary,
+                            fontWeight: FontWeight.w800,
+                            fontSize: 20,
+                            height: 1.2,
                           ),
                         ),
-                        FutureBuilder<BranchStats>(
-                          future: _statsFuture,
-                          builder: (context, snap) {
-                            final amount = snap.data?.monthSales ?? 0;
-                            return Text(
-                              '₩${_won.format(amount)}',
-                              style: const TextStyle(
-                                color: DanjiColors.textPrimary,
-                                fontWeight: FontWeight.w800,
-                                fontSize: 20,
-                              ),
-                            );
-                          },
+                        const SizedBox(height: 2),
+                        Text(
+                          profile.displayName,
+                          style: const TextStyle(
+                            color: DanjiColors.textSecondary,
+                            fontSize: 12,
+                            fontWeight: FontWeight.w500,
+                          ),
                         ),
                       ],
                     ),
                   ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 28),
-            const Text(
-              '등록 차량',
-              style: TextStyle(
-                color: DanjiColors.textPrimary,
-                fontWeight: FontWeight.w800,
-                fontSize: 18,
-              ),
-            ),
-            const SizedBox(height: 12),
-            FutureBuilder<_DashboardVehicleData>(
-              future: _vehiclesFuture,
-              builder: (context, snap) {
-                if (snap.connectionState == ConnectionState.waiting) {
-                  return const SectionCard(
-                    child: Padding(
-                      padding: EdgeInsets.all(20),
-                      child: Center(
-                        child: SizedBox(
-                          height: 24,
-                          width: 24,
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        ),
+                  TextButton.icon(
+                    onPressed: _logout,
+                    icon: const Icon(Icons.logout, size: 16),
+                    label: const Text('로그아웃'),
+                    style: TextButton.styleFrom(
+                      foregroundColor: DanjiColors.textSecondary,
+                      padding: const EdgeInsets.symmetric(horizontal: 8),
+                      minimumSize: Size.zero,
+                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                      textStyle: const TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
                       ),
                     ),
-                  );
-                }
-                if (snap.hasError) {
-                  return SectionCard(
-                    child: Text(friendlyAdminError(snap.error!)),
-                  );
-                }
-                final data = snap.data;
-                final list = data?.vehicles ?? [];
-                if (list.isEmpty) {
-                  return const SectionCard(
-                    child: Text('등록된 차량이 없습니다. 아래에서 차량을 등록해주세요.'),
-                  );
-                }
-                final inUseIds = data?.inUseVehicleIds ?? {};
-                final groups = _groupByComplex(list);
-                return Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    for (var gi = 0; gi < groups.length; gi++) ...[
-                      if (gi > 0) const SizedBox(height: 16),
-                      _ComplexGroupHeader(
-                        group: groups[gi],
-                        inUseVehicleIds: inUseIds,
-                      ),
-                      const SizedBox(height: 10),
-                      for (var vi = 0; vi < groups[gi].vehicles.length; vi++)
-                        Padding(
-                          padding: EdgeInsets.only(
-                            bottom: vi < groups[gi].vehicles.length - 1 ? 10 : 0,
-                          ),
-                          child: _DashboardVehicleCard(
-                            vehicle: groups[gi].vehicles[vi],
-                            complexLabel: _complexLabel(groups[gi].vehicles[vi]),
-                          ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+              FutureBuilder<BranchStats>(
+                future: _statsFuture,
+                builder: (context, snap) {
+                  final stats = snap.data ?? BranchStats.empty;
+                  return Row(
+                    children: [
+                      Expanded(
+                        child: _CompactStatCard(
+                          label: '전체',
+                          value: '${stats.totalVehicles}',
+                          icon: Icons.directions_car_outlined,
+                          color: _DashboardUiColors.totalBlue,
                         ),
+                      ),
+                      const SizedBox(width: 6),
+                      Expanded(
+                        child: _CompactStatCard(
+                          label: '가용',
+                          value: '${stats.availableVehicles.clamp(0, 999)}',
+                          icon: Icons.check_circle_outline,
+                          color: _DashboardUiColors.availableGreen,
+                        ),
+                      ),
+                      const SizedBox(width: 6),
+                      Expanded(
+                        child: _CompactStatCard(
+                          label: '대여중',
+                          value: '${stats.inOperation}',
+                          icon: Icons.navigation_outlined,
+                          color: _DashboardUiColors.inUseOrange,
+                        ),
+                      ),
+                      const SizedBox(width: 6),
+                      Expanded(
+                        child: _CompactStatCard(
+                          label: '오늘예약',
+                          value: '${stats.todayReservations}',
+                          icon: Icons.calendar_today_outlined,
+                          color: _DashboardUiColors.todayPurple,
+                        ),
+                      ),
                     ],
+                  );
+                },
+              ),
+              const SizedBox(height: 8),
+              SectionCard(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                child: Row(
+                  children: [
+                    const Text(
+                      '이번 달 매출',
+                      style: TextStyle(
+                        color: DanjiColors.textSecondary,
+                        fontWeight: FontWeight.w600,
+                        fontSize: 13,
+                      ),
+                    ),
+                    const Spacer(),
+                    FutureBuilder<BranchStats>(
+                      future: _statsFuture,
+                      builder: (context, snap) {
+                        final amount = snap.data?.monthSales ?? 0;
+                        return Text(
+                          '₩${_won.format(amount)}',
+                          style: const TextStyle(
+                            color: DanjiColors.textPrimary,
+                            fontWeight: FontWeight.w800,
+                            fontSize: 16,
+                          ),
+                        );
+                      },
+                    ),
                   ],
-                );
-              },
-            ),
-            const SizedBox(height: 28),
+                ),
+              ),
+              const SizedBox(height: 20),
             const Text(
               '관리 메뉴',
               style: TextStyle(
@@ -288,7 +200,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                 fontSize: 18,
               ),
             ),
-            const SizedBox(height: 12),
+            const SizedBox(height: 8),
             _MenuTile(
               icon: Icons.apartment_outlined,
               title: '단지 정보',
@@ -371,6 +283,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
             ),
           ],
         ),
+        ),
       ),
     );
   }
@@ -380,107 +293,13 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
   }
 }
 
-class _DashboardVehicleData {
-  final List<AdminVehicleDetail> vehicles;
-  final Set<String> inUseVehicleIds;
-
-  const _DashboardVehicleData({
-    required this.vehicles,
-    required this.inUseVehicleIds,
-  });
-}
-
-class _ComplexVehicleGroup {
-  final String complexName;
-  final List<AdminVehicleDetail> vehicles;
-
-  const _ComplexVehicleGroup({
-    required this.complexName,
-    required this.vehicles,
-  });
-
-  int totalCount() => vehicles.length;
-
-  int inUseCount(Set<String> inUseVehicleIds) =>
-      vehicles.where((v) => inUseVehicleIds.contains(v.id)).length;
-
-  int availableCount(Set<String> inUseVehicleIds) {
-    var count = 0;
-    for (final v in vehicles) {
-      if (v.isAvailable && !inUseVehicleIds.contains(v.id)) count++;
-    }
-    return count;
-  }
-}
-
-class _ComplexGroupHeader extends StatelessWidget {
-  final _ComplexVehicleGroup group;
-  final Set<String> inUseVehicleIds;
-
-  const _ComplexGroupHeader({
-    required this.group,
-    required this.inUseVehicleIds,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final total = group.totalCount();
-    final inUse = group.inUseCount(inUseVehicleIds);
-    final available = group.availableCount(inUseVehicleIds);
-
-    return Text(
-      '${group.complexName} · 전체 ${total}대 · 대여중 ${inUse}대 · 가용 ${available}대',
-      style: const TextStyle(
-        color: DanjiColors.textPrimary,
-        fontWeight: FontWeight.w800,
-        fontSize: 15,
-        height: 1.4,
-      ),
-    );
-  }
-}
-
-class _DashboardVehicleCard extends StatelessWidget {
-  final AdminVehicleDetail vehicle;
-  final String complexLabel;
-
-  const _DashboardVehicleCard({
-    required this.vehicle,
-    required this.complexLabel,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return SectionCard(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-      child: ListTile(
-        contentPadding: EdgeInsets.zero,
-        title: Text(
-          vehicle.name,
-          style: const TextStyle(fontWeight: FontWeight.w800),
-        ),
-        subtitle: Text(
-          '$complexLabel · ${vehicle.vehicleType} · '
-          '${vehicle.carNumber ?? '번호 미등록'}',
-        ),
-        trailing: Icon(
-          vehicle.isAvailable ? Icons.check_circle : Icons.pause_circle,
-          color: vehicle.isAvailable
-              ? const Color(0xFF43A047)
-              : DanjiColors.textMuted,
-        ),
-      ),
-    );
-  }
-}
-
-class _StatCard extends StatelessWidget {
+class _CompactStatCard extends StatelessWidget {
   final String label;
   final String value;
   final IconData icon;
   final Color color;
 
-  const _StatCard({
+  const _CompactStatCard({
     required this.label,
     required this.value,
     required this.icon,
@@ -490,26 +309,30 @@ class _StatCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return SectionCard(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 10),
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(icon, color: color, size: 28),
-          const Spacer(),
+          Icon(icon, color: color, size: 18),
+          const SizedBox(height: 6),
           Text(
             label,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
             style: const TextStyle(
               color: DanjiColors.textSecondary,
               fontWeight: FontWeight.w600,
+              fontSize: 10,
             ),
           ),
-          const SizedBox(height: 4),
+          const SizedBox(height: 2),
           Text(
             value,
             style: TextStyle(
               color: color,
               fontWeight: FontWeight.w800,
-              fontSize: 28,
+              fontSize: 18,
+              height: 1.1,
             ),
           ),
         ],

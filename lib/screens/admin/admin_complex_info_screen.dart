@@ -1,10 +1,14 @@
+import 'dart:typed_data';
+
 import 'package:flutter/material.dart';
+import 'package:image_picker/image_picker.dart';
 
 import '../../models/staff_profile.dart';
 import '../../services/admin_service.dart';
 import '../../theme/danji_colors.dart';
 import '../../theme/danji_theme.dart';
 import '../../widgets/danji_app_bar.dart';
+import '../../widgets/kakao_address_field.dart';
 
 /// 관리자 — 단지 사업자 정보 (complexes)
 class AdminComplexInfoScreen extends StatefulWidget {
@@ -18,6 +22,7 @@ class AdminComplexInfoScreen extends StatefulWidget {
 
 class _AdminComplexInfoScreenState extends State<AdminComplexInfoScreen> {
   final _admin = AdminService();
+  final _picker = ImagePicker();
   final _businessName = TextEditingController();
   final _registrationNumber = TextEditingController();
   final _address = TextEditingController();
@@ -29,6 +34,9 @@ class _AdminComplexInfoScreenState extends State<AdminComplexInfoScreen> {
   bool _saving = false;
   String? _loadError;
   String? _saveError;
+  String? _licenseDisplayUrl;
+  XFile? _pendingLicenseImage;
+  Uint8List? _pendingLicenseBytes;
 
   @override
   void initState() {
@@ -53,10 +61,15 @@ class _AdminComplexInfoScreenState extends State<AdminComplexInfoScreen> {
     });
     try {
       final info = await _admin.fetchComplexBusinessInfo();
+      final displayUrl =
+          await _admin.resolveBusinessLicenseDisplayUrl(info.businessLicenseUrl);
       _applyToForm(info);
       if (!mounted) return;
       setState(() {
         _info = info;
+        _licenseDisplayUrl = displayUrl;
+        _pendingLicenseImage = null;
+        _pendingLicenseBytes = null;
         _loadingPage = false;
       });
     } catch (e) {
@@ -76,6 +89,55 @@ class _AdminComplexInfoScreenState extends State<AdminComplexInfoScreen> {
     _phone.text = info.businessPhone ?? '';
   }
 
+  Future<void> _pickBusinessLicense() async {
+    final picked = await _picker.pickImage(
+      source: ImageSource.gallery,
+      imageQuality: 85,
+    );
+    if (picked == null) return;
+
+    final bytes = await picked.readAsBytes();
+    if (!mounted) return;
+    setState(() {
+      _pendingLicenseImage = picked;
+      _pendingLicenseBytes = bytes;
+      _licenseDisplayUrl = null;
+    });
+  }
+
+  void _openLicenseFullScreen() {
+    if (_pendingLicenseBytes != null) {
+      _showLicenseViewer(Image.memory(_pendingLicenseBytes!, fit: BoxFit.contain));
+      return;
+    }
+    final url = _licenseDisplayUrl;
+    if (url == null || url.isEmpty) return;
+    _showLicenseViewer(Image.network(url, fit: BoxFit.contain));
+  }
+
+  void _showLicenseViewer(Widget image) {
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        fullscreenDialog: true,
+        builder: (ctx) => Scaffold(
+          backgroundColor: Colors.black,
+          appBar: AppBar(
+            backgroundColor: Colors.black,
+            foregroundColor: Colors.white,
+            title: const Text('사업자등록증'),
+          ),
+          body: Center(
+            child: InteractiveViewer(
+              minScale: 0.5,
+              maxScale: 4,
+              child: image,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
   Future<void> _submit() async {
     setState(() {
       _saving = true;
@@ -84,6 +146,15 @@ class _AdminComplexInfoScreenState extends State<AdminComplexInfoScreen> {
 
     try {
       final complexId = _info?.complexId ?? widget.profile.complexId;
+      var licenseUrl = _info?.businessLicenseUrl;
+
+      if (_pendingLicenseImage != null) {
+        licenseUrl = await _admin.uploadBusinessLicense(
+          complexId: complexId,
+          image: _pendingLicenseImage!,
+        );
+      }
+
       final updated = await _admin.updateComplexBusinessInfo(
         AdminComplexBusinessInfo(
           complexId: complexId,
@@ -93,11 +164,22 @@ class _AdminComplexInfoScreenState extends State<AdminComplexInfoScreen> {
           businessAddress: _address.text.trim(),
           businessRepresentative: _representative.text.trim(),
           businessPhone: _phone.text.trim(),
+          businessLicenseUrl: licenseUrl,
         ),
       );
+
+      final displayUrl = await _admin.resolveBusinessLicenseDisplayUrl(
+        updated.businessLicenseUrl,
+      );
+
       if (!mounted) return;
       _applyToForm(updated);
-      setState(() => _info = updated);
+      setState(() {
+        _info = updated;
+        _licenseDisplayUrl = displayUrl;
+        _pendingLicenseImage = null;
+        _pendingLicenseBytes = null;
+      });
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('단지 정보가 저장되었습니다.')),
       );
@@ -106,6 +188,93 @@ class _AdminComplexInfoScreenState extends State<AdminComplexInfoScreen> {
     } finally {
       if (mounted) setState(() => _saving = false);
     }
+  }
+
+  Widget _buildBusinessLicenseSection() {
+    final hasPreview =
+        _pendingLicenseBytes != null ||
+        (_licenseDisplayUrl != null && _licenseDisplayUrl!.isNotEmpty);
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text(
+          '사업자등록증',
+          style: TextStyle(
+            color: DanjiColors.textPrimary,
+            fontWeight: FontWeight.w700,
+            fontSize: 16,
+          ),
+        ),
+        const SizedBox(height: 4),
+        const Text(
+          '단지 사업자 확인용 서류입니다.',
+          style: TextStyle(
+            color: DanjiColors.textSecondary,
+            fontSize: 13,
+            height: 1.4,
+          ),
+        ),
+        const SizedBox(height: 12),
+        if (hasPreview)
+          GestureDetector(
+            onTap: _openLicenseFullScreen,
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(12),
+              child: Container(
+                width: double.infinity,
+                height: 180,
+                color: DanjiColors.skyLight,
+                child: _pendingLicenseBytes != null
+                    ? Image.memory(
+                        _pendingLicenseBytes!,
+                        fit: BoxFit.cover,
+                      )
+                    : Image.network(
+                        _licenseDisplayUrl!,
+                        fit: BoxFit.cover,
+                        errorBuilder: (_, __, ___) => const Center(
+                          child: Icon(
+                            Icons.broken_image_outlined,
+                            color: DanjiColors.textSecondary,
+                            size: 40,
+                          ),
+                        ),
+                      ),
+              ),
+            ),
+          )
+        else
+          Container(
+            width: double.infinity,
+            height: 120,
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              color: DanjiColors.skyLight,
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: DanjiColors.border),
+            ),
+            child: const Text(
+              '등록된 사업자등록증이 없습니다.',
+              style: TextStyle(color: DanjiColors.textSecondary),
+            ),
+          ),
+        const SizedBox(height: 10),
+        OutlinedButton.icon(
+          onPressed: _saving ? null : _pickBusinessLicense,
+          icon: const Icon(Icons.photo_library_outlined, size: 20),
+          label: Text(hasPreview ? '사진 변경' : '사진 등록'),
+          style: OutlinedButton.styleFrom(
+            foregroundColor: DanjiColors.brandBlue,
+            side: const BorderSide(color: DanjiColors.brandBlue),
+            minimumSize: const Size.fromHeight(44),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(12),
+            ),
+          ),
+        ),
+      ],
+    );
   }
 
   @override
@@ -165,11 +334,18 @@ class _AdminComplexInfoScreenState extends State<AdminComplexInfoScreen> {
                       keyboard: TextInputType.text,
                     ),
                     const SizedBox(height: 12),
-                    _field(
-                      '사업장 주소',
-                      _address,
-                      hint: '서울특별시 ...',
+                    KakaoAddressField(
+                      controller: _address,
                       maxLines: 2,
+                      decoration: InputDecoration(
+                        labelText: '사업장 주소',
+                        hintText: '탭하여 주소 검색',
+                        filled: true,
+                        fillColor: DanjiColors.skyLight,
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(14),
+                        ),
+                      ),
                     ),
                     const SizedBox(height: 12),
                     _field('대표자명', _representative, hint: '홍길동'),
@@ -180,6 +356,8 @@ class _AdminComplexInfoScreenState extends State<AdminComplexInfoScreen> {
                       hint: '02-1234-5678',
                       keyboard: TextInputType.phone,
                     ),
+                    const SizedBox(height: 20),
+                    _buildBusinessLicenseSection(),
                     if (_saveError != null) ...[
                       const SizedBox(height: 12),
                       Text(

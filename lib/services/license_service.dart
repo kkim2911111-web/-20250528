@@ -6,6 +6,7 @@ import 'package:image_picker/image_picker.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../supabase_client.dart';
+import 'push_notification_service.dart';
 import '../utils/license_ocr_parser.dart';
 
 class LicenseOcrResult {
@@ -114,6 +115,17 @@ class LicenseService {
       'p_license_expiry': licenseExpiry.trim(),
       'p_license_photo_url': photoPath,
     });
+
+    final resident = await supabase
+        .from('residents')
+        .select('complex_id')
+        .eq('user_id', supabase.auth.currentUser!.id)
+        .maybeSingle();
+    final complexId = resident?['complex_id']?.toString();
+    if (complexId != null && complexId.isNotEmpty) {
+      await PushNotificationService.instance
+          .staffLicenseReviewRequest(complexId: complexId);
+    }
   }
 
   Future<bool> isLicenseVerified() async {

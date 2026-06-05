@@ -1,4 +1,5 @@
 import { SupabaseClient } from 'https://esm.sh/@supabase/supabase-js@2.49.1';
+import { dispatchPushScenario, resolveComplexId } from './push_scenarios.ts';
 import { cancelTossPayment } from './toss.ts';
 import { paymentOrderCancelledUpdate } from './payment_order_status.ts';
 
@@ -16,7 +17,7 @@ export async function cancelReservationForUser(params: {
   const { data: reservation, error: reservationError } = await admin
     .from('reservations')
     .select(
-      'id, status, start_at, start_time, payment_key, payment_status, total_price, order_id',
+      'id, status, start_at, start_time, payment_key, payment_status, total_price, order_id, vehicle_id, vehicles(model_name, name, complex_id)',
     )
     .eq('id', id)
     .eq('user_id', userId)
@@ -73,6 +74,40 @@ export async function cancelReservationForUser(params: {
       .update(paymentOrderCancelledUpdate())
       .eq('order_id', reservation.order_id)
       .eq('user_id', userId);
+  }
+
+  const vehicleRaw = reservation.vehicles as {
+    model_name?: string;
+    name?: string;
+    complex_id?: string;
+  } | null;
+  const vehicleName =
+    vehicleRaw?.model_name?.trim() || vehicleRaw?.name?.trim() || '차량';
+
+  try {
+    await dispatchPushScenario({
+      admin,
+      scenario: 'customer_reservation_cancelled',
+      payload: {
+        userId,
+        reservationId: id,
+        vehicleName,
+      },
+    });
+    const complexId = await resolveComplexId(admin, {
+      reservationId: id,
+      userId,
+      vehicleName,
+    });
+    if (complexId) {
+      await dispatchPushScenario({
+        admin,
+        scenario: 'staff_reservation_cancelled',
+        payload: { complexId, reservationId: id, vehicleName },
+      });
+    }
+  } catch (pushErr) {
+    console.error('cancel push failed:', pushErr);
   }
 
   return {

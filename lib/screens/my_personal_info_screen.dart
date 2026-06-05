@@ -5,6 +5,7 @@ import '../models/my_page_profile.dart';
 import '../services/my_page_service.dart';
 import '../theme/danji_colors.dart';
 import '../widgets/danji_app_bar.dart';
+import '../widgets/kakao_address_field.dart';
 
 /// 마이페이지 → 개인정보 수정 (상세 필드는 이 화면에서만 노출)
 class MyPersonalInfoScreen extends StatefulWidget {
@@ -103,7 +104,30 @@ class _MyPersonalInfoScreenState extends State<MyPersonalInfoScreen> {
             child: _readOnly(widget.profile.email ?? '-'),
           ),
           _Field(label: 'SNS 로그인 연동', child: _readOnly(snsLabel)),
-          _Field(label: '주소', child: _input(_address)),
+          _Field(
+            label: '주소',
+            child: KakaoAddressField(
+              controller: _address,
+              decoration: InputDecoration(
+                filled: true,
+                fillColor: DanjiColors.surface,
+                hintText: '탭하여 주소 검색',
+                contentPadding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 16,
+                ),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide: BorderSide.none,
+                ),
+              ),
+              textStyle: const TextStyle(
+                color: DanjiColors.textPrimary,
+                fontSize: 16,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ),
           if (_error != null) ...[
             const SizedBox(height: 8),
             Text(

@@ -4,6 +4,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'supabase_client.dart';
 import 'services/my_page_service.dart';
+import 'services/push_notification_service.dart';
 import 'theme/danji_colors.dart';
 import 'utils/network_retry.dart';
 import 'widgets/danji_app_bar.dart';
@@ -275,6 +276,8 @@ class _ResidentProfileScreenState extends State<ResidentProfileScreen> {
     try {
       await _repo.upsertMyProfile(complexId: complexId, building: b, unit: u);
       await _myPage.markResidentVerificationRequested();
+      await PushNotificationService.instance
+          .staffResidentReviewRequest(complexId: complexId);
 
       if (!mounted) return;
       setState(() => _verificationRequested = true);

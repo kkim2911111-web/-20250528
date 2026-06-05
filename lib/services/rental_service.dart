@@ -10,6 +10,7 @@ import '../models/vehicle.dart';
 import '../supabase_client.dart';
 import 'payment_service.dart';
 import 'reservation_refresh_bus.dart';
+import 'push_notification_service.dart';
 import 'reservation_service.dart';
 
 class RentalException implements Exception {
@@ -578,7 +579,12 @@ contract_content
       });
       await _assertReservationInUse(reservationId);
       RentalService.signalListRefresh();
-      return _asMap(data);
+      final result = _asMap(data);
+      try {
+        final reservation = await fetchReservation(reservationId);
+        await _notifyRentalStarted(reservation);
+      } catch (_) {}
+      return result;
     } on PostgrestException catch (e) {
       rpcError = e;
       if (!_shouldFallbackStartRental(e)) {
@@ -593,6 +599,10 @@ contract_content
       );
       await _assertReservationInUse(reservationId);
       RentalService.signalListRefresh();
+      try {
+        final reservation = await fetchReservation(reservationId);
+        await _notifyRentalStarted(reservation);
+      } catch (_) {}
       return result;
     } on PostgrestException catch (e) {
       throw RentalException(friendlyStartRentalError(e));
@@ -754,11 +764,60 @@ contract_content
     );
   }
 
+  Future<void> _notifyReservationCancelled(Reservation reservation) async {
+    final user = supabase.auth.currentUser;
+    final vehicle = reservation.vehicle;
+    if (user == null || vehicle == null || vehicle.complexId.isEmpty) return;
+
+    final push = PushNotificationService.instance;
+    await push.customerReservationCancelled(
+      userId: user.id,
+      reservationId: reservation.id,
+      vehicleName: vehicle.name,
+    );
+    await push.staffReservationCancelled(
+      complexId: vehicle.complexId,
+      reservationId: reservation.id,
+      vehicleName: vehicle.name,
+    );
+  }
+
+  Future<void> _notifyRentalStarted(Reservation reservation) async {
+    final vehicle = reservation.vehicle;
+    if (vehicle == null || vehicle.complexId.isEmpty) return;
+    final profile = await supabase
+        .from('user_profiles')
+        .select('full_name')
+        .eq('user_id', reservation.userId)
+        .maybeSingle();
+    await PushNotificationService.instance.staffRentalStarted(
+      complexId: vehicle.complexId,
+      reservationId: reservation.id,
+      vehicleName: vehicle.name,
+      renterName: profile?['full_name']?.toString(),
+    );
+  }
+
+  Future<void> _notifyReturnCompleted(Reservation reservation) async {
+    final vehicle = reservation.vehicle;
+    if (vehicle == null || vehicle.complexId.isEmpty) return;
+    await PushNotificationService.instance.staffReturnCompleted(
+      complexId: vehicle.complexId,
+      reservationId: reservation.id,
+      vehicleName: vehicle.name,
+    );
+  }
+
   Future<Map<String, dynamic>> cancelReservation(String reservationId) async {
     final user = supabase.auth.currentUser;
     if (user == null) {
       throw const AuthException('로그인이 필요합니다.');
     }
+
+    Reservation? cancelledReservation;
+    try {
+      cancelledReservation = await fetchReservation(reservationId);
+    } catch (_) {}
 
     Object? lastError;
     try {
@@ -778,7 +837,11 @@ contract_content
     }
 
     try {
-      return await _cancelReservationDirect(reservationId);
+      final result = await _cancelReservationDirect(reservationId);
+      if (cancelledReservation != null) {
+        await _notifyReservationCancelled(cancelledReservation!);
+      }
+      return result;
     } catch (e) {
       if (e is RentalException) rethrow;
       final fallback = friendlyPaymentError(e);
@@ -1119,7 +1182,12 @@ contract_content
       await _assertReservationReturnCompleted(reservationId);
       await _grantReservationPointsAfterReturn(reservationId);
       RentalService.signalListRefresh();
-      return _asMap(data);
+      final result = _asMap(data);
+      try {
+        final reservation = await fetchReservation(reservationId);
+        await _notifyReturnCompleted(reservation);
+      } catch (_) {}
+      return result;
     } on PostgrestException catch (e) {
       if (_shouldFallbackCompleteRental(e)) {
         await _persistReturnComplete(
@@ -1134,6 +1202,10 @@ contract_content
         );
         await _grantReservationPointsAfterReturn(reservationId);
         RentalService.signalListRefresh();
+        try {
+          final reservation = await fetchReservation(reservationId);
+          await _notifyReturnCompleted(reservation);
+        } catch (_) {}
         return {
           'reservationId': reservationId,
           'status': 'completed',

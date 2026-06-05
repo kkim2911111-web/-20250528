@@ -572,7 +572,19 @@ class _EmailLoginScreenState extends State<EmailLoginScreen> {
                             : const Text('로그인'),
                       ),
                     ),
-                    const SizedBox(height: 10),
+                    const SizedBox(height: 6),
+                    TextButton(
+                      onPressed: _loading
+                          ? null
+                          : () {
+                              Navigator.of(context).push(
+                                MaterialPageRoute(
+                                  builder: (_) => const ForgotPasswordScreen(),
+                                ),
+                              );
+                            },
+                      child: const Text('비밀번호 찾기'),
+                    ),
                     TextButton(
                       onPressed: _loading
                           ? null
@@ -596,20 +608,186 @@ class _EmailLoginScreenState extends State<EmailLoginScreen> {
   }
 
   InputDecoration _inputDecoration(String label) {
-    return InputDecoration(
-      labelText: label,
-      labelStyle: const TextStyle(color: DanjiColors.textSecondary),
-      filled: true,
-      fillColor: DanjiColors.skyLight,
-      border: OutlineInputBorder(borderRadius: BorderRadius.circular(14)),
-      enabledBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(14),
-        borderSide: const BorderSide(color: DanjiColors.border),
+    return _authInputDecoration(label);
+  }
+}
+
+InputDecoration _authInputDecoration(String label) {
+  return InputDecoration(
+    labelText: label,
+    labelStyle: const TextStyle(color: DanjiColors.textSecondary),
+    filled: true,
+    fillColor: DanjiColors.skyLight,
+    border: OutlineInputBorder(borderRadius: BorderRadius.circular(14)),
+    enabledBorder: OutlineInputBorder(
+      borderRadius: BorderRadius.circular(14),
+      borderSide: const BorderSide(color: DanjiColors.border),
+    ),
+    focusedBorder: OutlineInputBorder(
+      borderRadius: BorderRadius.circular(14),
+      borderSide: const BorderSide(color: DanjiColors.buttonBlue, width: 1.5),
+    ),
+  );
+}
+
+class ForgotPasswordScreen extends StatefulWidget {
+  const ForgotPasswordScreen({super.key});
+
+  @override
+  State<ForgotPasswordScreen> createState() => _ForgotPasswordScreenState();
+}
+
+class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
+  final _auth = AuthService();
+  final _email = TextEditingController();
+  bool _loading = false;
+  bool _sent = false;
+  String? _error;
+
+  @override
+  void dispose() {
+    _email.dispose();
+    super.dispose();
+  }
+
+  Future<void> _submit() async {
+    final email = _email.text.trim();
+
+    if (email.isEmpty) {
+      setState(() => _error = '이메일을 입력해주세요.');
+      return;
+    }
+
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
+
+    try {
+      await _auth.resetPasswordForEmail(email: email);
+      if (!mounted) return;
+      setState(() => _sent = true);
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _error = friendlyAuthError(e));
+    } finally {
+      if (mounted) setState(() => _loading = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: DanjiColors.background,
+      appBar: const DanjiAppBar(title: '비밀번호 찾기'),
+      body: SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.all(20),
+          child: Center(
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 420),
+              child: Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: DanjiColors.surface,
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(color: DanjiColors.border),
+                ),
+                child: _sent ? _buildSuccess() : _buildForm(),
+              ),
+            ),
+          ),
+        ),
       ),
-      focusedBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(14),
-        borderSide: const BorderSide(color: DanjiColors.buttonBlue, width: 1.5),
-      ),
+    );
+  }
+
+  Widget _buildSuccess() {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        const Icon(
+          Icons.mark_email_read_outlined,
+          size: 48,
+          color: DanjiColors.buttonBlue,
+        ),
+        const SizedBox(height: 16),
+        const Text(
+          '이메일을 확인해주세요',
+          textAlign: TextAlign.center,
+          style: TextStyle(
+            color: DanjiColors.textPrimary,
+            fontWeight: FontWeight.w800,
+            fontSize: 18,
+          ),
+        ),
+        const SizedBox(height: 8),
+        Text(
+          '${_email.text.trim()}로 비밀번호 재설정 링크를 보냈습니다.',
+          textAlign: TextAlign.center,
+          style: const TextStyle(
+            color: DanjiColors.textSecondary,
+            height: 1.5,
+          ),
+        ),
+        const SizedBox(height: 20),
+        SizedBox(
+          width: double.infinity,
+          height: 52,
+          child: FilledButton(
+            onPressed: () => Navigator.of(context).pop(),
+            style: DanjiTheme.primaryButton,
+            child: const Text('로그인으로 돌아가기'),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildForm() {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        const Text(
+          '가입한 이메일을 입력하시면\n비밀번호 재설정 링크를 보내드립니다.',
+          style: TextStyle(
+            color: DanjiColors.textSecondary,
+            height: 1.5,
+          ),
+        ),
+        const SizedBox(height: 16),
+        TextField(
+          controller: _email,
+          keyboardType: TextInputType.emailAddress,
+          autofillHints: const [AutofillHints.email],
+          style: const TextStyle(color: DanjiColors.textPrimary),
+          decoration: _authInputDecoration('이메일'),
+        ),
+        const SizedBox(height: 14),
+        if (_error != null)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 10),
+            child: Text(
+              _error!,
+              style: const TextStyle(color: DanjiColors.accentRed),
+            ),
+          ),
+        SizedBox(
+          height: 52,
+          child: FilledButton(
+            onPressed: _loading ? null : _submit,
+            style: DanjiTheme.primaryButton,
+            child: _loading
+                ? const SizedBox(
+                    height: 18,
+                    width: 18,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : const Text('재설정 링크 보내기'),
+          ),
+        ),
+      ],
     );
   }
 }

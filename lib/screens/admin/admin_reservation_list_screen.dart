@@ -3,10 +3,21 @@ import 'package:intl/intl.dart';
 
 import '../../services/admin_service.dart';
 import '../../theme/danji_colors.dart';
+import '../../utils/danji_snackbar.dart';
 import '../../widgets/danji_app_bar.dart';
 import '../../widgets/section_card.dart';
 
-enum _ReservationFilter { all, inUse, waiting, conflict }
+enum _ReservationFilter { all, inUse, waiting, conflict, completed }
+
+class _AdminReservationLists {
+  final List<Map<String, dynamic>> active;
+  final List<Map<String, dynamic>> completed;
+
+  const _AdminReservationLists({
+    required this.active,
+    required this.completed,
+  });
+}
 
 class AdminReservationListScreen extends StatefulWidget {
   const AdminReservationListScreen({super.key});
@@ -21,9 +32,10 @@ class _AdminReservationListScreenState
   final _admin = AdminService();
   final _dateTime = DateFormat('yyyy-MM-dd HH:mm');
   final _timeOnly = DateFormat('HH:mm');
+  final _won = NumberFormat('#,###');
 
   _ReservationFilter _filter = _ReservationFilter.all;
-  Future<List<Map<String, dynamic>>>? _future;
+  Future<_AdminReservationLists>? _future;
 
   @override
   void initState() {
@@ -33,14 +45,33 @@ class _AdminReservationListScreenState
 
   void _reload() {
     setState(() {
-      _future = _admin.getAdminReservationsWithConflict();
+      _future = _load();
     });
   }
 
-  List<Map<String, dynamic>> _applyFilter(List<Map<String, dynamic>> rows) {
+  Future<_AdminReservationLists> _load() async {
+    final results = await Future.wait([
+      _admin.getAdminReservationsWithConflict(),
+      _admin.getAdminCompletedReservations(),
+    ]);
+    return _AdminReservationLists(
+      active: results[0],
+      completed: results[1],
+    );
+  }
+
+  List<Map<String, dynamic>> _applyFilter(_AdminReservationLists data) {
+    if (_filter == _ReservationFilter.completed) {
+      return data.completed;
+    }
+
+    final rows = data.active;
     switch (_filter) {
       case _ReservationFilter.inUse:
-        return rows.where((r) => _status(r) == 'in_use').toList();
+        return rows.where((r) {
+          final s = _status(r);
+          return s == 'in_use' || s == 'returning';
+        }).toList();
       case _ReservationFilter.waiting:
         return rows
             .where((r) {
@@ -51,7 +82,42 @@ class _AdminReservationListScreenState
       case _ReservationFilter.conflict:
         return rows.where((r) => _isConflictRisk(r)).toList();
       case _ReservationFilter.all:
+      case _ReservationFilter.completed:
         return rows;
+    }
+  }
+
+  Future<void> _confirmForceComplete(Map<String, dynamic> row) async {
+    final id = _reservationId(row);
+    if (id == null) return;
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('강제 완료'),
+        content: const Text('이 예약을 강제 완료 처리하시겠습니까?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('취소'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('확인'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+
+    try {
+      await _admin.forceCompleteReservation(id);
+      if (!mounted) return;
+      DanjiSnackBar.show(context, '강제 완료 처리되었습니다');
+      _reload();
+    } catch (e) {
+      if (!mounted) return;
+      DanjiSnackBar.show(context, friendlyAdminError(e));
     }
   }
 
@@ -72,18 +138,19 @@ class _AdminReservationListScreenState
                   _FilterChip(
                     label: '전체',
                     selected: _filter == _ReservationFilter.all,
-                    onTap: () => setState(() => _filter = _ReservationFilter.all),
+                    onTap: () =>
+                        setState(() => _filter = _ReservationFilter.all),
                   ),
                   const SizedBox(width: 8),
                   _FilterChip(
-                    label: '대여중',
+                    label: '진행중',
                     selected: _filter == _ReservationFilter.inUse,
                     onTap: () =>
                         setState(() => _filter = _ReservationFilter.inUse),
                   ),
                   const SizedBox(width: 8),
                   _FilterChip(
-                    label: '이용대기',
+                    label: '예정',
                     selected: _filter == _ReservationFilter.waiting,
                     onTap: () =>
                         setState(() => _filter = _ReservationFilter.waiting),
@@ -95,6 +162,13 @@ class _AdminReservationListScreenState
                     onTap: () =>
                         setState(() => _filter = _ReservationFilter.conflict),
                   ),
+                  const SizedBox(width: 8),
+                  _FilterChip(
+                    label: '완료',
+                    selected: _filter == _ReservationFilter.completed,
+                    onTap: () =>
+                        setState(() => _filter = _ReservationFilter.completed),
+                  ),
                 ],
               ),
             ),
@@ -103,7 +177,7 @@ class _AdminReservationListScreenState
             child: RefreshIndicator(
               color: DanjiColors.buttonBlue,
               onRefresh: () async => _reload(),
-              child: FutureBuilder<List<Map<String, dynamic>>>(
+              child: FutureBuilder<_AdminReservationLists>(
                 future: _future,
                 builder: (context, snap) {
                   if (snap.connectionState == ConnectionState.waiting) {
@@ -124,7 +198,7 @@ class _AdminReservationListScreenState
                       ],
                     );
                   }
-                  final filtered = _applyFilter(snap.data ?? []);
+                  final filtered = _applyFilter(snap.data!);
                   if (filtered.isEmpty) {
                     return ListView(
                       physics: const AlwaysScrollableScrollPhysics(),
@@ -134,16 +208,29 @@ class _AdminReservationListScreenState
                       ],
                     );
                   }
+                  final isCompletedTab =
+                      _filter == _ReservationFilter.completed;
+
                   return ListView.separated(
                     physics: const AlwaysScrollableScrollPhysics(),
                     padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
                     itemCount: filtered.length,
                     separatorBuilder: (_, __) => const SizedBox(height: 10),
                     itemBuilder: (context, index) {
+                      final row = filtered[index];
+                      if (isCompletedTab) {
+                        return _CompletedReservationCard(
+                          row: row,
+                          dateTime: _dateTime,
+                          won: _won,
+                        );
+                      }
                       return _ReservationCard(
-                        row: filtered[index],
+                        row: row,
                         dateTime: _dateTime,
                         timeOnly: _timeOnly,
+                        showForceComplete: _isStuckReservation(row),
+                        onForceComplete: () => _confirmForceComplete(row),
                       );
                     },
                   );
@@ -197,15 +284,103 @@ class _FilterChip extends StatelessWidget {
   }
 }
 
+class _CompletedReservationCard extends StatelessWidget {
+  final Map<String, dynamic> row;
+  final DateFormat dateTime;
+  final NumberFormat won;
+
+  const _CompletedReservationCard({
+    required this.row,
+    required this.dateTime,
+    required this.won,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final vehicleName = _str(row, 'vehicle_name') ?? '차량';
+    final renterName = _str(row, 'renter_name') ?? '임차인';
+    final status = _status(row);
+    final start = _parseDate(row['start_at']);
+    final end = _parseDate(row['end_at']);
+    final totalPrice = (row['total_price'] as num?)?.toInt() ?? 0;
+
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: SectionCard.cardColor,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: DanjiColors.border),
+        boxShadow: const [
+          BoxShadow(
+            color: Color(0x0A000000),
+            blurRadius: 8,
+            offset: Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(
+                child: Text(
+                  vehicleName,
+                  style: const TextStyle(
+                    fontWeight: FontWeight.w800,
+                    fontSize: 16,
+                    color: DanjiColors.textPrimary,
+                  ),
+                ),
+              ),
+              _StatusBadge(status: status),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Text(
+            '임차인: $renterName',
+            style: const TextStyle(
+              color: DanjiColors.textSecondary,
+              height: 1.4,
+            ),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            '대여기간: ${start != null ? dateTime.format(start) : '-'} ~ '
+            '${end != null ? dateTime.format(end) : '-'}',
+            style: const TextStyle(
+              color: DanjiColors.textSecondary,
+              height: 1.4,
+            ),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            '금액: ₩${won.format(totalPrice)}',
+            style: const TextStyle(
+              color: DanjiColors.textPrimary,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 class _ReservationCard extends StatelessWidget {
   final Map<String, dynamic> row;
   final DateFormat dateTime;
   final DateFormat timeOnly;
+  final bool showForceComplete;
+  final VoidCallback? onForceComplete;
 
   const _ReservationCard({
     required this.row,
     required this.dateTime,
     required this.timeOnly,
+    this.showForceComplete = false,
+    this.onForceComplete,
   });
 
   @override
@@ -238,67 +413,81 @@ class _ReservationCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Expanded(
-                  child: Text(
-                    vehicleName,
-                    style: const TextStyle(
-                      fontWeight: FontWeight.w800,
-                      fontSize: 16,
-                      color: DanjiColors.textPrimary,
-                    ),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(
+                child: Text(
+                  vehicleName,
+                  style: const TextStyle(
+                    fontWeight: FontWeight.w800,
+                    fontSize: 16,
+                    color: DanjiColors.textPrimary,
                   ),
                 ),
-                _StatusBadge(status: status),
-              ],
-            ),
-            if (carNumber != null && carNumber.isNotEmpty) ...[
-              const SizedBox(height: 4),
-              Text(
-                carNumber,
-                style: const TextStyle(color: DanjiColors.textSecondary),
               ),
+              _StatusBadge(status: status),
             ],
-            const SizedBox(height: 8),
+          ),
+          if (carNumber != null && carNumber.isNotEmpty) ...[
+            const SizedBox(height: 4),
             Text(
-              '${start != null ? dateTime.format(start) : '-'} ~ '
-              '${end != null ? dateTime.format(end) : '-'}',
+              carNumber,
+              style: const TextStyle(color: DanjiColors.textSecondary),
+            ),
+          ],
+          const SizedBox(height: 8),
+          Text(
+            '${start != null ? dateTime.format(start) : '-'} ~ '
+            '${end != null ? dateTime.format(end) : '-'}',
+            style: const TextStyle(
+              color: DanjiColors.textSecondary,
+              height: 1.4,
+            ),
+          ),
+          if (nextStart != null) ...[
+            const SizedBox(height: 6),
+            Text(
+              '다음예약: ${timeOnly.format(nextStart)}',
               style: const TextStyle(
                 color: DanjiColors.textSecondary,
-                height: 1.4,
+                fontSize: 13,
               ),
             ),
-            if (nextStart != null) ...[
-              const SizedBox(height: 6),
-              Text(
-                '다음예약: ${timeOnly.format(nextStart)}',
-                style: const TextStyle(
-                  color: DanjiColors.textSecondary,
+          ],
+          if (conflict) ...[
+            const SizedBox(height: 10),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+              decoration: BoxDecoration(
+                color: const Color(0xFFFFF0F0),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: const Text(
+                '⚠️ 충돌위험',
+                style: TextStyle(
+                  color: DanjiColors.accentRed,
+                  fontWeight: FontWeight.w800,
                   fontSize: 13,
                 ),
               ),
-            ],
-            if (conflict) ...[
-              const SizedBox(height: 10),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                decoration: BoxDecoration(
-                  color: const Color(0xFFFFF0F0),
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: const Text(
-                  '⚠️ 충돌위험',
-                  style: TextStyle(
-                    color: DanjiColors.accentRed,
-                    fontWeight: FontWeight.w800,
-                    fontSize: 13,
-                  ),
-                ),
-              ),
-            ],
+            ),
           ],
+          if (showForceComplete && onForceComplete != null) ...[
+            const SizedBox(height: 12),
+            Align(
+              alignment: Alignment.centerRight,
+              child: OutlinedButton(
+                onPressed: onForceComplete,
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: DanjiColors.accentRed,
+                  side: const BorderSide(color: DanjiColors.accentRed),
+                ),
+                child: const Text('강제 완료'),
+              ),
+            ),
+          ],
+        ],
       ),
     );
   }
@@ -333,10 +522,18 @@ class _StatusBadge extends StatelessWidget {
     switch (status) {
       case 'in_use':
         return ('대여중', const Color(0xFFFFF3E0), const Color(0xFFFB8C00));
+      case 'returning':
+        return ('반납중', const Color(0xFFFFF8E1), const Color(0xFFF9A825));
+      case 'returned':
+        return ('반납완료', const Color(0xFFE8F5E9), const Color(0xFF43A047));
       case 'confirmed':
         return ('이용대기', DanjiColors.skyLight, DanjiColors.buttonBlue);
       case 'pending':
         return ('대기', const Color(0xFFF2F4F6), DanjiColors.textSecondary);
+      case 'completed':
+        return ('완료', const Color(0xFFE8F5E9), const Color(0xFF2E7D32));
+      case 'cancelled':
+        return ('취소', const Color(0xFFF2F4F6), DanjiColors.textSecondary);
       default:
         return (status, const Color(0xFFF2F4F6), DanjiColors.textSecondary);
     }
@@ -350,12 +547,29 @@ String? _str(Map<String, dynamic> row, String key) {
   return s.isEmpty ? null : s;
 }
 
+String? _reservationId(Map<String, dynamic> row) =>
+    _str(row, 'reservation_id') ?? _str(row, 'id');
+
 String _status(Map<String, dynamic> row) =>
     _str(row, 'status')?.toLowerCase() ?? '';
 
 bool _isConflictRisk(Map<String, dynamic> row) {
   final v = row['is_conflict_risk'];
   return v == true || v == 'true' || v == 1;
+}
+
+bool _isStuckReservation(Map<String, dynamic> row) {
+  final status = _status(row);
+  if (status != 'in_use' && status != 'returning') {
+    return false;
+  }
+
+  final anchor = _parseDate(row['end_at']) ??
+      _parseDate(row['rental_started_at']) ??
+      _parseDate(row['updated_at']);
+  if (anchor == null) return false;
+
+  return DateTime.now().isAfter(anchor.add(const Duration(hours: 24)));
 }
 
 DateTime? _parseDate(Object? value) {

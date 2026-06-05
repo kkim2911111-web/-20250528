@@ -1,10 +1,13 @@
 import type { SupabaseClient } from 'https://esm.sh/@supabase/supabase-js@2.49.1';
+import { dispatchPushScenario } from './push_scenarios.ts';
 
 type ServiceAccount = {
   project_id: string;
   client_email: string;
   private_key: string;
 };
+
+export type FcmPushData = Record<string, string>;
 
 const RESERVATION_TITLE = '예약이 완료되었습니다 🚗';
 
@@ -55,13 +58,27 @@ async function getGoogleAccessToken(sa: ServiceAccount): Promise<string> {
   return data.access_token as string;
 }
 
+function stringData(data?: FcmPushData): Record<string, string> {
+  if (!data) return {};
+  const out: Record<string, string> = {};
+  for (const [k, v] of Object.entries(data)) {
+    if (v != null && String(v).length > 0) {
+      out[k] = String(v);
+    }
+  }
+  return out;
+}
+
 async function sendToToken(
   accessToken: string,
   projectId: string,
   token: string,
   title: string,
   body: string,
+  data?: FcmPushData,
 ): Promise<boolean> {
+  const payloadData = stringData(data);
+
   const res = await fetch(
     `https://fcm.googleapis.com/v1/projects/${projectId}/messages:send`,
     {
@@ -74,6 +91,22 @@ async function sendToToken(
         message: {
           token,
           notification: { title, body },
+          data: payloadData,
+          android: {
+            priority: 'HIGH',
+            notification: {
+              channel_id: 'danjicar_high_importance',
+              click_action: 'FLUTTER_NOTIFICATION_CLICK',
+            },
+          },
+          apns: {
+            payload: {
+              aps: {
+                sound: 'default',
+                'content-available': 1,
+              },
+            },
+          },
           webpush: {
             headers: { Urgency: 'high' },
             notification: {
@@ -94,49 +127,136 @@ async function sendToToken(
   return true;
 }
 
-export async function sendReservationCompletePush(params: {
-  admin: SupabaseClient;
-  userId: string;
-  vehicleName: string;
-}): Promise<{ sent: number; skipped?: boolean }> {
-  const sa = getServiceAccount();
-  if (!sa) {
-    console.warn('FCM skipped: FIREBASE_SERVICE_ACCOUNT_JSON not set');
-    return { sent: 0, skipped: true };
-  }
-
-  const vehicleName = params.vehicleName?.trim() || '차량';
-  const title = RESERVATION_TITLE;
-  const body = reservationBody(vehicleName);
-
-  const { data: rows, error } = await params.admin
+async function fetchUserTokens(
+  admin: SupabaseClient,
+  userId: string,
+): Promise<string[]> {
+  const { data: rows, error } = await admin
     .from('fcm_tokens')
     .select('token')
-    .eq('user_id', params.userId);
+    .eq('user_id', userId);
 
   if (error) {
     console.error('FCM token fetch failed:', error.message);
-    return { sent: 0 };
+    return [];
   }
 
-  if (!rows?.length) {
-    return { sent: 0 };
+  return (rows ?? [])
+    .map((row) => row.token as string)
+    .filter((t) => t && t.length > 0);
+}
+
+export async function sendPushToUser(params: {
+  admin: SupabaseClient;
+  userId: string;
+  title: string;
+  body: string;
+  data?: FcmPushData;
+}): Promise<{ sent: number; skipped?: boolean; tokens: number }> {
+  const sa = getServiceAccount();
+  if (!sa) {
+    console.warn('FCM skipped: FIREBASE_SERVICE_ACCOUNT_JSON not set');
+    return { sent: 0, skipped: true, tokens: 0 };
+  }
+
+  const tokens = await fetchUserTokens(params.admin, params.userId);
+  if (!tokens.length) {
+    return { sent: 0, tokens: 0 };
   }
 
   const accessToken = await getGoogleAccessToken(sa);
   let sent = 0;
 
-  for (const row of rows) {
-    if (!row.token) continue;
+  for (const token of tokens) {
     const ok = await sendToToken(
       accessToken,
       sa.project_id,
-      row.token,
-      title,
-      body,
+      token,
+      params.title,
+      params.body,
+      params.data,
     );
     if (ok) sent += 1;
   }
 
-  return { sent };
+  return { sent, tokens: tokens.length };
+}
+
+async function fetchComplexStaffUserIds(
+  admin: SupabaseClient,
+  complexId: string,
+): Promise<string[]> {
+  const { data, error } = await admin
+    .from('staff_users')
+    .select('user_id')
+    .eq('complex_id', complexId)
+    .eq('approved', true);
+
+  if (error) {
+    console.error('staff_users fetch failed:', error.message);
+    return [];
+  }
+
+  return (data ?? [])
+    .map((row) => row.user_id as string)
+    .filter((id) => id && id.length > 0);
+}
+
+export async function sendPushToComplexStaff(params: {
+  admin: SupabaseClient;
+  complexId: string;
+  title: string;
+  body: string;
+  data?: FcmPushData;
+}): Promise<{ sent: number; skipped?: boolean; staffCount: number }> {
+  const sa = getServiceAccount();
+  if (!sa) {
+    console.warn('FCM skipped: FIREBASE_SERVICE_ACCOUNT_JSON not set');
+    return { sent: 0, skipped: true, staffCount: 0 };
+  }
+
+  const staffIds = await fetchComplexStaffUserIds(params.admin, params.complexId);
+  if (!staffIds.length) {
+    return { sent: 0, staffCount: 0 };
+  }
+
+  const accessToken = await getGoogleAccessToken(sa);
+  let sent = 0;
+
+  for (const userId of staffIds) {
+    const tokens = await fetchUserTokens(params.admin, userId);
+    for (const token of tokens) {
+      const ok = await sendToToken(
+        accessToken,
+        sa.project_id,
+        token,
+        params.title,
+        params.body,
+        params.data,
+      );
+      if (ok) sent += 1;
+    }
+  }
+
+  return { sent, staffCount: staffIds.length };
+}
+
+/** @deprecated dispatchPushScenario('customer_payment_completed') 사용 */
+export async function sendReservationCompletePush(params: {
+  admin: SupabaseClient;
+  userId: string;
+  vehicleName: string;
+  reservationId?: string;
+}): Promise<{ sent: number; skipped?: boolean }> {
+  const customer = await dispatchPushScenario({
+    admin: params.admin,
+    scenario: 'customer_payment_completed',
+    payload: {
+      userId: params.userId,
+      vehicleName: params.vehicleName,
+      reservationId: params.reservationId ?? '',
+    },
+  });
+
+  return { sent: customer.customerSent, skipped: customer.skipped };
 }

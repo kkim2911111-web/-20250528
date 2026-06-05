@@ -1,11 +1,18 @@
+import 'dart:async';
+
+import 'package:firebase_core/firebase_core.dart';
+import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_web_plugins/url_strategy.dart';
 import 'package:intl/date_symbol_data_local.dart';
 
+import 'config/firebase_config.dart';
 import 'config/supabase_config.dart';
+import 'config/kakao_config.dart';
 import 'config/payment_config.dart';
 import 'routing/app_routes.dart';
+import 'services/fcm_navigation_service.dart';
 import 'services/fcm_service.dart';
 import 'services/supabase_bootstrap.dart';
 import 'supabase_client.dart';
@@ -13,24 +20,64 @@ import 'theme/danji_colors.dart';
 import 'theme/danji_theme.dart';
 import 'theme/danji_typography.dart';
 
-/// 시스템 글자 크기 설정과 무관하게 앱 UI 비율 유지 (textScaleFactor 1.0)
+/// 시스템 글자 크기 설정과 무관하게 앱 UI 비율 유지
 Widget _lockAppTextScale(BuildContext context, Widget? child) {
   final mq = MediaQuery.of(context);
   return MediaQuery(
-    data: mq.copyWith(textScaler: TextScaler.noScaling),
+    data: mq.copyWith(textScaler: const TextScaler.linear(1.0)),
     child: child ?? const SizedBox.shrink(),
   );
 }
 
-Future<void> main() async {
-  WidgetsFlutterBinding.ensureInitialized();
-  await SupabaseConfig.loadEnv();
-  PaymentConfig.logLoadedKey();
-  if (kIsWeb) {
-    usePathUrlStrategy();
-    captureLaunchUri();
+Future<void> _initializeFirebaseAndCrashlytics() async {
+  if (defaultTargetPlatform == TargetPlatform.android) {
+    await Firebase.initializeApp(options: FirebaseConfig.androidOptions);
+  } else {
+    await Firebase.initializeApp();
   }
-  runApp(const BootstrapApp());
+
+  await FirebaseCrashlytics.instance.setCrashlyticsCollectionEnabled(
+    !kDebugMode,
+  );
+
+  FlutterError.onError = (details) {
+    FlutterError.presentError(details);
+    FirebaseCrashlytics.instance.recordFlutterFatalError(details);
+  };
+
+  PlatformDispatcher.instance.onError = (error, stack) {
+    FirebaseCrashlytics.instance.recordError(error, stack, fatal: true);
+    return true;
+  };
+}
+
+Future<void> main() async {
+  await runZonedGuarded(() async {
+    WidgetsFlutterBinding.ensureInitialized();
+
+    if (!kIsWeb) {
+      try {
+        await _initializeFirebaseAndCrashlytics();
+      } catch (e, st) {
+        debugPrint('[crashlytics] init failed (non-fatal): $e\n$st');
+      }
+    }
+
+    await SupabaseConfig.loadEnv();
+    PaymentConfig.logLoadedKey();
+    KakaoConfig.logLoadedKey();
+    if (kIsWeb) {
+      usePathUrlStrategy();
+      captureLaunchUri();
+    }
+    runApp(const BootstrapApp());
+  }, (error, stack) {
+    if (!kIsWeb && Firebase.apps.isNotEmpty) {
+      FirebaseCrashlytics.instance.recordError(error, stack, fatal: true);
+    } else {
+      debugPrint('[uncaught] $error\n$stack');
+    }
+  });
 }
 
 /// Supabase 초기화 + 단일 MaterialApp (라우트 유지)
@@ -121,6 +168,8 @@ class _BootstrapAppState extends State<BootstrapApp> {
                 '서버 연결에 실패했습니다.\n네트워크 연결을 확인한 뒤 앱을 다시 실행해주세요.',
           );
 
+    FcmNavigationService.bindNavigator(_navKey);
+
     return MaterialApp(
       navigatorKey: _navKey,
       debugShowCheckedModeBanner: false,
@@ -179,29 +228,9 @@ class _BootstrapAppState extends State<BootstrapApp> {
           );
         }
 
-        if (_ready) {
-          _registerFcmForegroundOnce();
-        }
-
         return content;
       },
     );
-  }
-
-  bool _fcmForegroundRegistered = false;
-
-  void _registerFcmForegroundOnce() {
-    if (_fcmForegroundRegistered || !FcmService.instance.isSupported) return;
-    _fcmForegroundRegistered = true;
-    FcmService.instance.listenForegroundMessages((message) {
-      final title = message.notification?.title;
-      if (title == null) return;
-      final ctx = _navKey.currentContext;
-      if (ctx == null) return;
-      ScaffoldMessenger.of(ctx).showSnackBar(
-        SnackBar(content: Text(title)),
-      );
-    });
   }
 }
 

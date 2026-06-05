@@ -72,6 +72,7 @@ class AdminComplexBusinessInfo {
   final String? businessAddress;
   final String? businessRepresentative;
   final String? businessPhone;
+  final String? businessLicenseUrl;
 
   const AdminComplexBusinessInfo({
     required this.complexId,
@@ -81,6 +82,7 @@ class AdminComplexBusinessInfo {
     this.businessAddress,
     this.businessRepresentative,
     this.businessPhone,
+    this.businessLicenseUrl,
   });
 
   factory AdminComplexBusinessInfo.fromMap(Map<String, dynamic> map) {
@@ -93,6 +95,7 @@ class AdminComplexBusinessInfo {
       businessAddress: map['business_address']?.toString(),
       businessRepresentative: map['business_representative']?.toString(),
       businessPhone: map['business_phone']?.toString(),
+      businessLicenseUrl: map['business_license_url']?.toString(),
     );
   }
 
@@ -109,6 +112,7 @@ class AdminComplexBusinessInfo {
       'business_address': emptyToNull(businessAddress),
       'business_representative': emptyToNull(businessRepresentative),
       'business_phone': emptyToNull(businessPhone),
+      'business_license_url': emptyToNull(businessLicenseUrl),
     };
   }
 
@@ -118,6 +122,7 @@ class AdminComplexBusinessInfo {
     String? businessAddress,
     String? businessRepresentative,
     String? businessPhone,
+    String? businessLicenseUrl,
   }) {
     return AdminComplexBusinessInfo(
       complexId: complexId,
@@ -129,6 +134,7 @@ class AdminComplexBusinessInfo {
       businessRepresentative:
           businessRepresentative ?? this.businessRepresentative,
       businessPhone: businessPhone ?? this.businessPhone,
+      businessLicenseUrl: businessLicenseUrl ?? this.businessLicenseUrl,
     );
   }
 }
@@ -298,6 +304,10 @@ class AdminReservationRow {
   final String? carNumber;
   final bool isAccident;
   final String? accidentNote;
+  final List<String> pickupPhotos;
+  final List<String> returnPhotos;
+  final String? renterName;
+  final String? contractContent;
 
   const AdminReservationRow({
     required this.id,
@@ -309,12 +319,49 @@ class AdminReservationRow {
     this.carNumber,
     this.isAccident = false,
     this.accidentNote,
+    this.pickupPhotos = const [],
+    this.returnPhotos = const [],
+    this.renterName,
+    this.contractContent,
   });
+
+  String get reservationNumberLabel => '#$id';
+
+  static List<String> _photoUrlsFromMap(
+    Map<String, dynamic> map,
+    List<String> keys,
+  ) {
+    for (final key in keys) {
+      final raw = map[key];
+      if (raw is List && raw.isNotEmpty) {
+        return raw
+            .map((e) => e.toString().trim())
+            .where((url) => url.isNotEmpty)
+            .toList();
+      }
+    }
+    return const [];
+  }
+
+  static String? _renterNameFromMap(Map<String, dynamic> map) {
+    final direct = map['renter_name']?.toString().trim();
+    if (direct != null && direct.isNotEmpty) return direct;
+
+    final profileRaw = map['user_profiles'];
+    if (profileRaw is Map) {
+      final profile = Map<String, dynamic>.from(profileRaw);
+      final name = profile['full_name']?.toString().trim() ??
+          profile['name']?.toString().trim();
+      if (name != null && name.isNotEmpty) return name;
+    }
+    return null;
+  }
 
   factory AdminReservationRow.fromMap(Map<String, dynamic> map) {
     final vehicleRaw = map['vehicles'];
     final vehicle =
         vehicleRaw is Map ? Map<String, dynamic>.from(vehicleRaw) : null;
+    final contract = map['contract_content']?.toString().trim();
 
     return AdminReservationRow(
       id: map['id'].toString(),
@@ -332,6 +379,17 @@ class AdminReservationRow {
       carNumber: vehicle?['car_number']?.toString(),
       isAccident: map['is_accident'] == true,
       accidentNote: map['accident_note']?.toString(),
+      pickupPhotos: _photoUrlsFromMap(
+        map,
+        ['pickup_photos', 'before_photos'],
+      ),
+      returnPhotos: _photoUrlsFromMap(
+        map,
+        ['return_photos', 'after_photos'],
+      ),
+      renterName: _renterNameFromMap(map),
+      contractContent:
+          contract != null && contract.isNotEmpty ? contract : null,
     );
   }
 }

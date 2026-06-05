@@ -8,6 +8,7 @@ import '../supabase_client.dart';
 import '../constants/payment_order_status.dart';
 import '../utils/booking_eligibility.dart';
 import 'my_page_service.dart';
+import 'push_notification_service.dart';
 import 'rental_service.dart';
 
 class ReservationOverlapException implements Exception {
@@ -113,9 +114,6 @@ class ReservationService {
     required DateTime startAt,
     required DateTime endAt,
   }) async {
-    if (await _vehicleHasInUseReservation(vehicleId)) {
-      return VehicleBookingBlockReason.inUse;
-    }
     final overlaps = await _hasConfirmedOrPendingTimeOverlap(
       vehicleId: vehicleId,
       startAt: startAt,
@@ -139,22 +137,6 @@ class ReservationService {
         null;
   }
 
-  Future<bool> _vehicleHasInUseReservation(String vehicleId) async {
-    final vid = _vehicleIdForQuery(vehicleId);
-    try {
-      final rows = await supabase
-          .from('reservations')
-          .select('id')
-          .eq('vehicle_id', vid)
-          .eq('status', 'in_use')
-          .limit(1);
-      return rows.isNotEmpty;
-    } on PostgrestException catch (e) {
-      if (e.code == '42703') return false;
-      rethrow;
-    }
-  }
-
   Future<bool> _hasConfirmedOrPendingTimeOverlap({
     required String vehicleId,
     required DateTime startAt,
@@ -171,7 +153,7 @@ class ReservationService {
               .from('reservations')
               .select('id')
               .eq('vehicle_id', vid)
-              .inFilter('status', ['pending', 'confirmed'])
+              .inFilter('status', ['pending', 'confirmed', 'in_use'])
               .lt(startCol, endUtc)
               .gt(endCol, startUtc)
               .limit(1);
@@ -190,7 +172,7 @@ class ReservationService {
     return parsed ?? vehicleId;
   }
 
-  Future<void> _insertReservation(Map<String, dynamic> payload) async {
+  Future<String?> _insertReservation(Map<String, dynamic> payload) async {
     final variants = <Map<String, dynamic>>[
       payload,
       {
@@ -213,8 +195,12 @@ class ReservationService {
     PostgrestException? lastError;
     for (final data in variants) {
       try {
-        await supabase.from('reservations').insert(data);
-        return;
+        final row = await supabase
+            .from('reservations')
+            .insert(data)
+            .select('id')
+            .maybeSingle();
+        return row?['id']?.toString();
       } on PostgrestException catch (e) {
         lastError = e;
         if (e.code == '42703' || e.code == '23502') continue;
@@ -222,6 +208,50 @@ class ReservationService {
       }
     }
     if (lastError != null) throw lastError;
+    return null;
+  }
+
+  String? _parseCreatedReservationId(dynamic data) {
+    if (data is Map) {
+      return data['id']?.toString();
+    }
+    return null;
+  }
+
+  Future<void> _notifyReservationCreated({
+    required String reservationId,
+    required String vehicleId,
+    required DateTime startAt,
+    required String userId,
+  }) async {
+    final vehicleRow = await supabase
+        .from('vehicles')
+        .select('model_name, name, complex_id')
+        .eq('id', _vehicleIdForQuery(vehicleId))
+        .maybeSingle();
+    if (vehicleRow == null) return;
+
+    final vehicleName = vehicleRow['model_name']?.toString().trim().isNotEmpty ==
+            true
+        ? vehicleRow['model_name']!.toString()
+        : vehicleRow['name']?.toString() ?? '차량';
+    final complexId = vehicleRow['complex_id']?.toString() ?? '';
+    if (complexId.isEmpty) return;
+
+    final push = PushNotificationService.instance;
+    await push.customerReservationConfirmed(
+      userId: userId,
+      reservationId: reservationId,
+      vehicleName: vehicleName,
+      startAt: startAt.toUtc().toIso8601String(),
+    );
+    await push.staffNewReservation(
+      complexId: complexId,
+      reservationId: reservationId,
+      vehicleName: vehicleName,
+      startAt: startAt.toUtc().toIso8601String(),
+      userId: userId,
+    );
   }
 
   Future<void> validateBookingForPayment({
@@ -277,12 +307,21 @@ class ReservationService {
     final endUtc = endTime.toUtc();
 
     try {
-      await supabase.rpc('create_reservation_for_me', params: {
+      final data = await supabase.rpc('create_reservation_for_me', params: {
         'p_vehicle_id': vehicleId,
         'p_start_time': startUtc.toIso8601String(),
         'p_end_time': endUtc.toIso8601String(),
         'p_total_price': totalPrice,
       });
+      final reservationId = _parseCreatedReservationId(data);
+      if (reservationId != null) {
+        await _notifyReservationCreated(
+          reservationId: reservationId,
+          vehicleId: vehicleId,
+          startAt: startTime,
+          userId: user.id,
+        );
+      }
       return;
     } on PostgrestException catch (e) {
       final msg = e.message.toLowerCase();
@@ -312,7 +351,7 @@ class ReservationService {
       }
     }
 
-    await _insertReservation({
+    final reservationId = await _insertReservation({
       'user_id': user.id,
       'vehicle_id': vehicleId,
       'start_time': startUtc.toIso8601String(),
@@ -322,6 +361,14 @@ class ReservationService {
       'total_price': totalPrice,
       'status': 'pending',
     });
+    if (reservationId != null) {
+      await _notifyReservationCreated(
+        reservationId: reservationId,
+        vehicleId: vehicleId,
+        startAt: startTime,
+        userId: user.id,
+      );
+    }
   }
 
   Future<void> createReservation({

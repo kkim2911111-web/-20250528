@@ -4,10 +4,10 @@ import '../services/support_contacts_service.dart';
 import '../theme/danji_colors.dart';
 import 'phone_launcher.dart';
 
-const _dialogTitle = '1일 이상은 일반렌트로 문의해주세요';
+const _dialogTitle = '일반렌트문의';
 
-const _dialogMessage =
-    '장기 대여는 일반렌트 상담을 통해 더 합리적으로 이용하실 수 있습니다.';
+const _dialogMessageLine1 = '24시간 이상 대여 시 문의주세요.';
+const _dialogMessageLine2 = '운영시간 09:00~18:00';
 
 /// 일반렌트 문의 — `rental_inquiry` 번호로 전화 연결
 Future<void> launchRentalInquiryPhone(BuildContext context) async {
@@ -34,15 +34,17 @@ Future<void> launchRentalInquiryPhone(BuildContext context) async {
   }
 }
 
-/// 일반 렌트 문의 — 확인 후 전화 연결 (DB `app_support_contacts.emergency_phone`)
+/// 일반 렌트 문의 — 확인 후 전화 연결 (DB `app_support_contacts.rental_inquiry`)
 Future<void> showRentalInquiryDialog(BuildContext context) async {
-  final phone = await SupportContactsService().fetchEmergencyPhone();
+  final phone = await SupportContactsService().fetchRentalInquiryPhone();
   if (!context.mounted) return;
 
   if (phone == null) {
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(
-        content: Text('긴급 상담 번호가 등록되지 않았습니다. 관리자에게 문의해주세요.'),
+        content: Text(
+          '일반렌트 문의 전화번호가 등록되지 않았습니다. 관리자에게 문의해주세요.',
+        ),
       ),
     );
     return;
@@ -60,12 +62,26 @@ Future<void> showRentalInquiryDialog(BuildContext context) async {
           fontWeight: FontWeight.w800,
         ),
       ),
-      content: const Text(
-        _dialogMessage,
-        style: TextStyle(
-          color: DanjiColors.textSecondary,
-          height: 1.5,
-        ),
+      content: const Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            _dialogMessageLine1,
+            style: TextStyle(
+              color: DanjiColors.textSecondary,
+              height: 1.5,
+            ),
+          ),
+          SizedBox(height: 6),
+          Text(
+            _dialogMessageLine2,
+            style: TextStyle(
+              color: DanjiColors.textSecondary,
+              height: 1.5,
+            ),
+          ),
+        ],
       ),
       actions: [
         TextButton(

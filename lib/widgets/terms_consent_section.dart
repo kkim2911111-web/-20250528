@@ -34,11 +34,27 @@ class TermsConsentSection extends StatelessWidget {
     );
   }
 
+  bool get _allAgreed =>
+      agreeTerms && agreePrivacy && agreeCarRental && agreeMarketing;
+
+  void _onAgreeAllChanged(bool value) {
+    onTermsChanged(value);
+    onPrivacyChanged(value);
+    onCarRentalChanged(value);
+    onMarketingChanged(value);
+  }
+
   @override
   Widget build(BuildContext context) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
+        _ConsentRow(
+          value: _allAgreed,
+          onChanged: _onAgreeAllChanged,
+          label: '전체 동의',
+        ),
+        const SizedBox(height: 4),
         _ConsentRow(
           value: agreeTerms,
           onChanged: onTermsChanged,

@@ -277,6 +277,49 @@ class PointHistoryEntry {
 
 
 
+  /// 포인트 내역 카드 — 차량명만 표시
+  String displayVehicleName(
+    Map<String, PointReservationSummary>? reservationMeta,
+  ) {
+    final rid = resolvedReservationId;
+    if (rid != null && reservationMeta != null) {
+      final meta = reservationMeta[rid];
+      if (meta != null && meta.vehicleName.trim().isNotEmpty) {
+        return meta.vehicleName.trim();
+      }
+    }
+
+    const skipPrefixes = {
+      '포인트 사용',
+      '포인트 적립',
+      '사용 포인트 복구',
+      '예약 결제 사용',
+      '이용 적립',
+      '가입 적립',
+      '포인트 만료',
+      '포인트 취소',
+    };
+
+    for (final part in _descriptionParts.reversed) {
+      if (RegExp(r'^\d+$').hasMatch(part)) continue;
+      if (skipPrefixes.contains(part)) continue;
+      if (part.contains('시간')) continue;
+      return part;
+    }
+
+    return '—';
+  }
+
+  /// 적립/사용/복구 뱃지 구분
+  PointHistoryBadgeKind get badgeKind {
+    if (isCancelled) return PointHistoryBadgeKind.cancelled;
+    if (isRestoreType) return PointHistoryBadgeKind.restore;
+    if (isSpendEntry || isUseType) return PointHistoryBadgeKind.use;
+    if (isExpireType) return PointHistoryBadgeKind.expire;
+    if (isEarned) return PointHistoryBadgeKind.earn;
+    return PointHistoryBadgeKind.none;
+  }
+
   /// 예약 메타 또는 description 기반 표시 문구
 
   String displayLabel(Map<String, PointReservationSummary>? reservationMeta) {
@@ -413,5 +456,7 @@ class PointExpiryDisplay {
 }
 
 enum PointExpiryTone { normal, urgentOrange, urgentRed, muted }
+
+enum PointHistoryBadgeKind { earn, use, restore, expire, cancelled, none }
 
 

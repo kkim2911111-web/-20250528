@@ -13,7 +13,9 @@ dependencies:
     sdk: flutter
   supabase_flutter: ^2.10.0
   firebase_core: ^3.12.1
+  firebase_crashlytics: ^4.3.2
   firebase_messaging: ^15.2.4
+  flutter_local_notifications: ^18.0.1
   flutter_dotenv: ^5.2.1
   table_calendar: ^3.2.0
   intl: ^0.20.2
@@ -29,6 +31,15 @@ dev_dependencies:
   flutter_test:
     sdk: flutter
   flutter_lints: ^5.0.0
+  flutter_launcher_icons: ^0.14.3
+
+flutter_launcher_icons:
+  android: true
+  ios: true
+  image_path: assets/brand/app_icon.png
+  adaptive_icon_background: "#3182F6"
+  adaptive_icon_foreground: assets/brand/app_icon.png
+  remove_alpha_ios: true
 
 flutter:
   uses-material-design: true
@@ -36,3 +47,4 @@ flutter:
     - .env
     - assets/brand/danji_logo.svg
     - assets/brand/danji_logo_icon.svg
+    - assets/brand/app_icon.png

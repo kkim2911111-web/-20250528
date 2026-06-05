@@ -33,17 +33,58 @@ class MyReservationsScreen extends StatefulWidget {
 class _MyReservationsScreenState extends State<MyReservationsScreen> {
   final _service = RentalService();
   final _dateFormat = DateFormat('yyyy-MM-dd HH:mm');
+  final _monthHeaderFormat = DateFormat('yyyy년 M월');
   final _won = NumberFormat('#,###');
 
   Future<GroupedReservations>? _future;
   int _listKey = 0;
   final _hiddenIds = <String>{};
+  late DateTime _selectedMonth;
 
   @override
   void initState() {
     super.initState();
+    final now = DateTime.now();
+    _selectedMonth = DateTime(now.year, now.month);
     ReservationRefreshBus.instance.version.addListener(_onExternalRefresh);
     WidgetsBinding.instance.addPostFrameCallback((_) => _reloadAndWait());
+  }
+
+  bool get _canGoNextMonth {
+    final now = DateTime.now();
+    return _selectedMonth.year < now.year ||
+        (_selectedMonth.year == now.year &&
+            _selectedMonth.month < now.month);
+  }
+
+  void _shiftMonth(int delta) {
+    setState(() {
+      _selectedMonth = DateTime(
+        _selectedMonth.year,
+        _selectedMonth.month + delta,
+      );
+    });
+  }
+
+  bool _reservationInSelectedMonth(Reservation reservation) {
+    final dt = reservation.startAt ??
+        reservation.endAt ??
+        reservation.returnedAt;
+    if (dt == null) return false;
+    return dt.year == _selectedMonth.year &&
+        dt.month == _selectedMonth.month;
+  }
+
+  GroupedReservations _filterFinishedByMonth(GroupedReservations grouped) {
+    final finished = grouped.finished
+        .where(_reservationInSelectedMonth)
+        .toList();
+    return GroupedReservations(
+      operating: grouped.operating,
+      waiting: grouped.waiting,
+      finished: finished,
+      paymentPricing: grouped.paymentPricing,
+    );
   }
 
   @override
@@ -306,27 +347,30 @@ class _MyReservationsScreenState extends State<MyReservationsScreen> {
               );
             }
 
-            final grouped = _visible(groupedRaw);
+            final grouped = widget.historyOnly
+                ? _filterFinishedByMonth(_visible(groupedRaw))
+                : _visible(groupedRaw);
+
+            if (widget.historyOnly) {
+              return _buildHistoryList(groupedRaw, grouped);
+            }
+
             if (grouped.isEmpty) {
               return ListView(
                 physics: const AlwaysScrollableScrollPhysics(),
                 padding: const EdgeInsets.all(24),
-                children: [
-                  const SizedBox(height: 80),
+                children: const [
+                  SizedBox(height: 80),
                   Icon(
-                    widget.historyOnly
-                        ? Icons.receipt_long_outlined
-                        : Icons.event_busy,
+                    Icons.event_busy,
                     color: DanjiColors.textSecondary,
                     size: 48,
                   ),
-                  const SizedBox(height: 12),
+                  SizedBox(height: 12),
                   Text(
-                    widget.historyOnly
-                        ? '이용내역이 없습니다.'
-                        : '진행 중인 예약이 없습니다.',
+                    '진행 중인 예약이 없습니다.',
                     textAlign: TextAlign.center,
-                    style: const TextStyle(color: DanjiColors.textSecondary),
+                    style: TextStyle(color: DanjiColors.textSecondary),
                   ),
                 ],
               );
@@ -444,7 +488,6 @@ class _MyReservationsScreenState extends State<MyReservationsScreen> {
                         won: _won,
                         variant: _CardVariant.finished,
                         showReservationId: true,
-                        showDiscountDetail: true,
                         showContractButton: _showContractOnFinishedCard(item),
                         onContractTap: _showContractOnFinishedCard(item)
                             ? () => _openContract(item)
@@ -457,6 +500,125 @@ class _MyReservationsScreenState extends State<MyReservationsScreen> {
             );
           },
         ),
+      ),
+    );
+  }
+
+  Widget _buildHistoryList(
+    GroupedReservations groupedRaw,
+    GroupedReservations grouped,
+  ) {
+    final hasAnyHistory = groupedRaw.finished.isNotEmpty;
+    final monthLabel = _monthHeaderFormat.format(_selectedMonth);
+
+    return ListView(
+      physics: const AlwaysScrollableScrollPhysics(),
+      padding: const EdgeInsets.all(20),
+      children: [
+        _MonthFilterBar(
+          label: monthLabel,
+          canGoNext: _canGoNextMonth,
+          onPrevious: () => _shiftMonth(-1),
+          onNext: _canGoNextMonth ? () => _shiftMonth(1) : null,
+        ),
+        const SizedBox(height: 16),
+        if (!hasAnyHistory) ...[
+          const SizedBox(height: 60),
+          const Icon(
+            Icons.receipt_long_outlined,
+            color: DanjiColors.textSecondary,
+            size: 48,
+          ),
+          const SizedBox(height: 12),
+          const Text(
+            '이용내역이 없습니다.',
+            textAlign: TextAlign.center,
+            style: TextStyle(color: DanjiColors.textSecondary),
+          ),
+        ] else if (grouped.finished.isEmpty) ...[
+          const SizedBox(height: 60),
+          Text(
+            '$monthLabel 이용내역이 없습니다.',
+            textAlign: TextAlign.center,
+            style: const TextStyle(color: DanjiColors.textSecondary),
+          ),
+        ] else ...[
+          const _SectionHeader(
+            title: '이용 완료',
+            icon: Icons.check_circle_outline,
+            color: DanjiColors.sectionFinished,
+          ),
+          const SizedBox(height: 10),
+          ...grouped.finished.map(
+            (item) => Padding(
+              padding: const EdgeInsets.only(bottom: 12),
+              child: _ReservationCard(
+                reservation: item,
+                pricing: groupedRaw.paymentPricing[item.id],
+                dateFormat: _dateFormat,
+                won: _won,
+                variant: _CardVariant.finished,
+                showReservationId: true,
+                showContractButton: _showContractOnFinishedCard(item),
+                onContractTap: _showContractOnFinishedCard(item)
+                    ? () => _openContract(item)
+                    : null,
+              ),
+            ),
+          ),
+        ],
+      ],
+    );
+  }
+}
+
+class _MonthFilterBar extends StatelessWidget {
+  final String label;
+  final bool canGoNext;
+  final VoidCallback onPrevious;
+  final VoidCallback? onNext;
+
+  const _MonthFilterBar({
+    required this.label,
+    required this.canGoNext,
+    required this.onPrevious,
+    required this.onNext,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
+      decoration: BoxDecoration(
+        color: DanjiColors.surface,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: DanjiColors.border),
+      ),
+      child: Row(
+        children: [
+          IconButton(
+            onPressed: onPrevious,
+            icon: const Icon(Icons.chevron_left_rounded),
+            color: DanjiColors.buttonBlue,
+          ),
+          Expanded(
+            child: Text(
+              label,
+              textAlign: TextAlign.center,
+              style: DanjiTypography.subtitle.copyWith(
+                fontSize: 15,
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+          ),
+          IconButton(
+            onPressed: onNext,
+            icon: const Icon(Icons.chevron_right_rounded),
+            color: canGoNext
+                ? DanjiColors.buttonBlue
+                : DanjiColors.textMuted,
+          ),
+        ],
       ),
     );
   }
@@ -519,7 +681,6 @@ class _ReservationCard extends StatelessWidget {
   final bool showContractButton;
   final VoidCallback? onContractTap;
   final bool showReservationId;
-  final bool showDiscountDetail;
 
   const _ReservationCard({
     required this.reservation,
@@ -536,7 +697,6 @@ class _ReservationCard extends StatelessWidget {
     this.showContractButton = false,
     this.onContractTap,
     this.showReservationId = false,
-    this.showDiscountDetail = false,
   });
 
   Color get _accentColor {
@@ -689,18 +849,6 @@ class _ReservationCard extends StatelessWidget {
               pricing: pricing,
               won: won,
             ),
-            if (showDiscountDetail &&
-                pricing != null &&
-                pricing!.hasDiscount) ...[
-              const SizedBox(height: 4),
-              Text(
-                pricing!.discountDetailLabel,
-                style: DanjiTypography.caption.copyWith(
-                  color: DanjiColors.buttonBlue,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-            ],
           ],
           if (onUseVehicle != null || onReturn != null) ...[
             const SizedBox(height: 14),

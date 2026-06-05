@@ -12,3 +12,12 @@ verify_jwt = true
 
 [functions.payment-webhook]
 verify_jwt = false
+
+[functions.send-push-notification]
+verify_jwt = true
+
+[functions.dispatch-push-scenario]
+verify_jwt = true
+
+[functions.scheduled-push-reminders]
+verify_jwt = false

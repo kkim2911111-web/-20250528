@@ -7,13 +7,17 @@ import '../services/point_service.dart';
 import '../theme/danji_colors.dart';
 import '../theme/danji_typography.dart';
 import '../widgets/danji_app_bar.dart';
+import '../widgets/month_filter_bar.dart';
 
 abstract final class _PointUiColors {
-  static const expiryGray = Color(0xFF8B95A1);
-  static const expiryOrange = Color(0xFFFF9800);
-  static const badgeUseBg = Color(0xFFFFEBEE);
+  static const badgeEarnBg = Color(0xFFE8F0FE);
+  static const badgeEarnFg = DanjiColors.brandBlue;
+  static const badgeUseBg = Color(0xFFF2F4F6);
+  static const badgeUseFg = Color(0xFF6B7684);
   static const badgeRestoreBg = Color(0xFFE8F8EF);
+  static const badgeRestoreFg = DanjiColors.success;
   static const badgeExpireBg = Color(0xFFF2F4F6);
+  static const badgeExpireFg = Color(0xFF6B7684);
 }
 
 class PointScreen extends StatefulWidget {
@@ -27,6 +31,7 @@ class _PointScreenState extends State<PointScreen> {
   final _service = PointService();
   final _dateFormat = DateFormat('yyyy.MM.dd HH:mm');
   final _monthHeaderFormat = DateFormat('yyyy년 M월');
+  late DateTime _selectedMonth;
 
   Future<
       ({
@@ -38,7 +43,51 @@ class _PointScreenState extends State<PointScreen> {
   @override
   void initState() {
     super.initState();
+    final now = DateTime.now();
+    _selectedMonth = DateTime(now.year, now.month);
     _reload();
+  }
+
+  bool get _canGoNextMonth {
+    final now = DateTime.now();
+    return _selectedMonth.year < now.year ||
+        (_selectedMonth.year == now.year &&
+            _selectedMonth.month < now.month);
+  }
+
+  void _shiftMonth(int delta) {
+    setState(() {
+      _selectedMonth = DateTime(
+        _selectedMonth.year,
+        _selectedMonth.month + delta,
+      );
+    });
+  }
+
+  List<PointHistoryEntry> _filterByMonth(List<PointHistoryEntry> history) {
+    return history.where((entry) {
+      final dt = entry.createdAt;
+      if (dt == null) return false;
+      return dt.year == _selectedMonth.year &&
+          dt.month == _selectedMonth.month;
+    }).toList();
+  }
+
+  ({int earned, int used}) _monthTotals(List<PointHistoryEntry> history) {
+    var earned = 0;
+    var used = 0;
+    for (final entry in history) {
+      if (entry.isCancelled) continue;
+      if (entry.isSpendEntry ||
+          entry.isUseType ||
+          entry.isExpireType ||
+          entry.amount < 0) {
+        used += entry.amount.abs();
+      } else if (entry.amount > 0) {
+        earned += entry.amount;
+      }
+    }
+    return (earned: earned, used: used);
   }
 
   void _reload() {
@@ -52,78 +101,6 @@ class _PointScreenState extends State<PointScreen> {
           RegExp(r'(\d{1,3})(?=(\d{3})+(?!\d))'),
           (m) => '${m[1]},',
         );
-  }
-
-  int _historyListChildCount(
-    List<({String monthKey, String monthLabel, List<PointHistoryEntry> items})>
-        groups,
-  ) {
-    var count = groups.length;
-    for (final g in groups) {
-      count += g.items.length;
-    }
-    return count;
-  }
-
-  Widget _historyListChild(
-    List<({String monthKey, String monthLabel, List<PointHistoryEntry> items})>
-        groups,
-    Map<String, PointReservationSummary> reservationMeta,
-    int index,
-  ) {
-    var offset = 0;
-    for (final group in groups) {
-      if (index == offset) {
-        return Padding(
-          padding: const EdgeInsets.only(bottom: 10),
-          child: Text(
-            group.monthLabel,
-            style: DanjiTypography.subtitle.copyWith(
-              fontSize: 15,
-              fontWeight: FontWeight.w800,
-              color: DanjiColors.textPrimary,
-            ),
-          ),
-        );
-      }
-      offset++;
-      for (var i = 0; i < group.items.length; i++) {
-        if (index == offset) {
-          return Padding(
-            padding: EdgeInsets.only(
-              bottom: i < group.items.length - 1 ? 10 : 16,
-            ),
-            child: _HistoryTile(
-              entry: group.items[i],
-              reservationMeta: reservationMeta,
-              dateFormat: _dateFormat,
-              formatPoints: _formatPoints,
-            ),
-          );
-        }
-        offset++;
-      }
-    }
-    return const SizedBox.shrink();
-  }
-
-  List<({String monthKey, String monthLabel, List<PointHistoryEntry> items})>
-      _groupByMonth(List<PointHistoryEntry> history) {
-    final buckets = <String, List<PointHistoryEntry>>{};
-    for (final entry in history) {
-      final dt = entry.createdAt ?? DateTime.now();
-      final key = DateFormat('yyyy-MM').format(dt);
-      buckets.putIfAbsent(key, () => []).add(entry);
-    }
-    final keys = buckets.keys.toList()..sort((a, b) => b.compareTo(a));
-    return [
-      for (final key in keys)
-        (
-          monthKey: key,
-          monthLabel: _monthHeaderFormat.format(DateTime.parse('$key-01')),
-          items: buckets[key]!,
-        ),
-    ];
   }
 
   @override
@@ -175,7 +152,8 @@ class _PointScreenState extends State<PointScreen> {
           }
 
           final data = snap.data!;
-          final monthGroups = _groupByMonth(data.history);
+          final monthHistory = _filterByMonth(data.history);
+          final monthTotals = _monthTotals(monthHistory);
           return RefreshIndicator(
             onRefresh: () async => _reload(),
             child: CustomScrollView(
@@ -189,21 +167,48 @@ class _PointScreenState extends State<PointScreen> {
                 ),
                 SliverToBoxAdapter(
                   child: Padding(
+                    padding: const EdgeInsets.fromLTRB(20, 8, 20, 0),
+                    child: MonthFilterBar(
+                      label: _monthHeaderFormat.format(_selectedMonth),
+                      canGoNext: _canGoNextMonth,
+                      onPrevious: () => _shiftMonth(-1),
+                      onNext: _canGoNextMonth ? () => _shiftMonth(1) : null,
+                    ),
+                  ),
+                ),
+                SliverToBoxAdapter(
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(20, 10, 20, 0),
+                    child: Text(
+                      '적립 +${_formatPoints(monthTotals.earned)}P / 사용 -${_formatPoints(monthTotals.used)}P',
+                      style: DanjiTypography.body.copyWith(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w600,
+                        color: DanjiColors.textSecondary,
+                      ),
+                    ),
+                  ),
+                ),
+                SliverToBoxAdapter(
+                  child: Padding(
                     padding: const EdgeInsets.fromLTRB(20, 20, 20, 10),
                     child: Text(
                       '적립 · 사용 내역',
                       style: DanjiTypography.subtitle.copyWith(
+                        fontSize: 18,
                         color: DanjiColors.textPrimary,
                       ),
                     ),
                   ),
                 ),
-                if (data.history.isEmpty)
+                if (monthHistory.isEmpty)
                   SliverFillRemaining(
                     hasScrollBody: false,
                     child: Center(
                       child: Text(
-                        '포인트 내역이 없습니다.',
+                        data.history.isEmpty
+                            ? '포인트 내역이 없습니다.'
+                            : '${_monthHeaderFormat.format(_selectedMonth)} 내역이 없습니다.',
                         style: DanjiTypography.secondary,
                       ),
                     ),
@@ -213,12 +218,18 @@ class _PointScreenState extends State<PointScreen> {
                     padding: const EdgeInsets.fromLTRB(20, 0, 20, 24),
                     sliver: SliverList(
                       delegate: SliverChildBuilderDelegate(
-                        (context, index) => _historyListChild(
-                          monthGroups,
-                          data.reservationMeta,
-                          index,
+                        (context, index) => Padding(
+                          padding: EdgeInsets.only(
+                            bottom: index < monthHistory.length - 1 ? 10 : 0,
+                          ),
+                          child: _HistoryTile(
+                            entry: monthHistory[index],
+                            reservationMeta: data.reservationMeta,
+                            dateFormat: _dateFormat,
+                            formatPoints: _formatPoints,
+                          ),
                         ),
-                        childCount: _historyListChildCount(monthGroups),
+                        childCount: monthHistory.length,
                       ),
                     ),
                   ),
@@ -263,17 +274,21 @@ class _BalanceHeader extends StatelessWidget {
         children: [
           Text(
             '현재 보유 포인트',
-            style: DanjiTypography.secondary.copyWith(fontSize: 14),
+            style: DanjiTypography.secondary.copyWith(fontSize: 15),
           ),
           const SizedBox(height: 12),
-          Text(
-            '${_format(points)}P',
-            style: const TextStyle(
-              fontSize: 40,
-              fontWeight: FontWeight.w800,
-              color: DanjiColors.brandBlue,
-              letterSpacing: -1,
-              height: 1.1,
+          FittedBox(
+            fit: BoxFit.scaleDown,
+            child: Text(
+              '${_format(points)}P',
+              style: const TextStyle(
+                fontSize: 32,
+                fontWeight: FontWeight.w800,
+                color: DanjiColors.brandBlue,
+                letterSpacing: -0.5,
+                height: 1.0,
+              ),
+              maxLines: 1,
             ),
           ),
         ],
@@ -295,76 +310,27 @@ class _HistoryTile extends StatelessWidget {
     required this.formatPoints,
   });
 
-  Color _expiryColor(PointExpiryTone tone) {
-    switch (tone) {
-      case PointExpiryTone.urgentRed:
-        return DanjiColors.toneRed;
-      case PointExpiryTone.urgentOrange:
-        return _PointUiColors.expiryOrange;
-      case PointExpiryTone.normal:
-        return _PointUiColors.expiryGray;
-      case PointExpiryTone.muted:
-        return DanjiColors.textSecondary.withValues(alpha: 0.55);
-    }
-  }
-
-  Color _accentColor({
-    required bool cancelled,
-    required bool isExpire,
-    required bool isRestore,
-    required bool isUse,
-    required bool isEarn,
-  }) {
-    if (cancelled || isExpire) {
+  Color _amountColor(PointHistoryBadgeKind kind, bool cancelled) {
+    if (cancelled) {
       return DanjiColors.textSecondary.withValues(alpha: 0.55);
     }
-    if (isRestore) return DanjiColors.success;
-    if (isUse) return DanjiColors.toneRed;
-    if (isEarn) return DanjiColors.brandBlue;
-    return entry.isEarned ? DanjiColors.brandBlue : DanjiColors.toneRed;
-  }
-
-  IconData _icon({
-    required bool cancelled,
-    required bool isExpire,
-    required bool isRestore,
-    required bool isUse,
-    required bool isEarn,
-  }) {
-    if (cancelled || isExpire) return Icons.schedule_rounded;
-    if (isRestore) return Icons.replay_rounded;
-    if (isUse) return Icons.remove_rounded;
-    if (isEarn) return Icons.add_rounded;
-    return entry.isEarned ? Icons.add_rounded : Icons.remove_rounded;
-  }
-
-  Widget? _typeBadge({
-    required bool cancelled,
-    required bool isExpire,
-    required bool isRestore,
-    required bool isUse,
-  }) {
-    if (cancelled) return null;
-    String? label;
-    Color bg;
-    Color fg;
-    if (isUse) {
-      label = '사용';
-      bg = _PointUiColors.badgeUseBg;
-      fg = DanjiColors.toneRed;
-    } else if (isRestore) {
-      label = '복구';
-      bg = _PointUiColors.badgeRestoreBg;
-      fg = DanjiColors.success;
-    } else if (isExpire) {
-      label = '만료';
-      bg = _PointUiColors.badgeExpireBg;
-      fg = DanjiColors.textSecondary;
-    } else {
-      return null;
+    switch (kind) {
+      case PointHistoryBadgeKind.earn:
+        return _PointUiColors.badgeEarnFg;
+      case PointHistoryBadgeKind.use:
+      case PointHistoryBadgeKind.expire:
+        return _PointUiColors.badgeUseFg;
+      case PointHistoryBadgeKind.restore:
+        return _PointUiColors.badgeRestoreFg;
+      case PointHistoryBadgeKind.cancelled:
+      case PointHistoryBadgeKind.none:
+        return DanjiColors.textSecondary;
     }
+  }
+
+  Widget _badgeChip(String label, Color bg, Color fg) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
       decoration: BoxDecoration(
         color: bg,
         borderRadius: BorderRadius.circular(6),
@@ -372,12 +338,49 @@ class _HistoryTile extends StatelessWidget {
       child: Text(
         label,
         style: TextStyle(
-          fontSize: 11,
+          fontSize: 12,
           fontWeight: FontWeight.w700,
           color: fg,
         ),
       ),
     );
+  }
+
+  Widget? _typeBadge(PointHistoryBadgeKind kind) {
+    switch (kind) {
+      case PointHistoryBadgeKind.earn:
+        return _badgeChip(
+          '적립',
+          _PointUiColors.badgeEarnBg,
+          _PointUiColors.badgeEarnFg,
+        );
+      case PointHistoryBadgeKind.use:
+        return _badgeChip(
+          '사용',
+          _PointUiColors.badgeUseBg,
+          _PointUiColors.badgeUseFg,
+        );
+      case PointHistoryBadgeKind.restore:
+        return _badgeChip(
+          '복구',
+          _PointUiColors.badgeRestoreBg,
+          _PointUiColors.badgeRestoreFg,
+        );
+      case PointHistoryBadgeKind.expire:
+        return _badgeChip(
+          '만료',
+          _PointUiColors.badgeExpireBg,
+          _PointUiColors.badgeExpireFg,
+        );
+      case PointHistoryBadgeKind.cancelled:
+        return _badgeChip(
+          '취소',
+          _PointUiColors.badgeUseBg,
+          _PointUiColors.badgeUseFg,
+        );
+      case PointHistoryBadgeKind.none:
+        return null;
+    }
   }
 
   String _amountText(
@@ -403,135 +406,66 @@ class _HistoryTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final cancelled = entry.isCancelled;
-    final isExpire = entry.isExpireType;
     final isRestore = entry.isRestoreType;
-    final isUse = entry.isUseType;
     final isSpend = entry.isSpendEntry;
     final isEarn =
-        entry.isEarned && !isSpend && !isRestore && !isExpire;
-    final accent = _accentColor(
-      cancelled: cancelled,
-      isExpire: isExpire,
-      isRestore: isRestore,
-      isUse: isUse,
-      isEarn: isEarn,
-    );
-    final title = entry.displayLabel(reservationMeta);
+        entry.isEarned && !isSpend && !isRestore && !entry.isExpireType;
+    final badgeKind = entry.badgeKind;
+    final vehicleName = entry.displayVehicleName(reservationMeta);
     final amountText = _amountText(cancelled, isSpend, isRestore, isEarn);
-    final expiry = PointExpiryDisplay.forEntry(entry);
-    final badge = _typeBadge(
-      cancelled: cancelled,
-      isExpire: isExpire,
-      isRestore: isRestore,
-      isUse: isUse,
-    );
+    final badge = _typeBadge(badgeKind);
     final muted = DanjiColors.textSecondary.withValues(alpha: 0.55);
     final labelStyle = DanjiTypography.body.copyWith(
+      fontSize: 16,
       fontWeight: FontWeight.w600,
       color: cancelled ? muted : DanjiColors.textPrimary,
       decoration: cancelled ? TextDecoration.lineThrough : null,
       decorationColor: muted,
     );
     final amountStyle = TextStyle(
-      fontSize: 16,
+      fontSize: 17,
       fontWeight: FontWeight.w800,
-      color: cancelled ? muted : accent,
+      color: _amountColor(badgeKind, cancelled),
       decoration: cancelled ? TextDecoration.lineThrough : null,
       decorationColor: muted,
     );
 
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(12),
       ),
       child: Row(
+        crossAxisAlignment: CrossAxisAlignment.center,
         children: [
-          Container(
-            width: 40,
-            height: 40,
-            decoration: BoxDecoration(
-              color: (cancelled ? DanjiColors.textMuted : accent)
-                  .withValues(alpha: 0.12),
-              shape: BoxShape.circle,
-            ),
-            child: Icon(
-              _icon(
-                cancelled: cancelled,
-                isExpire: isExpire,
-                isRestore: isRestore,
-                isUse: isUse,
-                isEarn: isEarn,
-              ),
-              color: accent,
-              size: 22,
-            ),
-          ),
-          const SizedBox(width: 12),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Row(
                   children: [
-                    Flexible(
+                    if (badge != null) ...[
+                      badge,
+                      const SizedBox(width: 8),
+                    ],
+                    Expanded(
                       child: Text(
-                        title,
+                        vehicleName,
                         style: labelStyle,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
                       ),
                     ),
-                    if (badge != null) ...[
-                      const SizedBox(width: 8),
-                      badge,
-                    ],
-                    if (cancelled) ...[
-                      const SizedBox(width: 8),
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 8,
-                          vertical: 3,
-                        ),
-                        decoration: BoxDecoration(
-                          color: const Color(0xFFF2F4F6),
-                          borderRadius: BorderRadius.circular(6),
-                        ),
-                        child: Text(
-                          '취소됨',
-                          style: TextStyle(
-                            fontSize: 11,
-                            fontWeight: FontWeight.w700,
-                            color: muted,
-                          ),
-                        ),
-                      ),
-                    ],
                   ],
                 ),
                 if (entry.createdAt != null) ...[
-                  const SizedBox(height: 4),
+                  const SizedBox(height: 6),
                   Text(
                     dateFormat.format(entry.createdAt!),
                     style: DanjiTypography.caption.copyWith(
+                      fontSize: 13,
                       color: cancelled ? muted : DanjiColors.textSecondary,
-                      decoration:
-                          cancelled ? TextDecoration.lineThrough : null,
-                      decorationColor: muted,
-                    ),
-                  ),
-                ],
-                if (expiry != null) ...[
-                  const SizedBox(height: 4),
-                  Text(
-                    expiry.text,
-                    style: DanjiTypography.caption.copyWith(
-                      color: cancelled
-                          ? muted
-                          : _expiryColor(expiry.tone),
-                      fontWeight: expiry.tone == PointExpiryTone.urgentRed ||
-                              expiry.tone == PointExpiryTone.urgentOrange
-                          ? FontWeight.w700
-                          : FontWeight.w500,
                       decoration:
                           cancelled ? TextDecoration.lineThrough : null,
                       decorationColor: muted,
@@ -541,6 +475,7 @@ class _HistoryTile extends StatelessWidget {
               ],
             ),
           ),
+          const SizedBox(width: 12),
           Text(amountText, style: amountStyle),
         ],
       ),

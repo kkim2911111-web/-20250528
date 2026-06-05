@@ -1,16 +1,32 @@
+import 'dart:io' show File;
+
 import 'package:flutter/foundation.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../models/license_review_item.dart';
 import '../models/staff_profile.dart';
 import '../repositories/staff_repository.dart';
 import '../supabase_client.dart';
+import 'push_notification_service.dart';
 
 class AdminException implements Exception {
   final String message;
   const AdminException(this.message);
   @override
   String toString() => message;
+}
+
+class SendPushResult {
+  final int sent;
+  final int tokens;
+  final bool skipped;
+
+  const SendPushResult({
+    required this.sent,
+    required this.tokens,
+    required this.skipped,
+  });
 }
 
 class AdminService {
@@ -39,6 +55,46 @@ class AdminService {
   ];
 
   Future<StaffProfile?> fetchMyProfile() => _staffRepo.fetchMyProfile();
+
+  /// 관리자 → 특정 유저 FCM 푸시 (Edge Function send-push-notification)
+  Future<SendPushResult> sendPushNotification({
+    required String userId,
+    required String title,
+    required String body,
+    String? type,
+    String? reservationId,
+  }) async {
+    final response = await supabase.functions.invoke(
+      'send-push-notification',
+      body: {
+        'userId': userId,
+        'title': title,
+        'body': body,
+        if (type != null && type.isNotEmpty) 'type': type,
+        if (reservationId != null && reservationId.isNotEmpty)
+          'reservationId': reservationId,
+      },
+    );
+
+    if (response.status != 200) {
+      final data = response.data;
+      final message = data is Map
+          ? data['error']?.toString() ?? '푸시 발송에 실패했습니다.'
+          : '푸시 발송에 실패했습니다.';
+      throw AdminException(message);
+    }
+
+    final data = response.data;
+    if (data is! Map) {
+      throw const AdminException('푸시 발송 응답이 올바르지 않습니다.');
+    }
+
+    return SendPushResult(
+      sent: (data['sent'] as num?)?.toInt() ?? 0,
+      tokens: (data['tokens'] as num?)?.toInt() ?? 0,
+      skipped: data['skipped'] == true,
+    );
+  }
 
   /// 관리자 가입 — RPC 후 staff_users 레코드 확인까지
   Future<StaffProfile> registerStaff({
@@ -296,9 +352,12 @@ class AdminService {
     return id;
   }
 
+  static const _businessDocumentsBucket = 'business-documents';
+
   static const _complexBusinessSelect =
       'id, name, business_name, business_registration_number, '
-      'business_address, business_representative, business_phone';
+      'business_address, business_representative, business_phone, '
+      'business_license_url';
 
   /// 본인 단지(complexes) 사업자 정보 조회
   Future<AdminComplexBusinessInfo> fetchComplexBusinessInfo() async {
@@ -332,6 +391,80 @@ class AdminService {
     return AdminComplexBusinessInfo.fromMap(
       Map<String, dynamic>.from(row),
     );
+  }
+
+  /// business_license_url → 화면 표시용 signed URL (private bucket)
+  Future<String?> resolveBusinessLicenseDisplayUrl(String? stored) async {
+    final path = businessLicenseStoragePath(stored);
+    if (path == null) return null;
+    try {
+      return await supabase.storage
+          .from(_businessDocumentsBucket)
+          .createSignedUrl(path, 3600);
+    } catch (e) {
+      debugPrint('[admin] business license signed url failed: $e');
+      final url = stored?.trim();
+      if (url != null && url.startsWith('http')) return url;
+      return null;
+    }
+  }
+
+  static String? businessLicenseStoragePath(String? stored) {
+    final value = stored?.trim();
+    if (value == null || value.isEmpty) return null;
+    const marker = '/business-documents/';
+    final markerIndex = value.indexOf(marker);
+    if (markerIndex >= 0) {
+      return value.substring(markerIndex + marker.length);
+    }
+    if (value.contains('://')) return null;
+    return value;
+  }
+
+  /// business-documents/{complex_id}/business_license.jpg 업로드 후 public URL 반환
+  Future<String> uploadBusinessLicense({
+    required String complexId,
+    required XFile image,
+  }) async {
+    final staffComplexId = await _requireStaffComplexId();
+    if (staffComplexId != complexId) {
+      throw const AdminException('다른 단지 사업자등록증은 업로드할 수 없습니다.');
+    }
+
+    final path = '$complexId/business_license.jpg';
+    final bytes = await image.readAsBytes();
+    final ext = image.path.split('.').last.toLowerCase();
+    final contentType = ext == 'png' ? 'image/png' : 'image/jpeg';
+
+    try {
+      if (kIsWeb) {
+        await supabase.storage.from(_businessDocumentsBucket).uploadBinary(
+              path,
+              bytes,
+              fileOptions: FileOptions(
+                contentType: contentType,
+                upsert: true,
+              ),
+            );
+      } else {
+        await supabase.storage.from(_businessDocumentsBucket).upload(
+              path,
+              File(image.path),
+              fileOptions: FileOptions(
+                contentType: contentType,
+                upsert: true,
+              ),
+            );
+      }
+    } on StorageException catch (e) {
+      throw AdminException(
+        e.message.isNotEmpty
+            ? e.message
+            : '사업자등록증 업로드에 실패했습니다.',
+      );
+    }
+
+    return supabase.storage.from(_businessDocumentsBucket).getPublicUrl(path);
   }
 
   Future<Map<String, dynamic>> _upsertVehicleRow({
@@ -417,7 +550,9 @@ class AdminService {
         .from('reservations')
         .select(
           'id, status, total_price, start_at, start_time, end_at, end_time, '
-          'is_accident, accident_note, vehicles(model_name, car_number)',
+          'is_accident, accident_note, pickup_photos, return_photos, '
+          'contract_content, user_profiles(full_name, name), '
+          'vehicles(model_name, car_number)',
         )
         .inFilter('vehicle_id', ids)
         .eq('status', 'returned')
@@ -428,14 +563,109 @@ class AdminService {
         .toList();
   }
 
-  Future<void> completeReturnInspection(String reservationId) async {
+  Future<List<String>> _fetchRidePhotosForStaff({
+    required String reservationId,
+    required String phase,
+  }) async {
     try {
-      await supabase.rpc('complete_return_inspection_for_staff', params: {
+      final data = await supabase.rpc('get_ride_photos_for_staff', params: {
         'p_reservation_id': reservationId,
+        'p_phase': phase,
+      });
+      if (data is! List) return const [];
+      return data
+          .map((row) {
+            if (row is Map) {
+              return row['photo_url']?.toString().trim() ?? '';
+            }
+            return row?.toString().trim() ?? '';
+          })
+          .where((url) => url.isNotEmpty)
+          .toList();
+    } on PostgrestException catch (e) {
+      final msg = e.message.toLowerCase();
+      if (msg.contains('could not find the function') ||
+          msg.contains('get_ride_photos_for_staff')) {
+        return const [];
+      }
+      rethrow;
+    }
+  }
+
+  /// 관리자 — 예약 계약서 본문 (없으면 generate_rental_contract 후 재조회)
+  Future<String?> ensureReservationContractForStaff(
+    String reservationId,
+  ) async {
+    final complexId = await _requireStaffComplexId();
+    final text = await _fetchReservationContractForStaff(
+      reservationId: reservationId,
+      complexId: complexId,
+    );
+    if (text != null && text.isNotEmpty) return text;
+
+    final numericId = int.tryParse(reservationId.trim());
+    if (numericId == null) return null;
+
+    try {
+      await supabase.rpc('generate_rental_contract', params: {
+        'p_reservation_id': numericId,
       });
     } on PostgrestException catch (e) {
       throw AdminException(mapAdminPostgrestError(e));
     }
+
+    return _fetchReservationContractForStaff(
+      reservationId: reservationId,
+      complexId: complexId,
+    );
+  }
+
+  Future<String?> _fetchReservationContractForStaff({
+    required String reservationId,
+    required String complexId,
+  }) async {
+    final row = await supabase
+        .from('reservations')
+        .select('contract_content, vehicles(complex_id)')
+        .eq('id', reservationId)
+        .maybeSingle();
+
+    if (row == null) return null;
+
+    final vehicleRaw = row['vehicles'];
+    final vehicleComplexId = vehicleRaw is Map
+        ? vehicleRaw['complex_id']?.toString()
+        : null;
+    if (vehicleComplexId != null && vehicleComplexId != complexId) {
+      throw const AdminException('다른 단지 예약 계약서는 조회할 수 없습니다.');
+    }
+
+    final text = row['contract_content']?.toString().trim();
+    if (text == null || text.isEmpty) return null;
+    return text;
+  }
+
+  /// reservations.pickup/return_photos 우선, 비어 있으면 ride_photos 폴백
+  Future<({List<String> before, List<String> after})> resolveInspectionPhotos(
+    AdminReservationRow row,
+  ) async {
+    var before = row.pickupPhotos;
+    var after = row.returnPhotos;
+
+    if (before.isEmpty) {
+      before = await _fetchRidePhotosForStaff(
+        reservationId: row.id,
+        phase: 'pickup',
+      );
+    }
+    if (after.isEmpty) {
+      after = await _fetchRidePhotosForStaff(
+        reservationId: row.id,
+        phase: 'return',
+      );
+    }
+
+    return (before: before, after: after);
   }
 
   Future<List<Map<String, dynamic>>> getAdminReservationsWithConflict() async {
@@ -443,6 +673,26 @@ class AdminService {
       final data = await supabase.rpc('get_admin_reservations_with_conflict');
       if (data == null) return [];
       return List<Map<String, dynamic>>.from(data as List);
+    } on PostgrestException catch (e) {
+      throw AdminException(mapAdminPostgrestError(e));
+    }
+  }
+
+  Future<List<Map<String, dynamic>>> getAdminCompletedReservations() async {
+    try {
+      final data = await supabase.rpc('get_admin_completed_reservations');
+      if (data == null) return [];
+      return List<Map<String, dynamic>>.from(data as List);
+    } on PostgrestException catch (e) {
+      throw AdminException(mapAdminPostgrestError(e));
+    }
+  }
+
+  Future<void> forceCompleteReservation(String reservationId) async {
+    try {
+      await supabase.rpc('force_complete_reservation_for_staff', params: {
+        'p_reservation_id': reservationId,
+      });
     } on PostgrestException catch (e) {
       throw AdminException(mapAdminPostgrestError(e));
     }
@@ -473,7 +723,11 @@ class AdminService {
         .toList();
   }
 
-  Future<SalesSummary> fetchSalesSummary(String complexId) async {
+  Future<SalesSummary> fetchSalesSummary(
+    String complexId, {
+    int? year,
+    int? month,
+  }) async {
     final vehicles = await supabase
         .from('vehicles')
         .select('id, model_name')
@@ -484,14 +738,22 @@ class AdminService {
 
     final ids = vehicles.map((v) => v['id']).toList();
     final now = DateTime.now();
-    final monthStart = DateTime(now.year, now.month, 1).toUtc();
+    final targetYear = year ?? now.year;
+    final targetMonth = month ?? now.month;
+    final monthStart = DateTime(targetYear, targetMonth, 1).toUtc();
+    final monthEnd = DateTime(targetYear, targetMonth + 1, 1).toUtc();
+    final monthStartIso = monthStart.toIso8601String();
+    final monthEndIso = monthEnd.toIso8601String();
+    final monthRangeFilter =
+        'and(start_time.gte."$monthStartIso",start_time.lt."$monthEndIso"),'
+        'and(start_at.gte."$monthStartIso",start_at.lt."$monthEndIso")';
 
     final rows = await supabase
         .from('reservations')
         .select('total_price, vehicle_id, vehicles(model_name)')
         .inFilter('vehicle_id', ids)
         .inFilter('status', ['confirmed', 'in_use', 'returned', 'completed'])
-        .gte('start_time', monthStart.toIso8601String());
+        .or(monthRangeFilter);
 
     final byVehicle = <String, SalesRow>{};
     var total = 0;
@@ -546,6 +808,71 @@ class AdminService {
         'p_approved': approved,
         'p_rejection_reason': rejectionReason,
       });
+      final push = PushNotificationService.instance;
+      if (approved) {
+        await push.customerLicenseApproved(userId);
+      } else {
+        await push.customerLicenseRejected(
+          userId,
+          reason: rejectionReason?.trim().isNotEmpty == true
+              ? rejectionReason!.trim()
+              : '면허 정보 확인 불가',
+        );
+      }
+    } on PostgrestException catch (e) {
+      throw AdminException(mapAdminPostgrestError(e));
+    }
+  }
+
+  Future<void> reviewResident({
+    required String userId,
+    required bool approved,
+    String? rejectionReason,
+  }) async {
+    try {
+      await supabase.rpc('review_resident_for_staff', params: {
+        'p_user_id': userId,
+        'p_approved': approved,
+        'p_rejection_reason': rejectionReason,
+      });
+      final push = PushNotificationService.instance;
+      if (approved) {
+        await push.customerResidentApproved(userId);
+      } else {
+        await push.customerResidentRejected(
+          userId,
+          reason: rejectionReason?.trim().isNotEmpty == true
+              ? rejectionReason!.trim()
+              : '입주민 인증 정보 확인 불가',
+        );
+      }
+    } on PostgrestException catch (e) {
+      throw AdminException(mapAdminPostgrestError(e));
+    }
+  }
+
+  Future<void> completeReturnInspection(String reservationId) async {
+    String? userId;
+    try {
+      final row = await supabase
+          .from('reservations')
+          .select('user_id')
+          .eq('id', reservationId)
+          .maybeSingle();
+      userId = row?['user_id']?.toString();
+    } catch (_) {}
+
+    try {
+      await supabase.rpc('complete_return_inspection_for_staff', params: {
+        'p_reservation_id': reservationId,
+      });
+      if (userId != null && userId.isNotEmpty) {
+        await PushNotificationService.instance
+            .customerReturnInspectionComplete(
+          userId: userId,
+          reservationId: reservationId,
+        );
+      }
     } on PostgrestException catch (e) {
       throw AdminException(mapAdminPostgrestError(e));
     }
@@ -601,6 +928,9 @@ String mapAdminPostgrestError(PostgrestException error) {
   }
   if (msg.contains('invalid_status')) {
     return '검수할 수 없는 예약 상태입니다.';
+  }
+  if (msg.contains('not_eligible_for_force_complete')) {
+    return '강제 완료 대상이 아닙니다. (24시간 경과·상태 확인)';
   }
   return error.message;
 }

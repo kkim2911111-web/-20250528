@@ -6,6 +6,10 @@ import '../../services/admin_service.dart';
 import '../../theme/danji_colors.dart';
 import '../../theme/danji_theme.dart';
 import '../../widgets/danji_app_bar.dart';
+import '../../widgets/month_filter_bar.dart';
+import '../../utils/rental_contract_parser.dart';
+import '../../widgets/rental_contract_cards.dart';
+import '../../widgets/return_inspection_photo_compare.dart';
 import '../../widgets/section_card.dart';
 import 'admin_vehicle_form_screen.dart';
 
@@ -593,37 +597,170 @@ class _AdminReturnInspectionScreenState
             itemCount: list.length,
             separatorBuilder: (_, __) => const SizedBox(height: 10),
             itemBuilder: (context, index) {
-              final r = list[index];
-              return SectionCard(
+              return _ReturnInspectionCard(
+                row: list[index],
+                dateFormat: _date,
+                onComplete: () => _complete(list[index]),
+                admin: _admin,
+              );
+            },
+          );
+        },
+      ),
+    );
+  }
+}
+
+class _ReturnInspectionCard extends StatefulWidget {
+  final AdminReservationRow row;
+  final DateFormat dateFormat;
+  final VoidCallback onComplete;
+  final AdminService admin;
+
+  const _ReturnInspectionCard({
+    required this.row,
+    required this.dateFormat,
+    required this.onComplete,
+    required this.admin,
+  });
+
+  @override
+  State<_ReturnInspectionCard> createState() => _ReturnInspectionCardState();
+}
+
+class _ReturnInspectionCardState extends State<_ReturnInspectionCard> {
+  late Future<({List<String> before, List<String> after})> _photosFuture;
+  bool _loadingContract = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _photosFuture = widget.admin.resolveInspectionPhotos(widget.row);
+  }
+
+  @override
+  void didUpdateWidget(covariant _ReturnInspectionCard oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.row.id != widget.row.id) {
+      _photosFuture = widget.admin.resolveInspectionPhotos(widget.row);
+    }
+  }
+
+  Future<void> _showContract() async {
+    if (_loadingContract) return;
+    setState(() => _loadingContract = true);
+
+    try {
+      var content = widget.row.contractContent?.trim();
+      if (content == null || content.isEmpty) {
+        content = await widget.admin.ensureReservationContractForStaff(
+          widget.row.id,
+        );
+      }
+
+      if (!mounted) return;
+      if (content == null || content.isEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('계약서가 아직 준비되지 않았습니다.')),
+        );
+        return;
+      }
+
+      final contractText = content;
+      final parsed = RentalContractParsed.parse(contractText);
+      final displayParsed = parsed.reservationId.isEmpty
+          ? RentalContractParsed(
+              companyName: parsed.companyName,
+              reservationId: widget.row.id,
+              vehicleName: parsed.vehicleName ?? widget.row.vehicleName,
+              rentalPeriod: parsed.rentalPeriod,
+              renterName: parsed.renterName ?? widget.row.renterName,
+              renterPhone: parsed.renterPhone,
+              licenseNumber: parsed.licenseNumber,
+              secondDriverName: parsed.secondDriverName,
+              secondDriverLicense: parsed.secondDriverLicense,
+              originalPrice: parsed.originalPrice,
+              paidPrice: parsed.paidPrice,
+              extraFeeLines: parsed.extraFeeLines,
+              insuranceIntro: parsed.insuranceIntro,
+              insuranceCoverage: parsed.insuranceCoverage,
+              insuranceNotes: parsed.insuranceNotes,
+              complianceItems: parsed.complianceItems,
+              generatedAt: parsed.generatedAt,
+            )
+          : parsed;
+
+      await showModalBottomSheet<void>(
+        context: context,
+        isScrollControlled: true,
+        backgroundColor: Colors.transparent,
+        builder: (ctx) {
+          return DraggableScrollableSheet(
+            initialChildSize: 0.82,
+            minChildSize: 0.45,
+            maxChildSize: 0.95,
+            expand: false,
+            builder: (context, scrollController) {
+              return Container(
+                decoration: const BoxDecoration(
+                  color: DanjiColors.background,
+                  borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+                ),
                 child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(
-                      r.vehicleName,
-                      style: const TextStyle(
-                        fontWeight: FontWeight.w800,
-                        fontSize: 16,
+                    const SizedBox(height: 10),
+                    Container(
+                      width: 40,
+                      height: 4,
+                      decoration: BoxDecoration(
+                        color: DanjiColors.border,
+                        borderRadius: BorderRadius.circular(2),
                       ),
                     ),
-                    const SizedBox(height: 4),
-                    Text(
-                      '${r.startAt != null ? _date.format(r.startAt!) : '-'} ~ '
-                      '${r.endAt != null ? _date.format(r.endAt!) : '-'}',
-                      style: const TextStyle(color: DanjiColors.textSecondary),
-                    ),
-                    if (r.isAccident)
-                      Padding(
-                        padding: const EdgeInsets.only(top: 8),
-                        child: Text(
-                          '사고: ${r.accidentNote ?? '내용 없음'}',
-                          style: const TextStyle(color: DanjiColors.accentRed),
-                        ),
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(20, 16, 12, 8),
+                      child: Row(
+                        children: [
+                          const Expanded(
+                            child: Text(
+                              '대여 계약서',
+                              style: TextStyle(
+                                fontWeight: FontWeight.w800,
+                                fontSize: 18,
+                                color: DanjiColors.textPrimary,
+                              ),
+                            ),
+                          ),
+                          IconButton(
+                            onPressed: () => Navigator.pop(ctx),
+                            icon: const Icon(Icons.close),
+                          ),
+                        ],
                       ),
-                    const SizedBox(height: 12),
-                    FilledButton(
-                      onPressed: () => _complete(r),
-                      style: DanjiTheme.primaryButton,
-                      child: const Text('검수 완료'),
+                    ),
+                    Expanded(
+                      child: SingleChildScrollView(
+                        controller: scrollController,
+                        padding: const EdgeInsets.fromLTRB(20, 0, 20, 24),
+                        child: displayParsed.hasStructuredLayout
+                            ? RentalContractCardView(parsed: displayParsed)
+                            : Container(
+                                width: double.infinity,
+                                padding: const EdgeInsets.all(16),
+                                decoration: BoxDecoration(
+                                  color: DanjiColors.surface,
+                                  borderRadius: BorderRadius.circular(12),
+                                  border: Border.all(color: DanjiColors.border),
+                                ),
+                                child: SelectableText(
+                                  contractText,
+                                  style: const TextStyle(
+                                    color: DanjiColors.textPrimary,
+                                    height: 1.5,
+                                  ),
+                                ),
+                              ),
+                      ),
                     ),
                   ],
                 ),
@@ -631,6 +768,104 @@ class _AdminReturnInspectionScreenState
             },
           );
         },
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(friendlyAdminError(e))),
+      );
+    } finally {
+      if (mounted) setState(() => _loadingContract = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final r = widget.row;
+
+    return SectionCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            r.vehicleName,
+            style: const TextStyle(
+              fontWeight: FontWeight.w800,
+              fontSize: 16,
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            '${r.startAt != null ? widget.dateFormat.format(r.startAt!) : '-'} ~ '
+            '${r.endAt != null ? widget.dateFormat.format(r.endAt!) : '-'}',
+            style: const TextStyle(color: DanjiColors.textSecondary),
+          ),
+          const SizedBox(height: 10),
+          Text(
+            '예약번호: ${r.reservationNumberLabel}',
+            style: const TextStyle(
+              color: DanjiColors.textPrimary,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            '임차인: ${r.renterName?.trim().isNotEmpty == true ? r.renterName!.trim() : '임차인'}',
+            style: const TextStyle(color: DanjiColors.textSecondary),
+          ),
+          const SizedBox(height: 10),
+          OutlinedButton.icon(
+            onPressed: _loadingContract ? null : _showContract,
+            icon: _loadingContract
+                ? const SizedBox(
+                    width: 16,
+                    height: 16,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : const Icon(Icons.description_outlined, size: 18),
+            label: const Text('계약서 보기'),
+            style: OutlinedButton.styleFrom(
+              foregroundColor: DanjiColors.brandBlue,
+              side: const BorderSide(color: DanjiColors.brandBlue),
+              minimumSize: const Size.fromHeight(40),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(10),
+              ),
+            ),
+          ),
+          if (r.isAccident)
+            Padding(
+              padding: const EdgeInsets.only(top: 8),
+              child: Text(
+                '사고: ${r.accidentNote ?? '내용 없음'}',
+                style: const TextStyle(color: DanjiColors.accentRed),
+              ),
+            ),
+          const SizedBox(height: 16),
+          FutureBuilder<({List<String> before, List<String> after})>(
+            future: _photosFuture,
+            builder: (context, snap) {
+              if (snap.connectionState == ConnectionState.waiting) {
+                return const SizedBox(
+                  height: 120,
+                  child: Center(child: CircularProgressIndicator()),
+                );
+              }
+              final photos = snap.data ??
+                  (before: r.pickupPhotos, after: r.returnPhotos);
+              return ReturnInspectionPhotoCompare(
+                beforePhotos: photos.before,
+                afterPhotos: photos.after,
+              );
+            },
+          ),
+          const SizedBox(height: 16),
+          FilledButton(
+            onPressed: widget.onComplete,
+            style: DanjiTheme.primaryButton,
+            child: const Text('검수 완료'),
+          ),
+        ],
       ),
     );
   }
@@ -648,22 +883,53 @@ class AdminSalesScreen extends StatefulWidget {
 class _AdminSalesScreenState extends State<AdminSalesScreen> {
   final _admin = AdminService();
   final _won = NumberFormat('#,###');
+  final _monthHeaderFormat = DateFormat('yyyy년 M월');
+  late DateTime _selectedMonth;
   Future<SalesSummary>? _future;
 
   @override
   void initState() {
     super.initState();
+    final now = DateTime.now();
+    _selectedMonth = DateTime(now.year, now.month);
     _reload();
+  }
+
+  bool get _canGoNextMonth {
+    final now = DateTime.now();
+    return _selectedMonth.year < now.year ||
+        (_selectedMonth.year == now.year &&
+            _selectedMonth.month < now.month);
+  }
+
+  void _shiftMonth(int delta) {
+    setState(() {
+      _selectedMonth = DateTime(
+        _selectedMonth.year,
+        _selectedMonth.month + delta,
+      );
+      _future = _fetchSummary();
+    });
+  }
+
+  Future<SalesSummary> _fetchSummary() {
+    return _admin.fetchSalesSummary(
+      widget.profile.complexId,
+      year: _selectedMonth.year,
+      month: _selectedMonth.month,
+    );
   }
 
   void _reload() {
     setState(() {
-      _future = _admin.fetchSalesSummary(widget.profile.complexId);
+      _future = _fetchSummary();
     });
   }
 
   @override
   Widget build(BuildContext context) {
+    final monthLabel = _monthHeaderFormat.format(_selectedMonth);
+
     return Scaffold(
       backgroundColor: DanjiColors.background,
       appBar: const DanjiAppBar(title: '매출 관리'),
@@ -678,13 +944,20 @@ class _AdminSalesScreenState extends State<AdminSalesScreen> {
           return ListView(
             padding: const EdgeInsets.all(20),
             children: [
+              MonthFilterBar(
+                label: monthLabel,
+                canGoNext: _canGoNextMonth,
+                onPrevious: () => _shiftMonth(-1),
+                onNext: _canGoNextMonth ? () => _shiftMonth(1) : null,
+              ),
+              const SizedBox(height: 16),
               SectionCard(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Text(
-                      '이번 달 등록 차량 매출',
-                      style: TextStyle(color: DanjiColors.textSecondary),
+                    Text(
+                      '$monthLabel 등록 차량 매출',
+                      style: const TextStyle(color: DanjiColors.textSecondary),
                     ),
                     const SizedBox(height: 8),
                     Text(
@@ -707,7 +980,7 @@ class _AdminSalesScreenState extends State<AdminSalesScreen> {
               ),
               const SizedBox(height: 10),
               if (summary.rows.isEmpty)
-                const SectionCard(child: Text('매출 데이터가 없습니다.'))
+                SectionCard(child: Text('$monthLabel 매출 데이터가 없습니다.'))
               else
                 ...summary.rows.map(
                   (row) => Padding(
