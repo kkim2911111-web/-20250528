@@ -547,7 +547,8 @@ class _AdminReturnInspectionScreenState
     extends State<AdminReturnInspectionScreen> {
   final _admin = AdminService();
   final _date = DateFormat('yyyy-MM-dd HH:mm');
-  Future<List<AdminReservationRow>>? _future;
+  Future<List<AdminReservationRow>>? _pendingFuture;
+  Future<List<AdminReservationRow>>? _completedFuture;
 
   @override
   void initState() {
@@ -557,7 +558,12 @@ class _AdminReturnInspectionScreenState
 
   void _reload() {
     setState(() {
-      _future = _admin.fetchReturnInspections(widget.profile.complexId);
+      _pendingFuture =
+          _admin.fetchReturnInspections(widget.profile.complexId);
+      _completedFuture = _admin.fetchReturnInspections(
+        widget.profile.complexId,
+        status: 'completed',
+      );
     });
   }
 
@@ -579,34 +585,113 @@ class _AdminReturnInspectionScreenState
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: DanjiColors.background,
-      appBar: const DanjiAppBar(title: '반납 검수'),
-      body: FutureBuilder<List<AdminReservationRow>>(
-        future: _future,
-        builder: (context, snap) {
-          if (snap.connectionState == ConnectionState.waiting) {
-            return const Center(child: CircularProgressIndicator());
-          }
-          final list = snap.data ?? [];
-          if (list.isEmpty) {
-            return const Center(child: Text('검수 대기 중인 반납 차량이 없습니다.'));
-          }
-          return ListView.separated(
-            padding: const EdgeInsets.all(20),
-            itemCount: list.length,
-            separatorBuilder: (_, __) => const SizedBox(height: 10),
-            itemBuilder: (context, index) {
-              return _ReturnInspectionCard(
-                row: list[index],
-                dateFormat: _date,
-                onComplete: () => _complete(list[index]),
-                admin: _admin,
-              );
-            },
-          );
-        },
+    return DefaultTabController(
+      length: 2,
+      child: Scaffold(
+        backgroundColor: DanjiColors.background,
+        appBar: PreferredSize(
+          preferredSize: const Size.fromHeight(kToolbarHeight + 48),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const DanjiAppBar(title: '반납 검수'),
+              Material(
+                color: DanjiColors.background,
+                child: TabBar(
+                  labelColor: DanjiColors.buttonBlue,
+                  unselectedLabelColor: DanjiColors.textMuted,
+                  indicatorColor: DanjiColors.buttonBlue,
+                  labelStyle: const TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w700,
+                  ),
+                  unselectedLabelStyle: const TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600,
+                  ),
+                  tabs: const [
+                    Tab(text: '검수 대기'),
+                    Tab(text: '검수 완료'),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+        body: TabBarView(
+          children: [
+            _ReturnInspectionListTab(
+              future: _pendingFuture,
+              emptyMessage: '검수 대기 중인 반납 차량이 없습니다.',
+              dateFormat: _date,
+              admin: _admin,
+              showCompleteButton: true,
+              onComplete: _complete,
+            ),
+            _ReturnInspectionListTab(
+              future: _completedFuture,
+              emptyMessage: '검수 완료된 반납 차량이 없습니다.',
+              dateFormat: _date,
+              admin: _admin,
+              showCompleteButton: false,
+            ),
+          ],
+        ),
       ),
+    );
+  }
+}
+
+class _ReturnInspectionListTab extends StatelessWidget {
+  final Future<List<AdminReservationRow>>? future;
+  final String emptyMessage;
+  final DateFormat dateFormat;
+  final AdminService admin;
+  final bool showCompleteButton;
+  final Future<void> Function(AdminReservationRow row)? onComplete;
+
+  const _ReturnInspectionListTab({
+    required this.future,
+    required this.emptyMessage,
+    required this.dateFormat,
+    required this.admin,
+    required this.showCompleteButton,
+    this.onComplete,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return FutureBuilder<List<AdminReservationRow>>(
+      future: future,
+      builder: (context, snap) {
+        if (snap.connectionState == ConnectionState.waiting) {
+          return const Center(child: CircularProgressIndicator());
+        }
+        if (snap.hasError) {
+          return Center(child: Text(friendlyAdminError(snap.error!)));
+        }
+        final list = snap.data ?? [];
+        if (list.isEmpty) {
+          return Center(child: Text(emptyMessage));
+        }
+        return ListView.separated(
+          padding: const EdgeInsets.all(20),
+          itemCount: list.length,
+          separatorBuilder: (_, __) => const SizedBox(height: 10),
+          itemBuilder: (context, index) {
+            final row = list[index];
+            return _ReturnInspectionCard(
+              row: row,
+              dateFormat: dateFormat,
+              admin: admin,
+              showCompleteButton: showCompleteButton,
+              onComplete: showCompleteButton && onComplete != null
+                  ? () => onComplete!(row)
+                  : null,
+            );
+          },
+        );
+      },
     );
   }
 }
@@ -614,14 +699,16 @@ class _AdminReturnInspectionScreenState
 class _ReturnInspectionCard extends StatefulWidget {
   final AdminReservationRow row;
   final DateFormat dateFormat;
-  final VoidCallback onComplete;
+  final VoidCallback? onComplete;
   final AdminService admin;
+  final bool showCompleteButton;
 
   const _ReturnInspectionCard({
     required this.row,
     required this.dateFormat,
-    required this.onComplete,
     required this.admin,
+    this.onComplete,
+    this.showCompleteButton = true,
   });
 
   @override
@@ -810,7 +897,7 @@ class _ReturnInspectionCardState extends State<_ReturnInspectionCard> {
           ),
           const SizedBox(height: 4),
           Text(
-            '임차인: ${r.renterName?.trim().isNotEmpty == true ? r.renterName!.trim() : '임차인'}',
+            '임차인: ${r.renterDisplayName}',
             style: const TextStyle(color: DanjiColors.textSecondary),
           ),
           const SizedBox(height: 10),
@@ -859,12 +946,14 @@ class _ReturnInspectionCardState extends State<_ReturnInspectionCard> {
               );
             },
           ),
-          const SizedBox(height: 16),
-          FilledButton(
-            onPressed: widget.onComplete,
-            style: DanjiTheme.primaryButton,
-            child: const Text('검수 완료'),
-          ),
+          if (widget.showCompleteButton) ...[
+            const SizedBox(height: 16),
+            FilledButton(
+              onPressed: widget.onComplete,
+              style: DanjiTheme.primaryButton,
+              child: const Text('검수 완료'),
+            ),
+          ],
         ],
       ),
     );

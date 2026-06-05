@@ -327,6 +327,42 @@ class AdminReservationRow {
 
   String get reservationNumberLabel => '#$id';
 
+  /// UI 표시용 — [renterName] 없으면 '이름 미등록'
+  String get renterDisplayName {
+    final name = renterName?.trim();
+    if (name != null && name.isNotEmpty) return name;
+    return '이름 미등록';
+  }
+
+  /// full_name → 이메일 @ 앞부분 → 이름 미등록 (레거시 '임차인'은 무시)
+  static String resolveRenterDisplayName({
+    String? directRenterName,
+    String? fullName,
+    String? name,
+    String? email,
+  }) {
+    final direct = directRenterName?.trim();
+    if (direct != null &&
+        direct.isNotEmpty &&
+        direct != '임차인') {
+      return direct;
+    }
+
+    final resolvedName = fullName?.trim().isNotEmpty == true
+        ? fullName!.trim()
+        : (name?.trim().isNotEmpty == true ? name!.trim() : null);
+    if (resolvedName != null) return resolvedName;
+
+    final mail = email?.trim();
+    if (mail != null && mail.isNotEmpty) {
+      final at = mail.indexOf('@');
+      if (at > 0) return mail.substring(0, at);
+      return mail;
+    }
+
+    return '이름 미등록';
+  }
+
   static List<String> _photoUrlsFromMap(
     Map<String, dynamic> map,
     List<String> keys,
@@ -344,17 +380,18 @@ class AdminReservationRow {
   }
 
   static String? _renterNameFromMap(Map<String, dynamic> map) {
-    final direct = map['renter_name']?.toString().trim();
-    if (direct != null && direct.isNotEmpty) return direct;
-
     final profileRaw = map['user_profiles'];
+    Map<String, dynamic>? profile;
     if (profileRaw is Map) {
-      final profile = Map<String, dynamic>.from(profileRaw);
-      final name = profile['full_name']?.toString().trim() ??
-          profile['name']?.toString().trim();
-      if (name != null && name.isNotEmpty) return name;
+      profile = Map<String, dynamic>.from(profileRaw);
     }
-    return null;
+
+    return resolveRenterDisplayName(
+      directRenterName: map['renter_name']?.toString(),
+      fullName: profile?['full_name']?.toString(),
+      name: profile?['name']?.toString(),
+      email: profile?['email']?.toString(),
+    );
   }
 
   factory AdminReservationRow.fromMap(Map<String, dynamic> map) {

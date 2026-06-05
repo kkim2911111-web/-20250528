@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
+import '../../models/staff_profile.dart';
 import '../../services/admin_service.dart';
 import '../../theme/danji_colors.dart';
 import '../../utils/danji_snackbar.dart';
@@ -298,7 +299,9 @@ class _CompletedReservationCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final vehicleName = _str(row, 'vehicle_name') ?? '차량';
-    final renterName = _str(row, 'renter_name') ?? '임차인';
+    final renterName = AdminReservationRow.resolveRenterDisplayName(
+      directRenterName: _str(row, 'renter_name'),
+    );
     final status = _status(row);
     final start = _parseDate(row['start_at']);
     final end = _parseDate(row['end_at']);

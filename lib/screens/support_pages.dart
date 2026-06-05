@@ -30,8 +30,7 @@ class CustomerServiceScreen extends StatelessWidget {
             icon: Icons.info_outline,
             title: '안내',
             body:
-                '예약·결제·환불·대여하기 관련 문의는 '
-                '예약 ID 또는 주문 ID를 함께 알려주시면 '
+                '문의 시 대여 차량번호와 예약번호를 함께 알려주시면 '
                 '더 빠르게 도와드릴 수 있습니다.',
           ),
         ],
@@ -284,6 +283,14 @@ class TermsPolicyScreen extends StatelessWidget {
                 labelColor: DanjiColors.buttonBlue,
                 unselectedLabelColor: DanjiColors.textMuted,
                 indicatorColor: DanjiColors.buttonBlue,
+                labelStyle: const TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                ),
+                unselectedLabelStyle: const TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                ),
                 isScrollable: true,
                 tabAlignment: TabAlignment.start,
                 tabs: const [

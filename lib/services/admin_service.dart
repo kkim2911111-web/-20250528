@@ -537,8 +537,9 @@ class AdminService {
   }
 
   Future<List<AdminReservationRow>> fetchReturnInspections(
-    String complexId,
-  ) async {
+    String complexId, {
+    String status = 'returned',
+  }) async {
     final vehicles = await supabase
         .from('vehicles')
         .select('id')
@@ -546,21 +547,78 @@ class AdminService {
     final ids = (vehicles as List).map((v) => v['id']).toList();
     if (ids.isEmpty) return [];
 
-    final rows = await supabase
-        .from('reservations')
-        .select(
-          'id, status, total_price, start_at, start_time, end_at, end_time, '
-          'is_accident, accident_note, pickup_photos, return_photos, '
-          'contract_content, user_profiles(full_name, name), '
-          'vehicles(model_name, car_number)',
-        )
-        .inFilter('vehicle_id', ids)
-        .eq('status', 'returned')
-        .order('returned_at', ascending: false);
+    const baseSelect =
+        'id, user_id, status, total_price, start_at, start_time, end_at, end_time, '
+        'is_accident, accident_note, pickup_photos, return_photos, '
+        'vehicles(model_name, car_number)';
 
-    return (rows as List)
-        .map((r) => AdminReservationRow.fromMap(Map<String, dynamic>.from(r)))
+    Future<List> queryReservations(String select) async {
+      try {
+        return await supabase
+            .from('reservations')
+            .select(select)
+            .inFilter('vehicle_id', ids)
+            .eq('status', status)
+            .order('returned_at', ascending: false);
+      } on PostgrestException catch (e) {
+        if (!_isRetryableVehicleColumnError(e)) rethrow;
+        return await supabase
+            .from('reservations')
+            .select(select)
+            .inFilter('vehicle_id', ids)
+            .eq('status', status)
+            .order('updated_at', ascending: false);
+      }
+    }
+
+    List rawRows;
+    try {
+      rawRows = await queryReservations('$baseSelect, contract_content');
+    } on PostgrestException catch (e) {
+      if (!_isRetryableVehicleColumnError(e)) rethrow;
+      rawRows = await queryReservations(baseSelect);
+    }
+
+    final rows = (rawRows as List)
+        .map((r) => Map<String, dynamic>.from(r as Map))
         .toList();
+
+    final userIds = rows
+        .map((r) => r['user_id']?.toString())
+        .whereType<String>()
+        .where((id) => id.isNotEmpty)
+        .toSet()
+        .toList();
+
+    final profileByUserId = <String, Map<String, dynamic>>{};
+    if (userIds.isNotEmpty) {
+      try {
+        final profiles = await supabase
+            .from('user_profiles')
+            .select('user_id, full_name, email')
+            .inFilter('user_id', userIds);
+        for (final profile in profiles as List) {
+          final map = Map<String, dynamic>.from(profile as Map);
+          final uid = map['user_id']?.toString();
+          if (uid != null && uid.isNotEmpty) {
+            profileByUserId[uid] = map;
+          }
+        }
+      } on PostgrestException {
+        // 프로필 조회 실패 시 이메일·이름 없이 fallback
+      }
+    }
+
+    return rows.map((r) {
+      final uid = r['user_id']?.toString();
+      final profile = uid != null ? profileByUserId[uid] : null;
+      r['renter_name'] = AdminReservationRow.resolveRenterDisplayName(
+        directRenterName: r['renter_name']?.toString(),
+        fullName: profile?['full_name']?.toString(),
+        email: profile?['email']?.toString(),
+      );
+      return AdminReservationRow.fromMap(r);
+    }).toList();
   }
 
   Future<List<String>> _fetchRidePhotosForStaff({
