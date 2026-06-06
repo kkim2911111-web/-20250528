@@ -11,7 +11,7 @@ type ReservationRow = {
   start_time?: string | null;
   end_at?: string | null;
   end_time?: string | null;
-  vehicles?: { model_name?: string; name?: string; complex_id?: string } | null;
+  vehicles?: { model_name?: string; complex_id?: string } | null;
 };
 
 function startAt(row: ReservationRow): string | null {
@@ -24,7 +24,13 @@ function endAt(row: ReservationRow): string | null {
 
 function vehicleName(row: ReservationRow): string {
   const v = row.vehicles;
-  return v?.model_name?.trim() || v?.name?.trim() || '차량';
+  return v?.model_name?.trim() || '차량';
+}
+
+function parseMs(iso: string | null): number | null {
+  if (!iso) return null;
+  const ms = Date.parse(iso);
+  return Number.isFinite(ms) ? ms : null;
 }
 
 async function hasSent(
@@ -52,41 +58,52 @@ async function markSent(
   });
 }
 
+async function dispatchIfSent(
+  admin: ReturnType<typeof getAdminClient>,
+  scenario: Parameters<typeof dispatchPushScenario>[0]['scenario'],
+  payload: Record<string, string>,
+): Promise<boolean> {
+  const result = await dispatchPushScenario({
+    admin,
+    scenario,
+    payload,
+  });
+  if (result.skipped) return false;
+  return (result.customerSent + result.staffSent) > 0;
+}
+
 async function hasNextReservation(
   admin: ReturnType<typeof getAdminClient>,
   vehicleId: string,
   afterIso: string,
 ): Promise<{ exists: boolean; nextStartAt?: string }> {
+  const afterMs = parseMs(afterIso);
+  if (afterMs == null) return { exists: false };
+
   const { data } = await admin
     .from('reservations')
-    .select('id, start_at, start_time')
+    .select('id, start_at, start_time, status')
     .eq('vehicle_id', vehicleId)
-    .in('status', ['confirmed', 'pending'])
-    .gt('start_at', afterIso)
-    .order('start_at', { ascending: true })
-    .limit(1);
+    .in('status', ['confirmed', 'pending']);
 
-  if (data?.length) {
-    const row = data[0] as ReservationRow;
-    return { exists: true, nextStartAt: startAt(row) ?? undefined };
+  const rows = (data ?? []) as ReservationRow[];
+  let best: { id: string; start: string; ms: number } | null = null;
+
+  for (const row of rows) {
+    const start = startAt(row);
+    const ms = parseMs(start);
+    if (ms == null || ms <= afterMs) continue;
+    if (!best || ms < best.ms) {
+      best = { id: row.id, start: start!, ms };
+    }
   }
 
-  const { data: legacy } = await admin
-    .from('reservations')
-    .select('id, start_time')
-    .eq('vehicle_id', vehicleId)
-    .in('status', ['confirmed', 'pending'])
-    .gt('start_time', afterIso)
-    .order('start_time', { ascending: true })
-    .limit(1);
-
-  if (legacy?.length) {
-    const row = legacy[0] as ReservationRow;
-    return { exists: true, nextStartAt: startAt(row) ?? undefined };
-  }
-
-  return { exists: false };
+  if (!best) return { exists: false };
+  return { exists: true, nextStartAt: best.start };
 }
+
+const RESERVATION_SELECT =
+  'id, user_id, vehicle_id, status, start_at, start_time, end_at, end_time, vehicles(model_name, complex_id)';
 
 /** pg_cron — 대여/반납 10분 전·지연·충돌 위험 알림 */
 Deno.serve(async (req) => {
@@ -105,123 +122,113 @@ Deno.serve(async (req) => {
 
   const admin = getAdminClient();
   const now = Date.now();
-  const in5 = new Date(now + 5 * 60 * 1000).toISOString();
-  const in15 = new Date(now + 15 * 60 * 1000).toISOString();
-  const in30 = new Date(now + 30 * 60 * 1000).toISOString();
+  const windowStart = now + 5 * 60 * 1000;
+  const windowEnd = now + 15 * 60 * 1000;
+  const overdueCutoff = now;
+  const conflictEnd = now + 30 * 60 * 1000;
 
   let dispatched = 0;
 
   try {
-    const { data: startSoon } = await admin
+    const { data: confirmed } = await admin
       .from('reservations')
-      .select('id, user_id, vehicle_id, status, start_at, start_time, vehicles(model_name, name, complex_id)')
-      .eq('status', 'confirmed')
-      .gte('start_at', in5)
-      .lte('start_at', in15);
+      .select(RESERVATION_SELECT)
+      .eq('status', 'confirmed');
 
-    for (const row of (startSoon ?? []) as ReservationRow[]) {
+    for (const row of (confirmed ?? []) as ReservationRow[]) {
+      const startMs = parseMs(startAt(row));
+      if (startMs == null || startMs < windowStart || startMs > windowEnd) {
+        continue;
+      }
+
       const scenario = 'customer_rental_start_10min';
       if (await hasSent(admin, row.id, scenario)) continue;
-      await dispatchPushScenario({
-        admin,
-        scenario,
-        payload: {
-          userId: row.user_id,
-          reservationId: row.id,
-          vehicleName: vehicleName(row),
-          startAt: startAt(row) ?? '',
-        },
+
+      const sent = await dispatchIfSent(admin, scenario, {
+        userId: row.user_id,
+        reservationId: row.id,
+        vehicleName: vehicleName(row),
+        startAt: startAt(row) ?? '',
       });
-      await markSent(admin, row.id, scenario);
-      dispatched++;
+      if (sent) {
+        await markSent(admin, row.id, scenario);
+        dispatched++;
+      }
     }
 
-    const { data: returnSoon } = await admin
+    const { data: inUse } = await admin
       .from('reservations')
-      .select('id, user_id, vehicle_id, status, end_at, end_time, vehicles(model_name, name, complex_id)')
-      .eq('status', 'in_use')
-      .gte('end_at', in5)
-      .lte('end_at', in15);
+      .select(RESERVATION_SELECT)
+      .eq('status', 'in_use');
 
-    for (const row of (returnSoon ?? []) as ReservationRow[]) {
+    for (const row of (inUse ?? []) as ReservationRow[]) {
       const end = endAt(row) ?? '';
-      const next = await hasNextReservation(admin, row.vehicle_id, end);
-      const scenario = next.exists
-        ? 'customer_return_10min_next_booking'
-        : 'customer_return_10min';
-      if (await hasSent(admin, row.id, scenario)) continue;
-      await dispatchPushScenario({
-        admin,
-        scenario,
-        payload: {
+      const endMs = parseMs(end);
+      if (endMs == null) continue;
+
+      if (endMs >= windowStart && endMs <= windowEnd) {
+        const next = await hasNextReservation(admin, row.vehicle_id, end);
+        const scenario = next.exists
+          ? 'customer_return_10min_next_booking'
+          : 'customer_return_10min';
+        if (await hasSent(admin, row.id, scenario)) continue;
+
+        const sent = await dispatchIfSent(admin, scenario, {
           userId: row.user_id,
           reservationId: row.id,
           vehicleName: vehicleName(row),
           endAt: end,
-        },
-      });
-      await markSent(admin, row.id, scenario);
-      dispatched++;
-    }
+        });
+        if (sent) {
+          await markSent(admin, row.id, scenario);
+          dispatched++;
+        }
+      }
 
-    const { data: overdue } = await admin
-      .from('reservations')
-      .select('id, user_id, vehicle_id, status, end_at, end_time, vehicles(model_name, name, complex_id)')
-      .eq('status', 'in_use')
-      .lt('end_at', new Date(now).toISOString());
+      if (endMs < overdueCutoff) {
+        const scenario = 'customer_return_overdue';
+        if (!(await hasSent(admin, row.id, scenario))) {
+          const sent = await dispatchIfSent(admin, scenario, {
+            userId: row.user_id,
+            reservationId: row.id,
+            vehicleName: vehicleName(row),
+            endAt: end,
+          });
+          if (sent) {
+            await markSent(admin, row.id, scenario);
+            dispatched++;
+          }
+        }
 
-    for (const row of (overdue ?? []) as ReservationRow[]) {
-      const scenario = 'customer_return_overdue';
-      if (await hasSent(admin, row.id, scenario)) continue;
-      await dispatchPushScenario({
-        admin,
-        scenario,
-        payload: {
-          userId: row.user_id,
-          reservationId: row.id,
-          vehicleName: vehicleName(row),
-          endAt: endAt(row) ?? '',
-        },
-      });
-      await markSent(admin, row.id, scenario);
+        if (!(await hasSent(admin, row.id, 'staff_return_overdue'))) {
+          const staffSent = await dispatchIfSent(admin, 'staff_return_overdue', {
+            reservationId: row.id,
+            vehicleName: vehicleName(row),
+            userId: row.user_id,
+          });
+          if (staffSent) {
+            await markSent(admin, row.id, 'staff_return_overdue');
+            dispatched++;
+          }
+        }
+      }
 
-      await dispatchPushScenario({
-        admin,
-        scenario: 'staff_return_overdue',
-        payload: {
-          reservationId: row.id,
-          vehicleName: vehicleName(row),
-          userId: row.user_id,
-        },
-      });
-      await markSent(admin, row.id, 'staff_return_overdue');
-      dispatched++;
-    }
+      if (endMs >= overdueCutoff && endMs <= conflictEnd) {
+        const next = await hasNextReservation(admin, row.vehicle_id, end);
+        if (!next.exists) continue;
+        const scenario = 'staff_conflict_risk';
+        if (await hasSent(admin, row.id, scenario)) continue;
 
-    const { data: conflictRisk } = await admin
-      .from('reservations')
-      .select('id, user_id, vehicle_id, status, end_at, end_time, vehicles(model_name, name, complex_id)')
-      .eq('status', 'in_use')
-      .gte('end_at', new Date(now).toISOString())
-      .lte('end_at', in30);
-
-    for (const row of (conflictRisk ?? []) as ReservationRow[]) {
-      const end = endAt(row) ?? '';
-      const next = await hasNextReservation(admin, row.vehicle_id, end);
-      if (!next.exists) continue;
-      const scenario = 'staff_conflict_risk';
-      if (await hasSent(admin, row.id, scenario)) continue;
-      await dispatchPushScenario({
-        admin,
-        scenario,
-        payload: {
+        const sent = await dispatchIfSent(admin, scenario, {
           reservationId: row.id,
           vehicleName: vehicleName(row),
           nextStartAt: next.nextStartAt ?? '',
-        },
-      });
-      await markSent(admin, row.id, scenario);
-      dispatched++;
+        });
+        if (sent) {
+          await markSent(admin, row.id, scenario);
+          dispatched++;
+        }
+      }
     }
 
     return jsonResponse({ ok: true, dispatched });

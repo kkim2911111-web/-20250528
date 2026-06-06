@@ -1,4 +1,5 @@
--- 관리자 예약 목록 + 동일 차량 충돌 위험 (다음 예약 / 시간 겹침)
+-- vehicles 테이블에는 model_name만 존재 (name 컬럼 없음)
+-- get_admin_reservations_with_conflict RPC의 v.name 참조 제거
 
 create or replace function public.get_admin_reservations_with_conflict()
 returns table (

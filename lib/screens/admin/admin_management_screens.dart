@@ -5,9 +5,11 @@ import '../../models/staff_profile.dart';
 import '../../services/admin_service.dart';
 import '../../theme/danji_colors.dart';
 import '../../theme/danji_theme.dart';
+import '../../widgets/admin_scaffold.dart';
 import '../../widgets/danji_app_bar.dart';
 import '../../widgets/month_filter_bar.dart';
 import '../../utils/rental_contract_parser.dart';
+import '../../utils/rental_contract_pdf.dart';
 import '../../widgets/rental_contract_cards.dart';
 import '../../widgets/return_inspection_photo_compare.dart';
 import '../../widgets/section_card.dart';
@@ -51,8 +53,7 @@ class _AdminVehicleManageScreenState extends State<AdminVehicleManageScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: DanjiColors.background,
+    return AdminScaffold(
       appBar: const DanjiAppBar(title: '차량 관리'),
       floatingActionButton: FloatingActionButton.extended(
         backgroundColor: DanjiColors.buttonBlue,
@@ -154,8 +155,7 @@ class _AdminInsuranceScreenState extends State<AdminInsuranceScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: DanjiColors.background,
+    return AdminScaffold(
       appBar: const DanjiAppBar(title: '보험 관리'),
       body: FutureBuilder<List<AdminVehicleDetail>>(
         future: _future,
@@ -319,8 +319,7 @@ class _AdminPriceScreenState extends State<AdminPriceScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: DanjiColors.background,
+    return AdminScaffold(
       appBar: const DanjiAppBar(title: '가격 관리'),
       body: FutureBuilder<List<AdminVehicleDetail>>(
         future: _future,
@@ -394,8 +393,7 @@ class _AdminVehicleLocationScreenState extends State<AdminVehicleLocationScreen>
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: DanjiColors.background,
+    return AdminScaffold(
       appBar: const DanjiAppBar(title: '차량 위치'),
       body: RefreshIndicator(
         onRefresh: () async => _reload(),
@@ -587,8 +585,7 @@ class _AdminReturnInspectionScreenState
   Widget build(BuildContext context) {
     return DefaultTabController(
       length: 2,
-      child: Scaffold(
-        backgroundColor: DanjiColors.background,
+      child: AdminScaffold(
         appBar: PreferredSize(
           preferredSize: const Size.fromHeight(kToolbarHeight + 48),
           child: Column(
@@ -782,77 +779,11 @@ class _ReturnInspectionCardState extends State<_ReturnInspectionCard> {
         isScrollControlled: true,
         backgroundColor: Colors.transparent,
         builder: (ctx) {
-          return DraggableScrollableSheet(
-            initialChildSize: 0.82,
-            minChildSize: 0.45,
-            maxChildSize: 0.95,
-            expand: false,
-            builder: (context, scrollController) {
-              return Container(
-                decoration: const BoxDecoration(
-                  color: DanjiColors.background,
-                  borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-                ),
-                child: Column(
-                  children: [
-                    const SizedBox(height: 10),
-                    Container(
-                      width: 40,
-                      height: 4,
-                      decoration: BoxDecoration(
-                        color: DanjiColors.border,
-                        borderRadius: BorderRadius.circular(2),
-                      ),
-                    ),
-                    Padding(
-                      padding: const EdgeInsets.fromLTRB(20, 16, 12, 8),
-                      child: Row(
-                        children: [
-                          const Expanded(
-                            child: Text(
-                              '대여 계약서',
-                              style: TextStyle(
-                                fontWeight: FontWeight.w800,
-                                fontSize: 18,
-                                color: DanjiColors.textPrimary,
-                              ),
-                            ),
-                          ),
-                          IconButton(
-                            onPressed: () => Navigator.pop(ctx),
-                            icon: const Icon(Icons.close),
-                          ),
-                        ],
-                      ),
-                    ),
-                    Expanded(
-                      child: SingleChildScrollView(
-                        controller: scrollController,
-                        padding: const EdgeInsets.fromLTRB(20, 0, 20, 24),
-                        child: displayParsed.hasStructuredLayout
-                            ? RentalContractCardView(parsed: displayParsed)
-                            : Container(
-                                width: double.infinity,
-                                padding: const EdgeInsets.all(16),
-                                decoration: BoxDecoration(
-                                  color: DanjiColors.surface,
-                                  borderRadius: BorderRadius.circular(12),
-                                  border: Border.all(color: DanjiColors.border),
-                                ),
-                                child: SelectableText(
-                                  contractText,
-                                  style: const TextStyle(
-                                    color: DanjiColors.textPrimary,
-                                    height: 1.5,
-                                  ),
-                                ),
-                              ),
-                      ),
-                    ),
-                  ],
-                ),
-              );
-            },
+          return _ReturnInspectionContractSheet(
+            contractText: contractText,
+            displayParsed: displayParsed,
+            reservationId: widget.row.id,
+            vehicleName: widget.row.vehicleName,
           );
         },
       );
@@ -874,12 +805,41 @@ class _ReturnInspectionCardState extends State<_ReturnInspectionCard> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            r.vehicleName,
-            style: const TextStyle(
-              fontWeight: FontWeight.w800,
-              fontSize: 16,
-            ),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              Expanded(
+                child: Text(
+                  r.vehicleName,
+                  style: const TextStyle(
+                    fontWeight: FontWeight.w800,
+                    fontSize: 16,
+                  ),
+                ),
+              ),
+              if (r.isAccident) ...[
+                const SizedBox(width: 8),
+                Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: DanjiColors.accentRed.withValues(alpha: 0.12),
+                    borderRadius: BorderRadius.circular(6),
+                    border: Border.all(
+                      color: DanjiColors.accentRed.withValues(alpha: 0.45),
+                    ),
+                  ),
+                  child: const Text(
+                    '사고',
+                    style: TextStyle(
+                      color: DanjiColors.accentRed,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                ),
+              ],
+            ],
           ),
           const SizedBox(height: 4),
           Text(
@@ -920,14 +880,43 @@ class _ReturnInspectionCardState extends State<_ReturnInspectionCard> {
               ),
             ),
           ),
-          if (r.isAccident)
-            Padding(
-              padding: const EdgeInsets.only(top: 8),
-              child: Text(
-                '사고: ${r.accidentNote ?? '내용 없음'}',
-                style: const TextStyle(color: DanjiColors.accentRed),
+          if (r.isAccident) ...[
+            const SizedBox(height: 12),
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: DanjiColors.accentRed.withValues(alpha: 0.06),
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(
+                  color: DanjiColors.accentRed.withValues(alpha: 0.35),
+                ),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    '사고 내용',
+                    style: TextStyle(
+                      color: DanjiColors.accentRed,
+                      fontWeight: FontWeight.w800,
+                      fontSize: 13,
+                    ),
+                  ),
+                  const SizedBox(height: 6),
+                  Text(
+                    r.accidentNote?.trim().isNotEmpty == true
+                        ? r.accidentNote!.trim()
+                        : '사고 메모가 없습니다.',
+                    style: const TextStyle(
+                      color: DanjiColors.textPrimary,
+                      height: 1.45,
+                    ),
+                  ),
+                ],
               ),
             ),
+          ],
           const SizedBox(height: 16),
           FutureBuilder<({List<String> before, List<String> after})>(
             future: _photosFuture,
@@ -950,8 +939,12 @@ class _ReturnInspectionCardState extends State<_ReturnInspectionCard> {
             const SizedBox(height: 16),
             FilledButton(
               onPressed: widget.onComplete,
-              style: DanjiTheme.primaryButton,
-              child: const Text('검수 완료'),
+              style: r.isAccident
+                  ? DanjiTheme.dangerButton
+                  : DanjiTheme.primaryButton,
+              child: Text(
+                r.isAccident ? '사고 확인 후 검수 완료' : '검수 완료',
+              ),
             ),
           ],
         ],
@@ -1019,8 +1012,7 @@ class _AdminSalesScreenState extends State<AdminSalesScreen> {
   Widget build(BuildContext context) {
     final monthLabel = _monthHeaderFormat.format(_selectedMonth);
 
-    return Scaffold(
-      backgroundColor: DanjiColors.background,
+    return AdminScaffold(
       appBar: const DanjiAppBar(title: '매출 관리'),
       body: FutureBuilder<SalesSummary>(
         future: _future,
@@ -1097,6 +1089,156 @@ class _AdminSalesScreenState extends State<AdminSalesScreen> {
           );
         },
       ),
+    );
+  }
+}
+
+class _ReturnInspectionContractSheet extends StatefulWidget {
+  final String contractText;
+  final RentalContractParsed displayParsed;
+  final String reservationId;
+  final String? vehicleName;
+
+  const _ReturnInspectionContractSheet({
+    required this.contractText,
+    required this.displayParsed,
+    required this.reservationId,
+    this.vehicleName,
+  });
+
+  @override
+  State<_ReturnInspectionContractSheet> createState() =>
+      _ReturnInspectionContractSheetState();
+}
+
+class _ReturnInspectionContractSheetState
+    extends State<_ReturnInspectionContractSheet> {
+  bool _downloadingPdf = false;
+
+  Future<void> _downloadPdf() async {
+    setState(() => _downloadingPdf = true);
+    try {
+      final savedPath = await RentalContractPdf.saveContractPdf(
+        contractText: widget.contractText,
+        reservationId: widget.reservationId,
+        vehicleName: widget.vehicleName,
+      );
+      if (!mounted) return;
+      if (savedPath != null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('다운로드 폴더에 저장되었습니다.\n$savedPath'),
+          ),
+        );
+      }
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('PDF 저장 실패: $e')),
+      );
+    } finally {
+      if (mounted) setState(() => _downloadingPdf = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return DraggableScrollableSheet(
+      initialChildSize: 0.82,
+      minChildSize: 0.45,
+      maxChildSize: 0.95,
+      expand: false,
+      builder: (context, scrollController) {
+        return Container(
+          decoration: const BoxDecoration(
+            color: DanjiColors.background,
+            borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+          ),
+          child: Column(
+            children: [
+              const SizedBox(height: 10),
+              Container(
+                width: 40,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: DanjiColors.border,
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(20, 16, 12, 8),
+                child: Row(
+                  children: [
+                    const Expanded(
+                      child: Text(
+                        '대여 계약서',
+                        style: TextStyle(
+                          fontWeight: FontWeight.w800,
+                          fontSize: 18,
+                          color: DanjiColors.textPrimary,
+                        ),
+                      ),
+                    ),
+                    IconButton(
+                      onPressed: () => Navigator.pop(context),
+                      icon: const Icon(Icons.close),
+                    ),
+                  ],
+                ),
+              ),
+              Expanded(
+                child: SingleChildScrollView(
+                  controller: scrollController,
+                  padding: const EdgeInsets.fromLTRB(20, 0, 20, 16),
+                  child: widget.displayParsed.hasStructuredLayout
+                      ? RentalContractCardView(parsed: widget.displayParsed)
+                      : Container(
+                          width: double.infinity,
+                          padding: const EdgeInsets.all(16),
+                          decoration: BoxDecoration(
+                            color: DanjiColors.surface,
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(color: DanjiColors.border),
+                          ),
+                          child: SelectableText(
+                            widget.contractText,
+                            style: const TextStyle(
+                              color: DanjiColors.textPrimary,
+                              height: 1.5,
+                            ),
+                          ),
+                        ),
+                ),
+              ),
+              SafeArea(
+                top: false,
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(20, 8, 20, 16),
+                  child: SizedBox(
+                    width: double.infinity,
+                    height: 48,
+                    child: FilledButton.icon(
+                      onPressed: _downloadingPdf ? null : _downloadPdf,
+                      style: DanjiTheme.primaryButton,
+                      icon: _downloadingPdf
+                          ? const SizedBox(
+                              width: 18,
+                              height: 18,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                color: Colors.white,
+                              ),
+                            )
+                          : const Icon(Icons.download_outlined, size: 20),
+                      label: const Text('PDF 다운로드'),
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        );
+      },
     );
   }
 }

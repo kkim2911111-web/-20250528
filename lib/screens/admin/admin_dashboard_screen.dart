@@ -5,6 +5,7 @@ import '../../models/staff_profile.dart';
 import '../../services/admin_service.dart';
 import '../../services/auth_service.dart';
 import '../../theme/danji_colors.dart';
+import '../../widgets/admin_scaffold.dart';
 import '../../widgets/section_card.dart';
 import 'admin_complex_info_screen.dart';
 import 'admin_license_review_screen.dart';
@@ -30,7 +31,7 @@ abstract final class _DashboardUiColors {
 
 class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
   final _admin = AdminService();
-  final _auth = AuthService();
+  final _auth = AuthService.instance;
   final _won = NumberFormat('#,###');
 
   Future<BranchStats>? _statsFuture;
@@ -59,15 +60,14 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
         ? profile.complexName!.trim()
         : '단지';
 
-    return Scaffold(
-      backgroundColor: DanjiColors.background,
-      body: SafeArea(
-        child: RefreshIndicator(
-          color: DanjiColors.buttonBlue,
-          onRefresh: () async => _reload(),
-          child: ListView(
-            physics: const AlwaysScrollableScrollPhysics(),
-            padding: const EdgeInsets.fromLTRB(16, 12, 16, 20),
+    return AdminScaffold(
+      safeTop: true,
+      body: RefreshIndicator(
+        color: DanjiColors.buttonBlue,
+        onRefresh: () async => _reload(),
+        child: ListView(
+          physics: const AlwaysScrollableScrollPhysics(),
+          padding: const EdgeInsets.fromLTRB(16, 12, 16, 20),
             children: [
               Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -203,7 +203,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
             const SizedBox(height: 8),
             _MenuTile(
               icon: Icons.apartment_outlined,
-              title: '단지 정보',
+              title: '사업자 정보',
               subtitle: '업체명·사업자등록번호·주소·대표자',
               onTap: () => _open(AdminComplexInfoScreen(profile: profile)),
             ),
@@ -282,7 +282,6 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
               ),
             ),
           ],
-        ),
         ),
       ),
     );

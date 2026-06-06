@@ -85,7 +85,7 @@ using (
 -- 4) 테스트 데이터 (DANJI2026 단지) — 중복 시 건너뜀
 insert into public.vehicles (
   complex_id,
-  name,
+  model_name,
   vehicle_type,
   price_per_hour,
   parking_location,
@@ -94,7 +94,7 @@ insert into public.vehicles (
 )
 select
   c.id,
-  v.name,
+  v.model_name,
   v.vehicle_type,
   v.price_per_hour,
   v.parking_location,
@@ -119,13 +119,13 @@ cross join (
       'https://images.unsplash.com/photo-1519641471654-76ce0107ad1b?w=800&q=80',
       true
     )
-) as v(name, vehicle_type, price_per_hour, parking_location, parking_photo_url, is_available)
+) as v(model_name, vehicle_type, price_per_hour, parking_location, parking_photo_url, is_available)
 where c.invite_code = 'DANJI2026'
   and not exists (
     select 1
     from public.vehicles ve
     where ve.complex_id = c.id
-      and ve.name = v.name
+      and ve.model_name = v.model_name
   );
 
 -- 5) 확인 쿼리

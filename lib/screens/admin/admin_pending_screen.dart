@@ -2,9 +2,9 @@ import 'package:flutter/material.dart';
 
 import '../../models/admin_messages.dart';
 import '../../models/staff_profile.dart';
-import '../../screens/login_screen.dart';
 import '../../services/auth_service.dart';
 import '../../theme/danji_colors.dart';
+import '../../widgets/admin_scaffold.dart';
 import '../../widgets/danji_app_bar.dart';
 
 /// 지점 관리자 승인 대기 — 입주민 온보딩/인증 화면으로 넘어가지 않음
@@ -38,8 +38,7 @@ class AdminPendingScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: DanjiColors.background,
+    return AdminScaffold(
       appBar: DanjiAppBar(
         title: '관리자',
         showHome: false,
@@ -47,12 +46,7 @@ class AdminPendingScreen extends StatelessWidget {
         extraActions: [
           TextButton(
             onPressed: () async {
-              await AuthService().signOut();
-              if (!context.mounted) return;
-              Navigator.of(context).pushAndRemoveUntil(
-                MaterialPageRoute(builder: (_) => const LoginScreen()),
-                (_) => false,
-              );
+              await AuthService.instance.signOut();
             },
             child: const Text('로그아웃'),
           ),

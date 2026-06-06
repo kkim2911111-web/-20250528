@@ -1,5 +1,4 @@
 import 'package:flutter/foundation.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../supabase_client.dart';
 
@@ -16,13 +15,43 @@ class PushNotificationService {
     if (!isSupabaseInitialized) return;
 
     try {
-      await supabase.functions.invoke(
+      final response = await supabase.functions.invoke(
         'dispatch-push-scenario',
         body: {
           'scenario': scenario,
           if (payload != null) ...payload,
         },
       );
+
+      if (response.status != 200) {
+        debugPrint(
+          '[push] $scenario HTTP ${response.status}: ${response.data}',
+        );
+        return;
+      }
+
+      final data = response.data;
+      if (data is Map) {
+        if (data['ok'] != true) {
+          debugPrint('[push] $scenario rejected: $data');
+          return;
+        }
+        final skipped = data['skipped'] == true;
+        final customerSent = (data['customerSent'] as num?)?.toInt() ?? 0;
+        final staffSent = (data['staffSent'] as num?)?.toInt() ?? 0;
+        final sent = customerSent + staffSent;
+        if (skipped) {
+          debugPrint(
+            '[push] $scenario skipped — FIREBASE_SERVICE_ACCOUNT_JSON 확인 필요',
+          );
+        } else if (sent == 0) {
+          debugPrint(
+            '[push] $scenario sent=0 — fcm_tokens에 기기 토큰이 없거나 FCM 발송 실패',
+          );
+        } else {
+          debugPrint('[push] $scenario ok (sent=$sent)');
+        }
+      }
     } catch (e, st) {
       debugPrint('[push] $scenario failed (non-fatal): $e\n$st');
     }

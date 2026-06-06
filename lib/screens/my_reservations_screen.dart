@@ -270,7 +270,7 @@ class _MyReservationsScreenState extends State<MyReservationsScreen> {
       setState(() {
         _hiddenIds.add(reservation.id);
       });
-      await _service.cancelReservation(reservation.id);
+      final result = await _service.cancelReservation(reservation.id);
       if (!mounted) return;
       Navigator.of(context).pop();
       await _reloadAndWait();
@@ -278,8 +278,20 @@ class _MyReservationsScreenState extends State<MyReservationsScreen> {
       setState(() {
         _hiddenIds.remove(reservation.id);
       });
-      _showCancelSnack(ReservationCancelMessages.success);
+      final message = result['alreadyCancelled'] == true
+          ? ReservationCancelMessages.alreadyCancelled
+          : ReservationCancelMessages.success;
+      _showCancelSnack(message);
     } catch (e) {
+      if (isReservationAlreadyGoneError(e)) {
+        if (!mounted) return;
+        Navigator.of(context).pop();
+        await _reloadAndWait();
+        if (!mounted) return;
+        setState(() => _hiddenIds.remove(reservation.id));
+        _showCancelSnack(ReservationCancelMessages.alreadyCancelled);
+        return;
+      }
       if (mounted) {
         setState(() {
           _hiddenIds.remove(reservation.id);

@@ -590,28 +590,14 @@ class AdminService {
         .toSet()
         .toList();
 
-    final profileByUserId = <String, Map<String, dynamic>>{};
-    if (userIds.isNotEmpty) {
-      try {
-        final profiles = await supabase
-            .from('user_profiles')
-            .select('user_id, full_name, email')
-            .inFilter('user_id', userIds);
-        for (final profile in profiles as List) {
-          final map = Map<String, dynamic>.from(profile as Map);
-          final uid = map['user_id']?.toString();
-          if (uid != null && uid.isNotEmpty) {
-            profileByUserId[uid] = map;
-          }
-        }
-      } on PostgrestException {
-        // 프로필 조회 실패 시 이메일·이름 없이 fallback
-      }
-    }
+    final profileByUserId = await _fetchRenterProfilesForStaff(userIds);
 
     return rows.map((r) {
       final uid = r['user_id']?.toString();
       final profile = uid != null ? profileByUserId[uid] : null;
+      if (profile != null) {
+        r['user_profiles'] = profile;
+      }
       r['renter_name'] = AdminReservationRow.resolveRenterDisplayName(
         directRenterName: r['renter_name']?.toString(),
         fullName: profile?['full_name']?.toString(),
@@ -619,6 +605,57 @@ class AdminService {
       );
       return AdminReservationRow.fromMap(r);
     }).toList();
+  }
+
+  /// 반납 검수 등 — 임차인 full_name·이메일 (RLS + RPC fallback)
+  Future<Map<String, Map<String, dynamic>>> _fetchRenterProfilesForStaff(
+    List<String> userIds,
+  ) async {
+    if (userIds.isEmpty) return {};
+
+    final result = <String, Map<String, dynamic>>{};
+
+    try {
+      final profiles = await supabase
+          .from('user_profiles')
+          .select('user_id, full_name, email')
+          .inFilter('user_id', userIds);
+      for (final profile in profiles as List) {
+        final map = Map<String, dynamic>.from(profile as Map);
+        final uid = map['user_id']?.toString();
+        if (uid != null && uid.isNotEmpty) {
+          result[uid] = map;
+        }
+      }
+    } on PostgrestException {
+      // RLS 등 — RPC로 재시도
+    }
+
+    try {
+      final rpcRows = await supabase.rpc(
+        'get_renter_profiles_for_staff',
+        params: {'p_user_ids': userIds},
+      );
+      if (rpcRows is List) {
+        for (final row in rpcRows) {
+          if (row is! Map) continue;
+          final map = Map<String, dynamic>.from(row);
+          final uid = map['user_id']?.toString();
+          if (uid == null || uid.isEmpty) continue;
+          final existing = result[uid];
+          result[uid] = {
+            'user_id': uid,
+            'full_name': map['full_name']?.toString() ??
+                existing?['full_name']?.toString(),
+            'email': map['email']?.toString() ?? existing?['email']?.toString(),
+          };
+        }
+      }
+    } on PostgrestException {
+      // RPC 미배포·권한 오류 시 user_profiles 직접 조회 결과만 사용
+    }
+
+    return result;
   }
 
   Future<List<String>> _fetchRidePhotosForStaff({
@@ -822,9 +859,7 @@ class AdminService {
       final price = (map['total_price'] as num?)?.toInt() ?? 0;
       final vehicleRaw = map['vehicles'];
       final name = vehicleRaw is Map
-          ? vehicleRaw['model_name']?.toString() ??
-              vehicleRaw['name']?.toString() ??
-              '차량'
+          ? vehicleRaw['model_name']?.toString() ?? '차량'
           : '차량';
       total += price;
       count++;

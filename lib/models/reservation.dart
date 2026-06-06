@@ -364,6 +364,17 @@ abstract final class RentalStartMessages {
 /// 예약 취소 안내 문구
 abstract final class ReservationCancelMessages {
   static const success = '예약취소가 완료되었습니다.';
+  static const alreadyCancelled = '이미 취소된 예약입니다.';
   static const tooLate = '대여예약 1시간(60분)이전에는 예약취소가 불가능합니다';
   static const waitingGuide = '대여 시작 1시간 전까지 취소 시 전액 환불됩니다.';
+}
+
+/// DB에서 이미 삭제·취소된 예약에 재요청할 때
+bool isReservationAlreadyGoneError(Object error) {
+  final text = error.toString().toLowerCase();
+  return text.contains('예약을 찾을 수 없') ||
+      text.contains('예약 정보를 찾을 수 없') ||
+      text.contains('reservation_not_found') ||
+      (text.contains('not found') &&
+          (text.contains('reservation') || text.contains('예약')));
 }

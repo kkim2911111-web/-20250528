@@ -5,6 +5,7 @@ import '../../services/auth_service.dart';
 import '../../supabase_client.dart';
 import '../../theme/danji_colors.dart';
 import '../../theme/danji_theme.dart';
+import '../../widgets/admin_scaffold.dart';
 import '../../widgets/danji_app_bar.dart';
 
 class AdminSignUpScreen extends StatefulWidget {
@@ -132,16 +133,15 @@ class _AdminSignUpScreenState extends State<AdminSignUpScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: DanjiColors.background,
+    return AdminScaffold(
+      safeTop: true,
       appBar: const DanjiAppBar(title: '관리자 회원가입'),
-      body: SafeArea(
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.all(20),
-          child: Center(
-            child: ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 420),
-              child: Container(
+      body: SingleChildScrollView(
+        padding: const EdgeInsets.all(20),
+        child: Center(
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 420),
+            child: Container(
                 padding: const EdgeInsets.all(16),
                 decoration: BoxDecoration(
                   color: DanjiColors.surface,
@@ -246,7 +246,6 @@ class _AdminSignUpScreenState extends State<AdminSignUpScreen> {
             ),
           ),
         ),
-      ),
     );
   }
 

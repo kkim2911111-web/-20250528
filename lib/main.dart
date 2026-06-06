@@ -12,6 +12,7 @@ import 'config/supabase_config.dart';
 import 'config/kakao_config.dart';
 import 'config/payment_config.dart';
 import 'routing/app_routes.dart';
+import 'services/auth_navigation_service.dart';
 import 'services/fcm_navigation_service.dart';
 import 'services/fcm_service.dart';
 import 'services/supabase_bootstrap.dart';
@@ -168,6 +169,7 @@ class _BootstrapAppState extends State<BootstrapApp> {
                 '서버 연결에 실패했습니다.\n네트워크 연결을 확인한 뒤 앱을 다시 실행해주세요.',
           );
 
+    AuthNavigationService.bindNavigator(_navKey);
     FcmNavigationService.bindNavigator(_navKey);
 
     return MaterialApp(

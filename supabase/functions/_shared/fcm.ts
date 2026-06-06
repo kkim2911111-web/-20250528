@@ -7,6 +7,16 @@ type ServiceAccount = {
   private_key: string;
 };
 
+/** Android google-services.json 과 동일해야 FCM 토큰 발송이 성공합니다. */
+const ANDROID_FCM_PROJECT_ID = 'danji-26a2f';
+
+type FcmErrorBody = {
+  error?: {
+    message?: string;
+    details?: Array<{ errorCode?: string }>;
+  };
+};
+
 export type FcmPushData = Record<string, string>;
 
 const RESERVATION_TITLE = '예약이 완료되었습니다 🚗';
@@ -19,6 +29,28 @@ function getServiceAccount(): ServiceAccount | null {
   const raw = Deno.env.get('FIREBASE_SERVICE_ACCOUNT_JSON');
   if (!raw) return null;
   return JSON.parse(raw) as ServiceAccount;
+}
+
+function resolveProjectId(sa: ServiceAccount): string {
+  const override = Deno.env.get('FIREBASE_PROJECT_ID')?.trim();
+  const projectId = override || sa.project_id;
+  if (projectId !== ANDROID_FCM_PROJECT_ID) {
+    console.warn(
+      `FCM project_id=${projectId} — Android 앱 토큰은 ${ANDROID_FCM_PROJECT_ID} 프로젝트 기준입니다. ` +
+        'Firebase Console(danji-26a2f) 서비스 계정 JSON을 FIREBASE_SERVICE_ACCOUNT_JSON에 설정하세요.',
+    );
+  }
+  return projectId;
+}
+
+async function pruneInvalidToken(
+  admin: SupabaseClient,
+  token: string,
+): Promise<void> {
+  const { error } = await admin.from('fcm_tokens').delete().eq('token', token);
+  if (error) {
+    console.error('FCM token prune failed:', error.message);
+  }
 }
 
 async function getGoogleAccessToken(sa: ServiceAccount): Promise<string> {
@@ -75,7 +107,8 @@ async function sendToToken(
   token: string,
   title: string,
   body: string,
-  data?: FcmPushData,
+  data: FcmPushData | undefined,
+  admin: SupabaseClient,
 ): Promise<boolean> {
   const payloadData = stringData(data);
 
@@ -120,8 +153,18 @@ async function sendToToken(
     },
   );
 
+  const responseText = await res.text();
   if (!res.ok) {
-    console.error('FCM send failed:', await res.text());
+    console.error(`FCM send failed (project=${projectId}):`, responseText);
+    try {
+      const parsed = JSON.parse(responseText) as FcmErrorBody;
+      const errorCode = parsed.error?.details?.[0]?.errorCode;
+      if (errorCode === 'UNREGISTERED' || errorCode === 'INVALID_ARGUMENT') {
+        await pruneInvalidToken(admin, token);
+      }
+    } catch {
+      // ignore JSON parse errors
+    }
     return false;
   }
   return true;
@@ -165,18 +208,26 @@ export async function sendPushToUser(params: {
   }
 
   const accessToken = await getGoogleAccessToken(sa);
+  const projectId = resolveProjectId(sa);
   let sent = 0;
 
   for (const token of tokens) {
     const ok = await sendToToken(
       accessToken,
-      sa.project_id,
+      projectId,
       token,
       params.title,
       params.body,
       params.data,
+      params.admin,
     );
     if (ok) sent += 1;
+  }
+
+  if (tokens.length > 0 && sent === 0) {
+    console.warn(
+      `FCM sendPushToUser: 0/${tokens.length} sent for user=${params.userId}`,
+    );
   }
 
   return { sent, tokens: tokens.length };
@@ -221,6 +272,7 @@ export async function sendPushToComplexStaff(params: {
   }
 
   const accessToken = await getGoogleAccessToken(sa);
+  const projectId = resolveProjectId(sa);
   let sent = 0;
 
   for (const userId of staffIds) {
@@ -228,11 +280,12 @@ export async function sendPushToComplexStaff(params: {
     for (const token of tokens) {
       const ok = await sendToToken(
         accessToken,
-        sa.project_id,
+        projectId,
         token,
         params.title,
         params.body,
         params.data,
+        params.admin,
       );
       if (ok) sent += 1;
     }

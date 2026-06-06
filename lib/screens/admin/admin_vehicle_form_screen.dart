@@ -6,6 +6,7 @@ import '../../models/staff_profile.dart';
 import '../../services/admin_service.dart';
 import '../../theme/danji_colors.dart';
 import '../../theme/danji_theme.dart';
+import '../../widgets/admin_scaffold.dart';
 import '../../widgets/danji_app_bar.dart';
 
 class AdminVehicleFormScreen extends StatefulWidget {
@@ -145,8 +146,7 @@ class _AdminVehicleFormScreenState extends State<AdminVehicleFormScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: DanjiColors.background,
+    return AdminScaffold(
       appBar: DanjiAppBar(title: _isEdit ? '차량 수정' : '차량 등록'),
       body: ListView(
         padding: const EdgeInsets.all(20),

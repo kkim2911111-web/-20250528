@@ -350,6 +350,11 @@ class PaymentService {
         saved['reservation_id']?.toString() ??
         '';
     if (reservationId.isNotEmpty) {
+      await _reservationService.ensureReservationConfirmed(
+        reservationId: reservationId,
+        paymentKey: paymentKey,
+        orderId: prepared.orderId,
+      );
       await _reservationService.tryApplyBookingDiscounts(
         orderId: prepared.orderId,
         reservationId: reservationId,
@@ -359,6 +364,13 @@ class PaymentService {
         paymentKey: paymentKey,
         reservationId: reservationId,
       );
+      final user = supabase.auth.currentUser;
+      if (user != null) {
+        await _reservationService.notifyReservationCreatedForReservation(
+          reservationId: reservationId,
+          userId: user.id,
+        );
+      }
     } else {
       await _reservationService.markPaymentOrderPaidSafe(
         orderId: prepared.orderId,
@@ -701,6 +713,16 @@ class PaymentService {
       reservationId: result.reservationId,
     );
 
+    if (!result.alreadyPaid) {
+      final user = supabase.auth.currentUser;
+      if (user != null) {
+        await _reservationService.notifyReservationCreatedForReservation(
+          reservationId: result.reservationId,
+          userId: user.id,
+        );
+      }
+    }
+
     return result;
   }
 
@@ -803,8 +825,20 @@ class PaymentService {
       if (_isMissingFunctionError(e)) {
         return _cancelReservationViaRpc(reservationId);
       }
+      if (isReservationAlreadyGoneError(e)) {
+        return {
+          'reservationId': reservationId,
+          'alreadyCancelled': true,
+        };
+      }
       throw Exception(_friendlyError(e));
     } catch (e) {
+      if (isReservationAlreadyGoneError(e)) {
+        return {
+          'reservationId': reservationId,
+          'alreadyCancelled': true,
+        };
+      }
       final message = _friendlyError(e);
       if (_shouldCancelViaRpcFallback(message)) {
         return _cancelReservationViaRpc(reservationId);
@@ -848,6 +882,9 @@ class PaymentService {
 }
 
 String _mapCancelError(String message) {
+  if (isReservationAlreadyGoneError(message)) {
+    return ReservationCancelMessages.alreadyCancelled;
+  }
   final lower = message.toLowerCase();
   if (lower.contains('cancel_too_late') ||
       lower.contains('1시간') ||

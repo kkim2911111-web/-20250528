@@ -819,6 +819,14 @@ contract_content
       cancelledReservation = await fetchReservation(reservationId);
     } catch (_) {}
 
+    if (cancelledReservation == null) {
+      RentalService.signalListRefresh();
+      return {
+        'reservationId': reservationId,
+        'alreadyCancelled': true,
+      };
+    }
+
     Object? lastError;
     try {
       final result = await _paymentService.cancelConfirmedReservation(
@@ -829,6 +837,13 @@ contract_content
       RentalService.signalListRefresh();
       return result;
     } catch (e) {
+      if (isReservationAlreadyGoneError(e)) {
+        RentalService.signalListRefresh();
+        return {
+          'reservationId': reservationId,
+          'alreadyCancelled': true,
+        };
+      }
       lastError = e;
       final message = friendlyPaymentError(e);
       if (!_shouldFallbackCancel(message)) {
@@ -843,6 +858,13 @@ contract_content
       }
       return result;
     } catch (e) {
+      if (isReservationAlreadyGoneError(e)) {
+        RentalService.signalListRefresh();
+        return {
+          'reservationId': reservationId,
+          'alreadyCancelled': true,
+        };
+      }
       if (e is RentalException) rethrow;
       final fallback = friendlyPaymentError(e);
       throw RentalException(
@@ -852,6 +874,7 @@ contract_content
   }
 
   bool _shouldFallbackCancel(String message) {
+    if (isReservationAlreadyGoneError(message)) return false;
     final lower = message.toLowerCase();
     return lower.contains('invalid input syntax for type uuid') ||
         lower.contains('invalid_reservation_id') ||

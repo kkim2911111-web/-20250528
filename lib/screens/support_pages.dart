@@ -30,8 +30,8 @@ class CustomerServiceScreen extends StatelessWidget {
             icon: Icons.info_outline,
             title: '안내',
             body:
-                '문의 시 대여 차량번호와 예약번호를 함께 알려주시면 '
-                '더 빠르게 도와드릴 수 있습니다.',
+                '문의시 대여 차량번호 혹은 예약번호를 알려주시면 '
+                '빠르게 도움드리겠습니다.',
           ),
         ],
       ),

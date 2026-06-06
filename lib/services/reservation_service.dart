@@ -218,7 +218,8 @@ class ReservationService {
     return null;
   }
 
-  Future<void> _notifyReservationCreated({
+  /// 예약 확정 FCM — 고객·관리자 (non-fatal)
+  Future<void> notifyReservationCreated({
     required String reservationId,
     required String vehicleId,
     required DateTime startAt,
@@ -226,7 +227,7 @@ class ReservationService {
   }) async {
     final vehicleRow = await supabase
         .from('vehicles')
-        .select('model_name, name, complex_id')
+        .select('model_name, complex_id')
         .eq('id', _vehicleIdForQuery(vehicleId))
         .maybeSingle();
     if (vehicleRow == null) return;
@@ -234,7 +235,7 @@ class ReservationService {
     final vehicleName = vehicleRow['model_name']?.toString().trim().isNotEmpty ==
             true
         ? vehicleRow['model_name']!.toString()
-        : vehicleRow['name']?.toString() ?? '차량';
+        : '차량';
     final complexId = vehicleRow['complex_id']?.toString() ?? '';
     if (complexId.isEmpty) return;
 
@@ -251,6 +252,51 @@ class ReservationService {
       vehicleName: vehicleName,
       startAt: startAt.toUtc().toIso8601String(),
       userId: userId,
+    );
+  }
+
+  /// 결제 확정 등 — reservationId만으로 vehicle·시작시각 조회 후 푸시 발송
+  Future<void> notifyReservationCreatedForReservation({
+    required String reservationId,
+    String? userId,
+  }) async {
+    final uid = userId ?? supabase.auth.currentUser?.id;
+    if (uid == null || uid.isEmpty) return;
+
+    Map<String, dynamic>? row;
+    try {
+      row = await supabase
+          .from('reservations')
+          .select('vehicle_id, start_at, start_time')
+          .eq('id', reservationId)
+          .eq('user_id', uid)
+          .maybeSingle();
+    } on PostgrestException catch (e) {
+      if (e.code == '42703' || e.code == 'PGRST204') {
+        row = await supabase
+            .from('reservations')
+            .select('vehicle_id, start_time')
+            .eq('id', reservationId)
+            .eq('user_id', uid)
+            .maybeSingle();
+      } else {
+        rethrow;
+      }
+    }
+
+    if (row == null) return;
+
+    final vehicleId = row['vehicle_id']?.toString();
+    final startAt = DateTime.tryParse(
+      (row['start_at'] ?? row['start_time'])?.toString() ?? '',
+    );
+    if (vehicleId == null || vehicleId.isEmpty || startAt == null) return;
+
+    await notifyReservationCreated(
+      reservationId: reservationId,
+      vehicleId: vehicleId,
+      startAt: startAt.toLocal(),
+      userId: uid,
     );
   }
 
@@ -315,7 +361,7 @@ class ReservationService {
       });
       final reservationId = _parseCreatedReservationId(data);
       if (reservationId != null) {
-        await _notifyReservationCreated(
+        await notifyReservationCreated(
           reservationId: reservationId,
           vehicleId: vehicleId,
           startAt: startTime,
@@ -362,7 +408,7 @@ class ReservationService {
       'status': 'pending',
     });
     if (reservationId != null) {
-      await _notifyReservationCreated(
+      await notifyReservationCreated(
         reservationId: reservationId,
         vehicleId: vehicleId,
         startAt: startTime,

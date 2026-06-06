@@ -277,10 +277,12 @@ class PointHistoryEntry {
 
 
 
-  /// 포인트 내역 카드 — 차량명만 표시
+  /// 포인트 내역 카드 — 차량명(복구 항목은 「예약 취소」)
   String displayVehicleName(
     Map<String, PointReservationSummary>? reservationMeta,
   ) {
+    if (isRestoreType) return '예약 취소';
+
     final rid = resolvedReservationId;
     if (rid != null && reservationMeta != null) {
       final meta = reservationMeta[rid];
@@ -293,6 +295,8 @@ class PointHistoryEntry {
       '포인트 사용',
       '포인트 적립',
       '사용 포인트 복구',
+      '예약 취소로 인한 포인트 복구',
+      '예약 취소',
       '예약 결제 사용',
       '이용 적립',
       '가입 적립',
@@ -323,11 +327,7 @@ class PointHistoryEntry {
   /// 예약 메타 또는 description 기반 표시 문구
 
   String displayLabel(Map<String, PointReservationSummary>? reservationMeta) {
-    if (isRestoreType) {
-      final d = description?.trim();
-      if (d != null && d.isNotEmpty) return d;
-      return '사용 포인트 복구';
-    }
+    if (isRestoreType) return '예약 취소';
 
     if (isSpendEntry) {
       return _spendDisplayTitle(reservationMeta) ?? '포인트 사용';
@@ -397,7 +397,7 @@ class PointHistoryEntry {
         return '포인트 사용';
       case 'restore':
       case 'refund':
-        return '사용 포인트 복구';
+        return '예약 취소';
       case 'expire':
         return '포인트 만료';
       case 'earn_signup':

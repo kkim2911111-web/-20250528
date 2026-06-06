@@ -47,6 +47,7 @@ class HomeScreenState extends State<HomeScreen> {
 
   Future<_HomeData>? _future;
   Future<HomeBanner?>? _bannerFuture;
+  final _hiddenReservationIds = <String>{};
 
   @override
   void initState() {
@@ -71,6 +72,15 @@ class HomeScreenState extends State<HomeScreen> {
       _future = _load();
       _bannerFuture = _bannerService.fetchActiveBanner();
     });
+  }
+
+  Future<void> _reloadAndWait() async {
+    final next = _load();
+    setState(() {
+      _future = next;
+      _bannerFuture = _bannerService.fetchActiveBanner();
+    });
+    await next;
   }
 
   Future<_HomeData> _load() async {
@@ -145,6 +155,7 @@ class HomeScreenState extends State<HomeScreen> {
     final seen = <String>{};
     final list = <Reservation>[];
     for (final r in [...grouped.operating, ...grouped.waiting]) {
+      if (_hiddenReservationIds.contains(r.id)) continue;
       if (seen.add(r.id)) list.add(r);
     }
 
@@ -355,26 +366,43 @@ class HomeScreenState extends State<HomeScreen> {
     );
     if (confirmed != true || !mounted) return;
 
+    setState(() => _hiddenReservationIds.add(reservation.id));
+
     showDialog<void>(
       context: context,
       barrierDismissible: false,
       builder: (_) => const Center(child: CircularProgressIndicator()),
     );
 
+    var snackMessage = ReservationCancelMessages.success;
     try {
-      await _rentalService.cancelReservation(reservation.id);
-      if (!mounted) return;
-      Navigator.of(context).pop();
-      DanjiSnackBar.show(context, ReservationCancelMessages.success);
-      reload();
+      final result = await _rentalService.cancelReservation(reservation.id);
+      if (result['alreadyCancelled'] == true) {
+        snackMessage = ReservationCancelMessages.alreadyCancelled;
+      }
     } catch (e) {
-      if (!mounted) return;
-      Navigator.of(context).pop();
-      DanjiSnackBar.show(
-        context,
-        e.toString().replaceFirst('RentalException: ', ''),
-      );
+      if (isReservationAlreadyGoneError(e)) {
+        snackMessage = ReservationCancelMessages.alreadyCancelled;
+      } else {
+        if (mounted) {
+          setState(() => _hiddenReservationIds.remove(reservation.id));
+        }
+        if (!mounted) return;
+        Navigator.of(context).pop();
+        DanjiSnackBar.show(
+          context,
+          e.toString().replaceFirst('RentalException: ', ''),
+        );
+        return;
+      }
     }
+
+    if (!mounted) return;
+    Navigator.of(context).pop();
+    setState(() => _hiddenReservationIds.remove(reservation.id));
+    await _reloadAndWait();
+    if (!mounted) return;
+    DanjiSnackBar.show(context, snackMessage);
   }
 
   Future<void> _openResidentVerification() async {

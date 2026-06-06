@@ -7,6 +7,7 @@ import '../../models/staff_profile.dart';
 import '../../services/admin_service.dart';
 import '../../theme/danji_colors.dart';
 import '../../theme/danji_theme.dart';
+import '../../widgets/admin_scaffold.dart';
 import '../../widgets/danji_app_bar.dart';
 import '../../widgets/kakao_address_field.dart';
 
@@ -285,9 +286,8 @@ class _AdminComplexInfoScreenState extends State<AdminComplexInfoScreen> {
             ? widget.profile.complexName!.trim()
             : '단지');
 
-    return Scaffold(
-      backgroundColor: DanjiColors.background,
-      appBar: const DanjiAppBar(title: '단지 정보'),
+    return AdminScaffold(
+      appBar: const DanjiAppBar(title: '사업자 정보'),
       body: _loadingPage
           ? const Center(child: CircularProgressIndicator(strokeWidth: 2))
           : _loadError != null

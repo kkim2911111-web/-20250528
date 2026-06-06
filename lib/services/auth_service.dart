@@ -1,10 +1,21 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../supabase_client.dart';
+import 'auth_navigation_service.dart';
+import 'fcm_service.dart';
 
 class AuthService {
+  AuthService._();
+
+  static final AuthService instance = AuthService._();
+
+  factory AuthService() => instance;
+
   /// 로그아웃 후 회원가입 화면 표시 (AuthGate에서 처리)
   void Function(bool toSignUp)? onSignedOut;
+
+  /// [AuthGate] 재진입 시 회원가입 화면을 먼저 보여줄지
+  bool pendingSignUpOnNextAuthGate = false;
 
   /// 관리자 가입 RPC 완료 전 — RoleGate(입주민 온보딩) 진입 방지
   bool adminSignUpInProgress = false;
@@ -74,8 +85,13 @@ class AuthService {
   }
 
   Future<void> signOut({bool toSignUp = false}) async {
+    if (toSignUp) pendingSignUpOnNextAuthGate = true;
+    await FcmService.instance.clearForSignOut();
     await supabase.auth.signOut();
     onSignedOut?.call(toSignUp);
+    if (!AuthNavigationService.authGateActive) {
+      AuthNavigationService.resetToAuthEntry();
+    }
   }
 
   Future<void> resetPasswordForEmail({required String email}) async {

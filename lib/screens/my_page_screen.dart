@@ -32,7 +32,7 @@ class MyPageScreen extends StatefulWidget {
 
 class _MyPageScreenState extends State<MyPageScreen> {
   final _service = MyPageService();
-  final _auth = AuthService();
+  final _auth = AuthService.instance;
   Future<MyPageProfile>? _future;
 
   @override

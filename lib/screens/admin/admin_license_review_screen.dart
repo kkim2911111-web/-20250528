@@ -4,6 +4,7 @@ import '../../models/license_review_item.dart';
 import '../../models/staff_profile.dart';
 import '../../services/admin_service.dart';
 import '../../theme/danji_colors.dart';
+import '../../widgets/admin_scaffold.dart';
 import '../../widgets/section_card.dart';
 
 class AdminLicenseReviewScreen extends StatefulWidget {
@@ -107,8 +108,7 @@ class _AdminLicenseReviewScreenState extends State<AdminLicenseReviewScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: DanjiColors.background,
+    return AdminScaffold(
       appBar: AppBar(
         title: const Text('면허 심사'),
         backgroundColor: DanjiColors.background,

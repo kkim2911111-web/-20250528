@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -9,6 +11,7 @@ import '../screens/payment_success_screen.dart';
 import '../screens/admin/admin_sign_up_screen.dart';
 import '../screens/login_screen.dart';
 import '../screens/splash_screen.dart';
+import '../services/auth_navigation_service.dart';
 import '../services/auth_service.dart';
 import 'role_gate.dart';
 import '../services/fcm_service.dart';
@@ -276,29 +279,52 @@ class AuthGate extends StatefulWidget {
 }
 
 class _AuthGateState extends State<AuthGate> {
-  final _auth = AuthService();
+  final _auth = AuthService.instance;
+  StreamSubscription<AuthState>? _authSub;
   bool _showSignUp = false;
   bool _showAdminSignUp = false;
 
   @override
   void initState() {
     super.initState();
+    AuthNavigationService.authGateActive = true;
+    if (_auth.pendingSignUpOnNextAuthGate) {
+      _showSignUp = true;
+      _auth.pendingSignUpOnNextAuthGate = false;
+    }
     if (!isSupabaseInitialized) return;
-    _auth.onSignedOut = (toSignUp) {
-      if (mounted) setState(() => _showSignUp = toSignUp);
-    };
-    supabase.auth.onAuthStateChange.listen((data) async {
-      if (data.session != null) {
-        if (mounted) {
-          setState(() => _showSignUp = false);
-        }
-        await FcmService.instance.registerForCurrentUser();
-      }
-    });
+    _auth.onSignedOut = _handleSignedOut;
+    _authSub = supabase.auth.onAuthStateChange.listen(_onAuthChanged);
+  }
+
+  void _handleSignedOut(bool toSignUp) {
+    if (!mounted) return;
+    setState(() => _showSignUp = toSignUp);
+    _popToRoot();
+  }
+
+  Future<void> _onAuthChanged(AuthState data) async {
+    if (!mounted) return;
+    if (data.session != null) {
+      setState(() => _showSignUp = false);
+      await FcmService.instance.registerForCurrentUser();
+      return;
+    }
+    _popToRoot();
+    final showSignUp = _auth.pendingSignUpOnNextAuthGate;
+    if (showSignUp) _auth.pendingSignUpOnNextAuthGate = false;
+    setState(() => _showSignUp = showSignUp);
+  }
+
+  void _popToRoot() {
+    final nav = Navigator.maybeOf(context, rootNavigator: true);
+    nav?.popUntil((route) => route.isFirst);
   }
 
   @override
   void dispose() {
+    AuthNavigationService.authGateActive = false;
+    _authSub?.cancel();
     _auth.onSignedOut = null;
     super.dispose();
   }
@@ -311,50 +337,43 @@ class _AuthGateState extends State<AuthGate> {
       );
     }
 
-    final auth = supabase.auth;
+    final session = supabase.auth.currentSession;
 
-    return StreamBuilder<AuthState>(
-      stream: auth.onAuthStateChange,
-      builder: (context, _) {
-        final session = auth.currentSession;
+    if (session == null) {
+      if (_showAdminSignUp) {
+        return AdminSignUpScreen(
+          onGoLogin: () => setState(() => _showAdminSignUp = false),
+          onRegistrationComplete: () =>
+              setState(() => _showAdminSignUp = false),
+        );
+      }
+      if (_showSignUp) {
+        return SignUpScreen(
+          onGoLogin: () => setState(() => _showSignUp = false),
+        );
+      }
+      return LoginScreen(
+        onGoSignUp: () => setState(() => _showSignUp = true),
+        onGoAdminSignUp: () => setState(() => _showAdminSignUp = true),
+      );
+    }
 
-        if (session == null) {
-          if (_showAdminSignUp) {
-            return AdminSignUpScreen(
-              onGoLogin: () => setState(() => _showAdminSignUp = false),
-              onRegistrationComplete: () =>
-                  setState(() => _showAdminSignUp = false),
-            );
+    if (_showAdminSignUp || _auth.adminSignUpInProgress) {
+      return AdminSignUpScreen(
+        onGoLogin: () async {
+          _auth.endAdminSignUpFlow();
+          await _auth.signOut();
+          if (mounted) {
+            setState(() => _showAdminSignUp = false);
           }
-          if (_showSignUp) {
-            return SignUpScreen(
-              onGoLogin: () => setState(() => _showSignUp = false),
-            );
-          }
-          return LoginScreen(
-            onGoSignUp: () => setState(() => _showSignUp = true),
-            onGoAdminSignUp: () => setState(() => _showAdminSignUp = true),
-          );
-        }
+        },
+        onRegistrationComplete: () {
+          _auth.endAdminSignUpFlow();
+          if (mounted) setState(() => _showAdminSignUp = false);
+        },
+      );
+    }
 
-        if (_showAdminSignUp || _auth.adminSignUpInProgress) {
-          return AdminSignUpScreen(
-            onGoLogin: () async {
-              _auth.endAdminSignUpFlow();
-              await _auth.signOut();
-              if (mounted) {
-                setState(() => _showAdminSignUp = false);
-              }
-            },
-            onRegistrationComplete: () {
-              _auth.endAdminSignUpFlow();
-              if (mounted) setState(() => _showAdminSignUp = false);
-            },
-          );
-        }
-
-        return const RoleGate();
-      },
-    );
+    return const RoleGate();
   }
 }

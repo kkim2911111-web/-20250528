@@ -17,14 +17,22 @@ export async function cancelReservationForUser(params: {
   const { data: reservation, error: reservationError } = await admin
     .from('reservations')
     .select(
-      'id, status, start_at, start_time, payment_key, payment_status, total_price, order_id, vehicle_id, vehicles(model_name, name, complex_id)',
+      'id, status, start_at, start_time, payment_key, payment_status, total_price, order_id, vehicle_id, vehicles(model_name, complex_id)',
     )
     .eq('id', id)
     .eq('user_id', userId)
     .maybeSingle();
 
-  if (reservationError || !reservation) {
-    throw new Error('예약을 찾을 수 없습니다.');
+  if (reservationError) {
+    throw new Error(reservationError.message || '예약 조회 실패');
+  }
+
+  if (!reservation) {
+    return {
+      reservationId: id,
+      alreadyCancelled: true,
+      deleted: true,
+    };
   }
 
   if (reservation.status !== 'confirmed' && reservation.status !== 'pending') {
@@ -78,11 +86,10 @@ export async function cancelReservationForUser(params: {
 
   const vehicleRaw = reservation.vehicles as {
     model_name?: string;
-    name?: string;
     complex_id?: string;
   } | null;
   const vehicleName =
-    vehicleRaw?.model_name?.trim() || vehicleRaw?.name?.trim() || '차량';
+    vehicleRaw?.model_name?.trim() || '차량';
 
   try {
     await dispatchPushScenario({

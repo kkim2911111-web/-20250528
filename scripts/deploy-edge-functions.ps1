@@ -37,6 +37,9 @@ try {
     & $sb functions deploy payment-confirm --project-ref $ProjectRef
     & $sb functions deploy payment-webhook --project-ref $ProjectRef
     & $sb functions deploy reservation-cancel --project-ref $ProjectRef
+    & $sb functions deploy send-push-notification --project-ref $ProjectRef
+    & $sb functions deploy dispatch-push-scenario --project-ref $ProjectRef
+    & $sb functions deploy scheduled-push-reminders --project-ref $ProjectRef
 
     Write-Host ""
     Write-Host "완료. 등록된 시크릿 확인:"

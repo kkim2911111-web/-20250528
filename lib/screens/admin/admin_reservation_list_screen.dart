@@ -5,6 +5,7 @@ import '../../models/staff_profile.dart';
 import '../../services/admin_service.dart';
 import '../../theme/danji_colors.dart';
 import '../../utils/danji_snackbar.dart';
+import '../../widgets/admin_scaffold.dart';
 import '../../widgets/danji_app_bar.dart';
 import '../../widgets/section_card.dart';
 
@@ -122,125 +123,144 @@ class _AdminReservationListScreenState
     }
   }
 
+  int _conflictCount(_AdminReservationLists? data) {
+    if (data == null) return 0;
+    return data.active.where(_isConflictRisk).length;
+  }
+
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: DanjiColors.background,
+    return AdminScaffold(
       appBar: const DanjiAppBar(title: '예약 관리'),
-      body: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
-            child: SingleChildScrollView(
-              scrollDirection: Axis.horizontal,
-              child: Row(
-                children: [
-                  _FilterChip(
-                    label: '전체',
-                    selected: _filter == _ReservationFilter.all,
-                    onTap: () =>
-                        setState(() => _filter = _ReservationFilter.all),
-                  ),
-                  const SizedBox(width: 8),
-                  _FilterChip(
-                    label: '진행중',
-                    selected: _filter == _ReservationFilter.inUse,
-                    onTap: () =>
-                        setState(() => _filter = _ReservationFilter.inUse),
-                  ),
-                  const SizedBox(width: 8),
-                  _FilterChip(
-                    label: '예정',
-                    selected: _filter == _ReservationFilter.waiting,
-                    onTap: () =>
-                        setState(() => _filter = _ReservationFilter.waiting),
-                  ),
-                  const SizedBox(width: 8),
-                  _FilterChip(
-                    label: '충돌위험',
-                    selected: _filter == _ReservationFilter.conflict,
-                    onTap: () =>
-                        setState(() => _filter = _ReservationFilter.conflict),
-                  ),
-                  const SizedBox(width: 8),
-                  _FilterChip(
-                    label: '완료',
-                    selected: _filter == _ReservationFilter.completed,
-                    onTap: () =>
-                        setState(() => _filter = _ReservationFilter.completed),
-                  ),
-                ],
-              ),
-            ),
-          ),
-          Expanded(
-            child: RefreshIndicator(
-              color: DanjiColors.buttonBlue,
-              onRefresh: () async => _reload(),
-              child: FutureBuilder<_AdminReservationLists>(
-                future: _future,
-                builder: (context, snap) {
-                  if (snap.connectionState == ConnectionState.waiting) {
-                    return ListView(
-                      physics: const AlwaysScrollableScrollPhysics(),
-                      children: const [
-                        SizedBox(height: 120),
-                        Center(child: CircularProgressIndicator()),
-                      ],
-                    );
-                  }
-                  if (snap.hasError) {
-                    return ListView(
-                      physics: const AlwaysScrollableScrollPhysics(),
-                      padding: const EdgeInsets.all(20),
-                      children: [
-                        Text(friendlyAdminError(snap.error!)),
-                      ],
-                    );
-                  }
-                  final filtered = _applyFilter(snap.data!);
-                  if (filtered.isEmpty) {
-                    return ListView(
-                      physics: const AlwaysScrollableScrollPhysics(),
-                      children: const [
-                        SizedBox(height: 80),
-                        Center(child: Text('표시할 예약이 없습니다.')),
-                      ],
-                    );
-                  }
-                  final isCompletedTab =
-                      _filter == _ReservationFilter.completed;
+      body: FutureBuilder<_AdminReservationLists>(
+        future: _future,
+        builder: (context, snap) {
+          final conflictCount = _conflictCount(snap.data);
 
-                  return ListView.separated(
-                    physics: const AlwaysScrollableScrollPhysics(),
-                    padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
-                    itemCount: filtered.length,
-                    separatorBuilder: (_, __) => const SizedBox(height: 10),
-                    itemBuilder: (context, index) {
-                      final row = filtered[index];
-                      if (isCompletedTab) {
-                        return _CompletedReservationCard(
-                          row: row,
-                          dateTime: _dateTime,
-                          won: _won,
-                        );
-                      }
-                      return _ReservationCard(
-                        row: row,
-                        dateTime: _dateTime,
-                        timeOnly: _timeOnly,
-                        showForceComplete: _isStuckReservation(row),
-                        onForceComplete: () => _confirmForceComplete(row),
-                      );
-                    },
-                  );
-                },
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
+                child: SingleChildScrollView(
+                  scrollDirection: Axis.horizontal,
+                  clipBehavior: Clip.none,
+                  child: Padding(
+                    padding: const EdgeInsets.only(top: 10),
+                    child: Row(
+                      children: [
+                      _FilterChip(
+                        label: '전체',
+                        selected: _filter == _ReservationFilter.all,
+                        onTap: () =>
+                            setState(() => _filter = _ReservationFilter.all),
+                      ),
+                      const SizedBox(width: 8),
+                      _FilterChip(
+                        label: '진행중',
+                        selected: _filter == _ReservationFilter.inUse,
+                        onTap: () =>
+                            setState(() => _filter = _ReservationFilter.inUse),
+                      ),
+                      const SizedBox(width: 8),
+                      _FilterChip(
+                        label: '예정',
+                        selected: _filter == _ReservationFilter.waiting,
+                        onTap: () => setState(
+                          () => _filter = _ReservationFilter.waiting,
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      _FilterChip(
+                        label: '충돌위험',
+                        selected: _filter == _ReservationFilter.conflict,
+                        badgeCount: conflictCount,
+                        onTap: () => setState(
+                          () => _filter = _ReservationFilter.conflict,
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      _FilterChip(
+                        label: '완료',
+                        selected: _filter == _ReservationFilter.completed,
+                        onTap: () => setState(
+                          () => _filter = _ReservationFilter.completed,
+                        ),
+                      ),
+                    ],
+                    ),
+                  ),
+                ),
               ),
-            ),
-          ),
-        ],
+              Expanded(
+                child: RefreshIndicator(
+                  color: DanjiColors.buttonBlue,
+                  onRefresh: () async => _reload(),
+                  child: _buildReservationList(snap),
+                ),
+              ),
+            ],
+          );
+        },
       ),
+    );
+  }
+
+  Widget _buildReservationList(
+    AsyncSnapshot<_AdminReservationLists> snap,
+  ) {
+    if (snap.connectionState == ConnectionState.waiting) {
+      return ListView(
+        physics: const AlwaysScrollableScrollPhysics(),
+        children: const [
+          SizedBox(height: 120),
+          Center(child: CircularProgressIndicator()),
+        ],
+      );
+    }
+    if (snap.hasError) {
+      return ListView(
+        physics: const AlwaysScrollableScrollPhysics(),
+        padding: const EdgeInsets.all(20),
+        children: [
+          Text(friendlyAdminError(snap.error!)),
+        ],
+      );
+    }
+    final filtered = _applyFilter(snap.data!);
+    if (filtered.isEmpty) {
+      return ListView(
+        physics: const AlwaysScrollableScrollPhysics(),
+        children: const [
+          SizedBox(height: 80),
+          Center(child: Text('표시할 예약이 없습니다.')),
+        ],
+      );
+    }
+    final isCompletedTab = _filter == _ReservationFilter.completed;
+
+    return ListView.separated(
+      physics: const AlwaysScrollableScrollPhysics(),
+      padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
+      itemCount: filtered.length,
+      separatorBuilder: (_, __) => const SizedBox(height: 10),
+      itemBuilder: (context, index) {
+        final row = filtered[index];
+        if (isCompletedTab) {
+          return _CompletedReservationCard(
+            row: row,
+            dateTime: _dateTime,
+            won: _won,
+          );
+        }
+        return _ReservationCard(
+          row: row,
+          dateTime: _dateTime,
+          timeOnly: _timeOnly,
+          showForceComplete: _isStuckReservation(row),
+          onForceComplete: () => _confirmForceComplete(row),
+        );
+      },
     );
   }
 }
@@ -249,23 +269,30 @@ class _FilterChip extends StatelessWidget {
   final String label;
   final bool selected;
   final VoidCallback onTap;
+  final int badgeCount;
 
   const _FilterChip({
     required this.label,
     required this.selected,
     required this.onTap,
+    this.badgeCount = 0,
   });
 
   @override
   Widget build(BuildContext context) {
-    return Material(
+    final chip = Material(
       color: selected ? DanjiColors.buttonBlue : DanjiColors.surface,
       borderRadius: BorderRadius.circular(20),
       child: InkWell(
         onTap: onTap,
         borderRadius: BorderRadius.circular(20),
         child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+          padding: EdgeInsets.fromLTRB(
+            16,
+            10,
+            badgeCount > 0 ? 22 : 16,
+            10,
+          ),
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(20),
             border: Border.all(
@@ -281,6 +308,40 @@ class _FilterChip extends StatelessWidget {
           ),
         ),
       ),
+    );
+
+    if (badgeCount < 1) return chip;
+
+    final badgeLabel = badgeCount > 99 ? '99+' : '$badgeCount';
+
+    return Stack(
+      clipBehavior: Clip.none,
+      children: [
+        chip,
+        Positioned(
+          right: 0,
+          top: -8,
+          child: Container(
+            constraints: const BoxConstraints(minWidth: 18, minHeight: 18),
+            padding: const EdgeInsets.symmetric(horizontal: 5),
+            decoration: BoxDecoration(
+              color: DanjiColors.accentRed,
+              shape: BoxShape.circle,
+              border: Border.all(color: DanjiColors.background, width: 1.5),
+            ),
+            alignment: Alignment.center,
+            child: Text(
+              badgeLabel,
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 11,
+                fontWeight: FontWeight.w800,
+                height: 1.1,
+              ),
+            ),
+          ),
+        ),
+      ],
     );
   }
 }

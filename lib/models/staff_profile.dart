@@ -187,9 +187,7 @@ class AdminVehicleDetail {
       id: map['id'].toString(),
       complexId: map['complex_id']?.toString() ?? '',
       complexName: complexMap?['name']?.toString(),
-      name: map['model_name']?.toString() ??
-          map['name']?.toString() ??
-          '차량',
+      name: map['model_name']?.toString() ?? '차량',
       vehicleType: map['vehicle_type']?.toString() ??
           map['car_type']?.toString() ??
           '기타',
@@ -410,9 +408,7 @@ class AdminReservationRow {
       endAt: DateTime.tryParse(
         (map['end_at'] ?? map['end_time'])?.toString() ?? '',
       )?.toLocal(),
-      vehicleName: vehicle?['model_name']?.toString() ??
-          vehicle?['name']?.toString() ??
-          '차량',
+      vehicleName: vehicle?['model_name']?.toString() ?? '차량',
       carNumber: vehicle?['car_number']?.toString(),
       isAccident: map['is_accident'] == true,
       accidentNote: map['accident_note']?.toString(),

@@ -39,6 +39,7 @@ class FcmService {
   final _localNotifications = FlutterLocalNotificationsPlugin();
   bool _initialized = false;
   bool _listenersRegistered = false;
+  bool _tokenRefreshListenerSet = false;
 
   /// Flutter Web은 push service 제한 — FCM 비활성화
   bool get isSupported => !kIsWeb;
@@ -160,7 +161,14 @@ class FcmService {
   }
 
   Future<void> registerForCurrentUser() async {
-    if (!isSupported || !_initialized) return;
+    if (!isSupported) return;
+    if (!_initialized) {
+      await initialize();
+    }
+    if (!_initialized) {
+      debugPrint('[fcm] register skipped: initialize failed');
+      return;
+    }
     if (!isSupabaseInitialized || supabaseOrNull?.auth.currentUser == null) {
       return;
     }
@@ -177,18 +185,49 @@ class FcmService {
               AuthorizationStatus.authorized ||
           settings.authorizationStatus == AuthorizationStatus.provisional;
 
-      if (!allowed) return;
+      if (!allowed) {
+        debugPrint(
+          '[fcm] notification permission denied: ${settings.authorizationStatus}',
+        );
+        return;
+      }
 
       final token = await messaging.getToken();
-      if (token == null || token.isEmpty) return;
+      if (token == null || token.isEmpty) {
+        debugPrint('[fcm] getToken returned empty');
+        return;
+      }
 
       await _saveToken(token);
 
-      messaging.onTokenRefresh.listen((newToken) async {
-        await _saveToken(newToken);
-      });
+      if (!_tokenRefreshListenerSet) {
+        _tokenRefreshListenerSet = true;
+        messaging.onTokenRefresh.listen((newToken) async {
+          await _saveToken(newToken);
+        });
+      }
     } catch (e, st) {
       debugPrint('[fcm] register failed (non-fatal): $e\n$st');
+    }
+  }
+
+  /// 로그아웃 시 서버·기기 토큰 정리
+  Future<void> clearForSignOut() async {
+    if (!isSupported || !isSupabaseInitialized) return;
+    if (supabaseOrNull?.auth.currentUser == null) return;
+
+    try {
+      final messaging = FirebaseMessaging.instance;
+      final token = await messaging.getToken();
+      if (token != null && token.isNotEmpty) {
+        await supabase.rpc('delete_my_fcm_tokens', params: {
+          'p_token': token,
+        });
+      }
+      await messaging.deleteToken();
+      debugPrint('[fcm] token cleared on signOut');
+    } catch (e) {
+      debugPrint('[fcm] clear on signOut failed (non-fatal): $e');
     }
   }
 

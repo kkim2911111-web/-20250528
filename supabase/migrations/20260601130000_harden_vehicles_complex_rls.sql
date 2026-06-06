@@ -24,7 +24,7 @@ begin
 
   if v_orphan_count > 0 then
     raise notice 'WARNING: complex_id 가 NULL 인 차량 %대 — RLS 적용 전 단지 연결 필요', v_orphan_count;
-    raise notice '  select id, coalesce(model_name, name) as name, complex_id from public.vehicles where complex_id is null;';
+    raise notice '  select id, model_name, complex_id from public.vehicles where complex_id is null;';
   end if;
 end $$;
 

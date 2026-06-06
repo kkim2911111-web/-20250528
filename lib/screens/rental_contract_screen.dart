@@ -1,8 +1,6 @@
 import 'package:flutter/material.dart';
-import 'package:pdf/widgets.dart' as pw;
-import 'package:printing/printing.dart';
-
 import '../services/rental_service.dart';
+import '../utils/rental_contract_pdf.dart';
 import '../theme/danji_colors.dart';
 import '../theme/danji_theme.dart';
 import '../utils/rental_contract_parser.dart';
@@ -123,42 +121,17 @@ class _RentalContractScreenState extends State<RentalContractScreen> {
 
     setState(() => _sharingPdf = true);
     try {
-      final font = await PdfGoogleFonts.notoSansKRRegular();
-      final doc = pw.Document();
-      doc.addPage(
-        pw.MultiPage(
-          theme: pw.ThemeData.withFont(base: font),
-          build: (context) => [
-            pw.Text(
-              '단지카 대여 계약서',
-              style: pw.TextStyle(
-                font: font,
-                fontSize: 18,
-                fontWeight: pw.FontWeight.bold,
-              ),
-            ),
-            if (widget.vehicleName != null) ...[
-              pw.SizedBox(height: 8),
-              pw.Text(
-                '차량: ${widget.vehicleName}',
-                style: pw.TextStyle(font: font, fontSize: 11),
-              ),
-            ],
-            pw.SizedBox(height: 8),
-            pw.Text(
-              '예약 ID: ${widget.reservationId}',
-              style: pw.TextStyle(font: font, fontSize: 10),
-            ),
-            pw.SizedBox(height: 16),
-            pw.Text(text, style: pw.TextStyle(font: font, fontSize: 10)),
-          ],
-        ),
+      final savedPath = await RentalContractPdf.saveContractPdf(
+        contractText: text,
+        reservationId: widget.reservationId,
+        vehicleName: widget.vehicleName,
       );
-
-      await Printing.sharePdf(
-        bytes: await doc.save(),
-        filename: 'danjicar_contract_${widget.reservationId}.pdf',
-      );
+      if (!mounted) return;
+      if (savedPath != null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('다운로드 폴더에 저장되었습니다.\n$savedPath')),
+        );
+      }
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(

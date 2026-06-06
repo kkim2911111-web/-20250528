@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'supabase_client.dart';
+import 'services/auth_service.dart';
 import 'services/my_page_service.dart';
 import 'services/push_notification_service.dart';
 import 'theme/danji_colors.dart';
@@ -312,7 +313,7 @@ class _ResidentProfileScreenState extends State<ResidentProfileScreen> {
                 IconButton(
                   tooltip: '로그아웃',
                   onPressed: () async {
-                    await supabase.auth.signOut();
+                    await AuthService.instance.signOut(toSignUp: true);
                   },
                   icon: const Icon(Icons.logout),
                 ),

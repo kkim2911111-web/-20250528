@@ -31,7 +31,7 @@ class Vehicle {
     return Vehicle(
       id: map['id'].toString(),
       complexId: map['complex_id']?.toString() ?? '',
-      name: _readString(map, ['model_name', 'name', 'car_name', 'model']) ?? '차량',
+      name: _readString(map, ['model_name', 'car_name', 'model']) ?? '차량',
       vehicleType: _readString(map, ['vehicle_type', 'car_type', 'type']) ?? '기타',
       pricePerHour: (map['price_per_hour'] as num?)?.toInt() ??
           (map['hourly_rate'] as num?)?.toInt() ??
