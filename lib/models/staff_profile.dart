@@ -306,6 +306,7 @@ class AdminReservationRow {
   final List<String> returnPhotos;
   final String? renterName;
   final String? contractContent;
+  final String? returnType;
 
   const AdminReservationRow({
     required this.id,
@@ -321,7 +322,12 @@ class AdminReservationRow {
     this.returnPhotos = const [],
     this.renterName,
     this.contractContent,
+    this.returnType,
   });
+
+  /// 시간 초과 자동 반납(노쇼) — return_type = 'auto'
+  bool get isNoShowReturn =>
+      returnType?.trim().toLowerCase() == 'auto';
 
   String get reservationNumberLabel => '#$id';
 
@@ -423,6 +429,7 @@ class AdminReservationRow {
       renterName: _renterNameFromMap(map),
       contractContent:
           contract != null && contract.isNotEmpty ? contract : null,
+      returnType: map['return_type']?.toString(),
     );
   }
 }

@@ -257,6 +257,7 @@ class _AdminReservationListScreenState
           row: row,
           dateTime: _dateTime,
           timeOnly: _timeOnly,
+          won: _won,
           showForceComplete: _isStuckReservation(row),
           onForceComplete: () => _confirmForceComplete(row),
         );
@@ -402,12 +403,11 @@ class _CompletedReservationCard extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 8),
-          Text(
-            '임차인: $renterName',
-            style: const TextStyle(
-              color: DanjiColors.textSecondary,
-              height: 1.4,
-            ),
+          _ReservationRenterSummary(
+            row: row,
+            won: won,
+            renterName: renterName,
+            totalPrice: totalPrice,
           ),
           const SizedBox(height: 6),
           Text(
@@ -416,14 +416,6 @@ class _CompletedReservationCard extends StatelessWidget {
             style: const TextStyle(
               color: DanjiColors.textSecondary,
               height: 1.4,
-            ),
-          ),
-          const SizedBox(height: 6),
-          Text(
-            '금액: ₩${won.format(totalPrice)}',
-            style: const TextStyle(
-              color: DanjiColors.textPrimary,
-              fontWeight: FontWeight.w700,
             ),
           ),
         ],
@@ -436,6 +428,7 @@ class _ReservationCard extends StatelessWidget {
   final Map<String, dynamic> row;
   final DateFormat dateTime;
   final DateFormat timeOnly;
+  final NumberFormat won;
   final bool showForceComplete;
   final VoidCallback? onForceComplete;
 
@@ -443,6 +436,7 @@ class _ReservationCard extends StatelessWidget {
     required this.row,
     required this.dateTime,
     required this.timeOnly,
+    required this.won,
     this.showForceComplete = false,
     this.onForceComplete,
   });
@@ -501,6 +495,15 @@ class _ReservationCard extends StatelessWidget {
             ),
           ],
           const SizedBox(height: 8),
+          _ReservationRenterSummary(
+            row: row,
+            won: won,
+            renterName: AdminReservationRow.resolveRenterDisplayName(
+              directRenterName: _str(row, 'renter_name'),
+            ),
+            totalPrice: (row['total_price'] as num?)?.toInt() ?? 0,
+          ),
+          const SizedBox(height: 6),
           Text(
             '${start != null ? dateTime.format(start) : '-'} ~ '
             '${end != null ? dateTime.format(end) : '-'}',
@@ -557,6 +560,55 @@ class _ReservationCard extends StatelessWidget {
   }
 }
 
+class _ReservationRenterSummary extends StatelessWidget {
+  final Map<String, dynamic> row;
+  final NumberFormat won;
+  final String renterName;
+  final int totalPrice;
+
+  const _ReservationRenterSummary({
+    required this.row,
+    required this.won,
+    required this.renterName,
+    required this.totalPrice,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final phone = _renterPhoneLabel(row);
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          '임차인: $renterName',
+          style: const TextStyle(
+            color: DanjiColors.textSecondary,
+            height: 1.4,
+          ),
+        ),
+        const SizedBox(height: 4),
+        Text(
+          '전화번호: $phone',
+          style: const TextStyle(
+            color: DanjiColors.textSecondary,
+            height: 1.4,
+          ),
+        ),
+        const SizedBox(height: 4),
+        Text(
+          '결제 금액: ₩${won.format(totalPrice)}',
+          style: const TextStyle(
+            color: DanjiColors.textPrimary,
+            fontWeight: FontWeight.w700,
+            height: 1.4,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
 class _StatusBadge extends StatelessWidget {
   final String status;
 
@@ -602,6 +654,12 @@ class _StatusBadge extends StatelessWidget {
         return (status, const Color(0xFFF2F4F6), DanjiColors.textSecondary);
     }
   }
+}
+
+String _renterPhoneLabel(Map<String, dynamic> row) {
+  final phone = _str(row, 'renter_phone');
+  if (phone != null && phone != '미등록') return phone;
+  return '미등록';
 }
 
 String? _str(Map<String, dynamic> row, String key) {

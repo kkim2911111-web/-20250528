@@ -53,15 +53,27 @@ async function pruneInvalidToken(
   }
 }
 
+async function importPKCS8Key(pem: string): Promise<CryptoKey> {
+  const pemContents = pem
+    .replace(/-----BEGIN PRIVATE KEY-----/, '')
+    .replace(/-----END PRIVATE KEY-----/, '')
+    .replace(/\n/g, '');
+  const binaryDer = Uint8Array.from(atob(pemContents), (c) => c.charCodeAt(0));
+  return await crypto.subtle.importKey(
+    'pkcs8',
+    binaryDer,
+    { name: 'RSASSA-PKCS1-v1_5', hash: 'SHA-256' },
+    false,
+    ['sign'],
+  );
+}
+
 async function getGoogleAccessToken(sa: ServiceAccount): Promise<string> {
   const { create, getNumericDate } = await import(
-    'https://deno.land/x/djwt@v3.0.2/mod.ts'
-  );
-  const { importPKCS8 } = await import(
-    'https://deno.land/x/djwt@v3.0.2/key/mod.ts'
+    'https://deno.land/x/djwt@v2.9.1/mod.ts'
   );
 
-  const key = await importPKCS8(sa.private_key, 'RS256');
+  const key = await importPKCS8Key(sa.private_key);
   const jwt = await create(
     { alg: 'RS256', typ: 'JWT' },
     {

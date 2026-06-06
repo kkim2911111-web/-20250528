@@ -556,8 +556,12 @@ class _AdminReturnInspectionScreenState
 
   void _reload() {
     setState(() {
-      _pendingFuture =
-          _admin.fetchReturnInspections(widget.profile.complexId);
+      // 검수 대기: 고객 반납 완료(returned), 관리자 미확인
+      _pendingFuture = _admin.fetchReturnInspections(
+        widget.profile.complexId,
+        status: 'returned',
+      );
+      // 검수 완료: 관리자 검수 완료 버튼 처리(completed)
       _completedFuture = _admin.fetchReturnInspections(
         widget.profile.complexId,
         status: 'completed',
@@ -631,6 +635,48 @@ class _AdminReturnInspectionScreenState
               dateFormat: _date,
               admin: _admin,
               showCompleteButton: false,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// 시간 초과 자동 반납(return_type=auto) — 사고(빨강)와 구분되는 주황 배지
+class _NoShowReturnBadge extends StatelessWidget {
+  const _NoShowReturnBadge();
+
+  static const _orange = Color(0xFFFF6D00);
+  static const _orangeDark = Color(0xFFE65100);
+  static const _orangeBg = Color(0xFFFFF3E0);
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(left: 8),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+        decoration: BoxDecoration(
+          color: _orangeBg,
+          borderRadius: BorderRadius.circular(6),
+          border: Border.all(
+            color: _orange.withValues(alpha: 0.65),
+            width: 1.2,
+          ),
+        ),
+        child: const Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.schedule_outlined, size: 14, color: _orangeDark),
+            SizedBox(width: 4),
+            Text(
+              '노쇼반납',
+              style: TextStyle(
+                color: _orangeDark,
+                fontSize: 12,
+                fontWeight: FontWeight.w800,
+              ),
             ),
           ],
         ),
@@ -817,6 +863,7 @@ class _ReturnInspectionCardState extends State<_ReturnInspectionCard> {
                   ),
                 ),
               ),
+              if (r.isNoShowReturn) const _NoShowReturnBadge(),
               if (r.isAccident) ...[
                 const SizedBox(width: 8),
                 Container(

@@ -102,9 +102,9 @@ class Reservation {
     return c != null && c.isNotEmpty;
   }
 
-  /// 계약서 보기 — 대여 중(in_use)·이용 완료(completed)
+  /// 계약서 보기 — 대여 중(in_use)·반납 처리(returned)·이용 완료(completed)
   bool get canViewContract =>
-      status == 'in_use' || status == 'completed';
+      status == 'in_use' || status == 'returned' || status == 'completed';
 
   static DateTime? _parseDate(Object? value) {
     if (value == null) return null;
@@ -329,7 +329,8 @@ class Reservation {
     if (isEffectivelyFinished && !isFinished) return '이용 종료';
     if (isOperating) return '대여 중';
     if (isWaiting) return '이용 대기';
-    if (isFinished) return '이용 완료';
+    if (status == 'returned') return '반납 처리됨';
+    if (status == 'completed') return '이용 완료';
     return statusLabel;
   }
 
@@ -342,7 +343,7 @@ class Reservation {
       case 'in_use':
         return '대여 중';
       case 'returned':
-        return '반납 완료';
+        return '반납 처리됨';
       case 'completed':
         return '이용 완료';
       case 'cancelled':

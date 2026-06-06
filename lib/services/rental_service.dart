@@ -1231,7 +1231,7 @@ contract_content
         } catch (_) {}
         return {
           'reservationId': reservationId,
-          'status': 'completed',
+          'status': 'returned',
           'returnedAt': nowIso,
           'actualEndAt': nowIso,
         };
@@ -1261,10 +1261,10 @@ contract_content
     final note = isAccident ? accidentNote?.trim() : null;
     final payloads = <Map<String, dynamic>>[
       {
-        'status': 'completed',
+        'status': 'returned',
         'returned_at': nowIso,
         'actual_end_at': nowIso,
-        'return_type': 'normal',
+        'return_type': 'manual',
         'return_photos': photoUrls,
         'mileage_end': mileageEnd,
         'fuel_level_end': fuelLevelEnd,
@@ -1272,7 +1272,7 @@ contract_content
         'accident_note': note,
       },
       {
-        'status': 'completed',
+        'status': 'returned',
         'returned_at': nowIso,
         'actual_end_at': nowIso,
         'return_photos': photoUrls,
@@ -1280,7 +1280,7 @@ contract_content
         'fuel_level_end': fuelLevelEnd,
       },
       {
-        'status': 'completed',
+        'status': 'returned',
         'returned_at': nowIso,
       },
     ];
@@ -1312,7 +1312,7 @@ contract_content
       throw RentalException(friendlyRentalError(lastError));
     }
     throw const RentalException(
-      '반납 상태(completed)가 저장되지 않았습니다. 다시 시도해주세요.',
+      '반납 상태(returned)가 저장되지 않았습니다. 다시 시도해주세요.',
     );
   }
 
@@ -1354,7 +1354,7 @@ contract_content
     if (status == 'in_use') {
       throw const RentalException(
         '반납은 처리되었으나 status가 in_use로 남아 있습니다.\n'
-        'Supabase에서 complete_rental_for_me 마이그레이션(20260604220000)을 실행해주세요.',
+        'Supabase에서 complete_rental_for_me 마이그레이션(20260619120000)을 실행해주세요.',
       );
     }
 
@@ -1464,7 +1464,7 @@ String friendlyRentalError(PostgrestException error) {
     }
     if (msg.contains('complete_rental_for_me')) {
       return '반납 RPC가 설치되지 않았습니다.\n'
-          'Supabase에서 supabase/migrations/20260604220000_complete_rental_status_completed.sql 을 실행해주세요.';
+          'Supabase에서 supabase/migrations/20260619120000_fix_return_inspection_status_flow.sql 을 실행해주세요.';
     }
     if (msg.contains('check_rental_extension_for_me') ||
         msg.contains('apply_rental_extension_for_me')) {

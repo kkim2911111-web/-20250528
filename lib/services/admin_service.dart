@@ -549,7 +549,7 @@ class AdminService {
 
     const baseSelect =
         'id, user_id, status, total_price, start_at, start_time, end_at, end_time, '
-        'is_accident, accident_note, pickup_photos, return_photos, '
+        'return_type, is_accident, accident_note, pickup_photos, return_photos, '
         'vehicles(model_name, car_number)';
 
     Future<List> queryReservations(String select) async {
