@@ -156,6 +156,78 @@ contract_content,second_driver_name,second_driver_license
     return parsed ?? id;
   }
 
+  Future<List<Reservation>> _fetchCancelledReservationsFromPaymentOrders(
+    String userId,
+  ) async {
+    try {
+      final rows = await supabase
+          .from('payment_orders')
+          .select(PaymentOrderColumns.selectDetail)
+          .eq('user_id', userId)
+          .eq('status', PaymentOrderStatus.cancelled)
+          .order('updated_at', ascending: false);
+
+      return (rows as List)
+          .map((row) {
+            if (row is! Map) return null;
+            return _reservationFromCancelledPaymentOrder(
+              Map<String, dynamic>.from(row),
+              userId,
+            );
+          })
+          .whereType<Reservation>()
+          .toList();
+    } on PostgrestException catch (e) {
+      debugPrint(
+        '[rental] cancelled payment_orders fetch skipped: ${e.message}',
+      );
+      return [];
+    }
+  }
+
+  Reservation _reservationFromCancelledPaymentOrder(
+    Map<String, dynamic> row,
+    String userId,
+  ) {
+    final vehicleId = row['vehicle_id']?.toString() ?? '';
+    final vehicleName = row['vehicle_name']?.toString();
+    Vehicle? vehicle;
+    if (vehicleName != null && vehicleName.trim().isNotEmpty) {
+      vehicle = Vehicle(
+        id: vehicleId.isNotEmpty ? vehicleId : '0',
+        complexId: '',
+        name: vehicleName.trim(),
+        vehicleType: '기타',
+        pricePerHour: 0,
+        isAvailable: false,
+      );
+    }
+
+    final reservationId = row['reservation_id']?.toString();
+    final orderId = row['order_id']?.toString();
+
+    DateTime? parseTs(Object? v) {
+      if (v == null) return null;
+      if (v is DateTime) return v.toLocal();
+      return DateTime.tryParse(v.toString())?.toLocal();
+    }
+
+    return Reservation(
+      id: (reservationId != null && reservationId.isNotEmpty)
+          ? reservationId
+          : (orderId ?? ''),
+      userId: userId,
+      vehicleId: vehicleId,
+      startAt: parseTs(row['start_time']),
+      endAt: parseTs(row['end_time']),
+      totalPrice: (row['total_price'] as num?)?.toInt() ?? 0,
+      status: 'cancelled',
+      orderId: orderId,
+      cancelledAt: parseTs(row['updated_at']),
+      vehicle: vehicle,
+    );
+  }
+
   Future<List<Reservation>> fetchMyReservations({bool forceRefresh = false}) async {
     final user = supabase.auth.currentUser;
     if (user == null) {
@@ -367,6 +439,28 @@ contract_content,second_driver_name,second_driver_license
     );
 
     if (historyOnly) {
+      final user = supabase.auth.currentUser;
+      if (user != null) {
+        final fromOrders = await _fetchCancelledReservationsFromPaymentOrders(
+          user.id,
+        );
+        final existingIds = finished.map((r) => r.id).toSet();
+        final existingOrderIds = finished
+            .map((r) => r.orderId?.trim())
+            .whereType<String>()
+            .where((id) => id.isNotEmpty)
+            .toSet();
+        for (final r in fromOrders) {
+          if (existingIds.contains(r.id)) continue;
+          final oid = r.orderId?.trim();
+          if (oid != null && oid.isNotEmpty && existingOrderIds.contains(oid)) {
+            continue;
+          }
+          finished.add(r);
+        }
+        finished.sort(_compareByStartDesc);
+      }
+
       final pricing = await ReservationService()
           .fetchPaymentPricingForReservations(finished);
       return GroupedReservations(
@@ -478,6 +572,7 @@ contract_content,second_driver_name,second_driver_license
     required String phase,
     required List<String> photoUrls,
   }) async {
+    final photoType = phase == 'pickup' ? 'before' : 'after';
     try {
       await supabase
           .from('ride_photos')
@@ -491,6 +586,7 @@ contract_content,second_driver_name,second_driver_license
           'reservation_id': reservationId,
           'user_id': userId,
           'phase': phase,
+          'photo_type': photoType,
           'photo_url': entry.value,
           'photo_order': entry.key,
         };
@@ -1209,6 +1305,12 @@ contract_content,second_driver_name,second_driver_license
         'p_accident_note': accidentNote,
       });
       await _assertReservationReturnCompleted(reservationId);
+      await _insertRidePhotos(
+        reservationId: reservationId,
+        userId: user.id,
+        phase: 'return',
+        photoUrls: photoUrls,
+      );
       await _grantReservationPointsAfterReturn(reservationId);
       RentalService.signalListRefresh();
       final result = _asMap(data);
@@ -1228,6 +1330,12 @@ contract_content,second_driver_name,second_driver_license
           fuelLevelEnd: fuelLevelEnd.value,
           isAccident: isAccident,
           accidentNote: accidentNote,
+        );
+        await _insertRidePhotos(
+          reservationId: reservationId,
+          userId: user.id,
+          phase: 'return',
+          photoUrls: photoUrls,
         );
         await _grantReservationPointsAfterReturn(reservationId);
         RentalService.signalListRefresh();

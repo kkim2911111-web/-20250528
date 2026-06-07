@@ -16,6 +16,12 @@ verify_jwt = false
 [functions.send-push-notification]
 verify_jwt = true
 
+[functions.billing-deductible-charge]
+verify_jwt = true
+
+[functions.billing-extension-charge]
+verify_jwt = true
+
 [functions.dispatch-push-scenario]
 verify_jwt = true
 

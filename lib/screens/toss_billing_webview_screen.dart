@@ -1,11 +1,13 @@
+import 'dart:async';
 import 'dart:convert';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
-import 'package:url_launcher/url_launcher.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 
 import '../config/payment_config.dart';
 import '../theme/danji_colors.dart';
+import '../utils/payment_webview_redirect.dart';
 import '../widgets/danji_app_bar.dart';
 
 /// 토스 빌링키 발급 전용 — requestBillingAuth (실결제 없음)
@@ -27,7 +29,10 @@ class TossBillingWebViewScreen extends StatefulWidget {
 }
 
 class _TossBillingWebViewScreenState extends State<TossBillingWebViewScreen> {
+  static const _allowedSegments = {'billing-success', 'billing-fail'};
+
   late final WebViewController _controller;
+  StreamSubscription<String>? _deepLinkSub;
   var _loading = true;
   String? _error;
   var _completed = false;
@@ -37,11 +42,15 @@ class _TossBillingWebViewScreenState extends State<TossBillingWebViewScreen> {
   @override
   void initState() {
     super.initState();
+    if (!kIsWeb && defaultTargetPlatform == TargetPlatform.android) {
+      _deepLinkSub = PaymentDeepLinkChannel.stream.listen(_handleRedirectUrl);
+    }
+
     _controller = WebViewController()
       ..setJavaScriptMode(JavaScriptMode.unrestricted)
       ..setNavigationDelegate(
         NavigationDelegate(
-          onPageStarted: (url) => _handleRedirectUrl(url),
+          onPageStarted: _handleRedirectUrl,
           onPageFinished: (_) {
             if (mounted) setState(() => _loading = false);
           },
@@ -53,77 +62,48 @@ class _TossBillingWebViewScreenState extends State<TossBillingWebViewScreen> {
               _error = error.description;
             });
           },
-          onNavigationRequest: (request) async {
-            return _navigationDecisionFor(request.url);
-          },
+          onNavigationRequest: (request) => PaymentWebViewRedirect.navigationDecision(
+            url: request.url,
+            allowedSegments: _allowedSegments,
+            completed: _completed,
+            onRedirect: _completeWithRedirect,
+          ),
         ),
       )
       ..loadHtmlString(_buildBillingHtml(), baseUrl: _webviewBaseUrl);
   }
 
-  Future<NavigationDecision> _navigationDecisionFor(String url) async {
-    if (_tryHandleRedirect(url)) {
-      return NavigationDecision.prevent;
-    }
-
-    final uri = Uri.tryParse(url);
-    if (uri == null) return NavigationDecision.navigate;
-
-    if (uri.scheme == 'http' || uri.scheme == 'https') {
-      return NavigationDecision.navigate;
-    }
-
-    try {
-      if (await canLaunchUrl(uri)) {
-        await launchUrl(uri, mode: LaunchMode.externalApplication);
-      }
-    } catch (_) {}
-    return NavigationDecision.prevent;
+  @override
+  void dispose() {
+    _deepLinkSub?.cancel();
+    super.dispose();
   }
 
   void _handleRedirectUrl(String? url) {
-    if (url == null || url.isEmpty) return;
-    _tryHandleRedirect(url);
+    if (url == null || url.isEmpty || _completed) return;
+    final result = PaymentWebViewRedirect.parse(
+      url,
+      allowedSegments: _allowedSegments,
+    );
+    if (result != null) {
+      _completeWithRedirect(result);
+    }
   }
 
-  bool _tryHandleRedirect(String url) {
-    if (_completed) return true;
-
-    final uri = Uri.tryParse(url);
-    if (uri == null) return false;
-
-    String? segment;
-    if (uri.scheme == PaymentConfig.appPaymentScheme &&
-        uri.host == 'payment' &&
-        uri.pathSegments.isNotEmpty) {
-      segment = uri.pathSegments.first;
-    } else if (uri.scheme == 'https' &&
-        uri.host == PaymentConfig.appPaymentHost &&
-        uri.pathSegments.length >= 2 &&
-        uri.pathSegments.first == 'payment') {
-      segment = uri.pathSegments[1];
-    }
-
-    if (segment != 'billing-success' && segment != 'billing-fail') {
-      return false;
-    }
-
-    final params = Map<String, String>.from(uri.queryParameters);
-    params['_route'] = segment == 'billing-success' ? 'success' : 'fail';
+  void _completeWithRedirect(PaymentRedirectResult result) {
+    if (_completed) return;
     _completed = true;
-
     if (mounted) {
-      Navigator.of(context).pop(params);
+      Navigator.of(context).pop(result.params);
     }
-    return true;
   }
 
   String _buildBillingHtml() {
     final config = <String, dynamic>{
       'clientKey': PaymentConfig.tossClientKey,
       'customerKey': widget.customerKey,
-      'successUrl': PaymentConfig.appPaymentRedirectUrl('billing-success'),
-      'failUrl': PaymentConfig.appPaymentRedirectUrl('billing-fail'),
+      'successUrl': PaymentConfig.mobileAppRedirectUrl('billing-success'),
+      'failUrl': PaymentConfig.mobileAppRedirectUrl('billing-fail'),
       if (widget.customerEmail != null) 'customerEmail': widget.customerEmail,
       if (widget.customerName != null) 'customerName': widget.customerName,
     };

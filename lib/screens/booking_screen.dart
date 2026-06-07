@@ -246,12 +246,16 @@ class _BookingScreenState extends State<BookingScreen> {
     return options.where((h) => _isStartHourSelectable(day, h)).toList();
   }
 
+  /// 종료 시각 목록 — 시작 시각 다음부터 순환 (예: 21:00 시작 → 22:00, 23:00, 00:00(익일)…)
   List<int> get _endHourOptions {
     final day = _selectedDay;
     if (day == null) return const [];
 
+    final ordered = <int>[
+      for (var i = 1; i <= 24; i++) (_startHour + i) % 24,
+    ];
     return [
-      for (var h = _minHour; h <= _maxHour; h++)
+      for (final h in ordered)
         if (_isValidEndHour(day, h)) h,
     ];
   }
@@ -369,9 +373,16 @@ class _BookingScreenState extends State<BookingScreen> {
 
   int get _pointsDiscount {
     if (!_usePoints) return 0;
-    final amount = _pointsToUse.clamp(0, _maxPointsUsable);
+    final amount = _pointsToUse;
     if (!PointPolicy.isValidUseAmount(amount)) return 0;
+    if (amount > _maxPointsUsable) return 0;
     return amount;
+  }
+
+  bool get _pointsInputInvalid {
+    if (!_usePoints || _maxPointsUsable <= 0) return false;
+    return _pointsToUse < PointPolicy.minUseAmount ||
+        _pointsToUse > _maxPointsUsable;
   }
 
   int? get _finalPrice {
@@ -393,6 +404,7 @@ class _BookingScreenState extends State<BookingScreen> {
   bool get _canSubmit {
     if (_loading || _selected == null || _originalPrice == null) return false;
     if (_durationHours < 1) return false;
+    if (_pointsInputInvalid) return false;
     final start = _buildStartDateTime(_selectedDay, _startHour);
     if (start == null) return false;
     if (_selectedDay != null &&
@@ -414,12 +426,13 @@ class _BookingScreenState extends State<BookingScreen> {
 
   void _clampPointsToUse() {
     final max = _maxPointsUsable;
-    if (_pointsToUse > max) _pointsToUse = max;
-    if (_pointsToUse < 0) _pointsToUse = 0;
     if (max == 0) {
       _usePoints = false;
       _pointsToUse = 0;
+      return;
     }
+    if (_pointsToUse > max) _pointsToUse = max;
+    if (_pointsToUse < 0) _pointsToUse = 0;
   }
 
   void _validateCouponForCurrentPrice() {
@@ -488,10 +501,7 @@ class _BookingScreenState extends State<BookingScreen> {
 
   void _onPointsAmountChanged(String text) {
     final parsed = int.tryParse(text.replaceAll(RegExp(r'[^0-9]'), '')) ?? 0;
-    setState(() {
-      _pointsToUse = parsed.clamp(0, _maxPointsUsable);
-      _usePoints = _pointsToUse > 0;
-    });
+    setState(() => _pointsToUse = parsed < 0 ? 0 : parsed);
   }
 
   void _refreshAvailability() {
@@ -845,6 +855,15 @@ class _BookingScreenState extends State<BookingScreen> {
       return;
     }
 
+    if (_pointsInputInvalid) {
+      setState(() {
+        _error = _pointsToUse < PointPolicy.minUseAmount
+            ? '최소 5,000원 이상 사용 가능합니다'
+            : '사용 가능한 포인트를 초과했습니다';
+      });
+      return;
+    }
+
     final isZeroAmount = totalPrice <= 0;
     TossPaymentMethod? method;
     if (!isZeroAmount) {
@@ -1001,7 +1020,7 @@ class _BookingScreenState extends State<BookingScreen> {
                           Expanded(
                             child: _TimeSelectCard(
                               title: '종료 시간',
-                              time: _formatHourLabel(_endHour),
+                              time: _formatEndHourLabel(_endHour),
                               subtitle: _durationHours >= 1
                                   ? '${_durationHours}시간 선택됨'
                                   : '1시간 이상 선택',
@@ -1934,10 +1953,22 @@ class _BookingCheckoutDiscounts extends StatefulWidget {
 class _BookingCheckoutDiscountsState extends State<_BookingCheckoutDiscounts> {
   final _pointsController = TextEditingController();
 
+  int? _parsePointsField() =>
+      int.tryParse(_pointsController.text.replaceAll(RegExp(r'[^0-9]'), ''));
+
   @override
   void didUpdateWidget(covariant _BookingCheckoutDiscounts oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (widget.pointsToUse != int.tryParse(_pointsController.text)) {
+    final parsed = _parsePointsField();
+    if (widget.pointsToUse == parsed) return;
+
+    final toggleOn = !oldWidget.usePoints && widget.usePoints;
+    final toggleOff = oldWidget.usePoints && !widget.usePoints;
+    final couponClamped = oldWidget.maxPointsUsable != widget.maxPointsUsable &&
+        widget.pointsToUse <= widget.maxPointsUsable &&
+        (parsed ?? 0) > widget.pointsToUse;
+
+    if (toggleOn || toggleOff || couponClamped) {
       _pointsController.text =
           widget.pointsToUse > 0 ? '${widget.pointsToUse}' : '';
     }
@@ -1985,8 +2016,22 @@ class _BookingCheckoutDiscountsState extends State<_BookingCheckoutDiscounts> {
 
   bool get _pointsAmountBelowMin =>
       widget.usePoints &&
-      widget.pointsToUse > 0 &&
       widget.pointsToUse < PointPolicy.minUseAmount;
+
+  bool get _pointsAmountAboveMax =>
+      widget.usePoints &&
+      widget.maxPointsUsable > 0 &&
+      widget.pointsToUse > widget.maxPointsUsable;
+
+  String? get _pointsErrorText {
+    if (_pointsAmountBelowMin) {
+      return '최소 5,000원 이상 사용 가능합니다';
+    }
+    if (_pointsAmountAboveMax) {
+      return '사용 가능한 포인트를 초과했습니다';
+    }
+    return null;
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -2117,9 +2162,7 @@ class _BookingCheckoutDiscountsState extends State<_BookingCheckoutDiscounts> {
                     ),
                   ),
                   Switch(
-                    value: widget.usePoints &&
-                        widget.maxPointsUsable > 0 &&
-                        !_balanceBelowMinUse,
+                    value: widget.usePoints,
                     onChanged: !_balanceBelowMinUse &&
                             widget.maxPointsUsable > 0
                         ? widget.onPointsToggle
@@ -2149,9 +2192,7 @@ class _BookingCheckoutDiscountsState extends State<_BookingCheckoutDiscounts> {
                     border: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(12),
                     ),
-                    errorText: _pointsAmountBelowMin
-                        ? '최소 ${widget.formatWon(PointPolicy.minUseAmount)}P 이상 입력해주세요.'
-                        : null,
+                    errorText: _pointsErrorText,
                   ),
                   onChanged: widget.onPointsAmountChanged,
                 ),

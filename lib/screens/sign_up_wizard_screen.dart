@@ -7,6 +7,7 @@ import 'package:image_picker/image_picker.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../resident_profile_screen.dart';
+import '../services/coupon_service.dart';
 import '../services/license_service.dart';
 import '../services/my_page_service.dart';
 import '../services/payment_service.dart';
@@ -38,6 +39,7 @@ class _SignUpWizardScreenState extends State<SignUpWizardScreen> {
 
   late final PageController _pageController;
   final _myPageService = MyPageService();
+  final _couponService = CouponService();
   final _licenseService = LicenseService();
   final _paymentService = PaymentService();
   final _residentRepo = ResidentRepository();
@@ -367,6 +369,13 @@ class _SignUpWizardScreenState extends State<SignUpWizardScreen> {
     });
 
     try {
+      WelcomeCouponGrantResult? welcomeCoupon;
+      try {
+        welcomeCoupon = await _couponService.grantWelcomeCoupon();
+      } catch (e) {
+        debugPrint('[onboarding] grant_welcome_coupon failed: $e');
+      }
+
       await _myPageService.markSignupComplete();
       final push = PushNotificationService.instance;
       await push.customerSignupComplete();
@@ -375,6 +384,14 @@ class _SignUpWizardScreenState extends State<SignUpWizardScreen> {
         await push.staffNewSignup(complexId: complexId);
       }
       if (!mounted) return;
+
+      setState(() => _loading = false);
+
+      if (welcomeCoupon?.granted == true) {
+        await _showWelcomeCouponDialog();
+      }
+
+      if (!mounted) return;
       widget.onCompleted?.call();
     } catch (e) {
       setState(() {
@@ -382,6 +399,35 @@ class _SignUpWizardScreenState extends State<SignUpWizardScreen> {
         _error = e.toString().replaceFirst('Exception: ', '');
       });
     }
+  }
+
+  Future<void> _showWelcomeCouponDialog() async {
+    await showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogContext) {
+        return AlertDialog(
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+          ),
+          title: const Text(
+            '가입 축하 쿠폰',
+            style: TextStyle(fontWeight: FontWeight.w800),
+          ),
+          content: const Text(
+            '가입을 축하합니다! 5,000원 쿠폰이 발급되었습니다.',
+            style: TextStyle(height: 1.5),
+          ),
+          actions: [
+            FilledButton(
+              onPressed: () => Navigator.of(dialogContext).pop(),
+              style: DanjiTheme.primaryButton,
+              child: const Text('확인'),
+            ),
+          ],
+        );
+      },
+    );
   }
 
   Future<void> _scanLicense() async {

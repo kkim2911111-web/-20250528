@@ -153,6 +153,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                           value: '${stats.totalVehicles}',
                           icon: Icons.directions_car_outlined,
                           color: _DashboardUiColors.totalBlue,
+                          onTap: () => _openVehicleManage(),
                         ),
                       ),
                       const SizedBox(width: 6),
@@ -162,6 +163,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                           value: '${stats.availableVehicles.clamp(0, 999)}',
                           icon: Icons.check_circle_outline,
                           color: _DashboardUiColors.availableGreen,
+                          onTap: () => _openVehicleManage(),
                         ),
                       ),
                       const SizedBox(width: 6),
@@ -171,6 +173,9 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                           value: '${stats.inOperation}',
                           icon: Icons.navigation_outlined,
                           color: _DashboardUiColors.inUseOrange,
+                          onTap: () => _open(
+                            const AdminReservationListScreen(openInUseTab: true),
+                          ),
                         ),
                       ),
                       const SizedBox(width: 6),
@@ -180,6 +185,11 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                           value: '${stats.todayReservations}',
                           icon: Icons.calendar_today_outlined,
                           color: _DashboardUiColors.todayPurple,
+                          onTap: () => _open(
+                            const AdminReservationListScreen(
+                              openWaitingTab: true,
+                            ),
+                          ),
                         ),
                       ),
                     ],
@@ -234,7 +244,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
             ),
             _MenuTile(
               icon: Icons.event_note_outlined,
-              title: '예약 관리',
+              title: '대여 관리',
               subtitle: '예약 목록, 충돌 위험 확인',
               onTap: () => _open(const AdminReservationListScreen()),
             ),
@@ -309,6 +319,15 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
   void _open(Widget screen) {
     Navigator.of(context).push(MaterialPageRoute(builder: (_) => screen));
   }
+
+  Future<void> _openVehicleManage() async {
+    final changed = await Navigator.of(context).push<bool>(
+      MaterialPageRoute(
+        builder: (_) => AdminVehicleManageScreen(profile: widget.profile),
+      ),
+    );
+    if (changed == true) _reload();
+  }
 }
 
 class _ConflictWarningCard extends StatelessWidget {
@@ -359,44 +378,56 @@ class _CompactStatCard extends StatelessWidget {
   final String value;
   final IconData icon;
   final Color color;
+  final VoidCallback? onTap;
 
   const _CompactStatCard({
     required this.label,
     required this.value,
     required this.icon,
     required this.color,
+    this.onTap,
   });
 
   @override
   Widget build(BuildContext context) {
     return SectionCard(
       padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 10),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(icon, color: color, size: 18),
-          const SizedBox(height: 6),
-          Text(
-            label,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: const TextStyle(
-              color: DanjiColors.textSecondary,
-              fontWeight: FontWeight.w600,
-              fontSize: 10,
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(12),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 2),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(icon, color: color, size: 18),
+                const SizedBox(height: 6),
+                Text(
+                  label,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    color: DanjiColors.textSecondary,
+                    fontWeight: FontWeight.w600,
+                    fontSize: 10,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  value,
+                  style: TextStyle(
+                    color: color,
+                    fontWeight: FontWeight.w800,
+                    fontSize: 18,
+                    height: 1.1,
+                  ),
+                ),
+              ],
             ),
           ),
-          const SizedBox(height: 2),
-          Text(
-            value,
-            style: TextStyle(
-              color: color,
-              fontWeight: FontWeight.w800,
-              fontSize: 18,
-              height: 1.1,
-            ),
-          ),
-        ],
+        ),
       ),
     );
   }

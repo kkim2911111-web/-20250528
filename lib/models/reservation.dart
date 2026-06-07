@@ -17,6 +17,7 @@ class Reservation {
   final DateTime? rentalStartedAt;
   final DateTime? returnedAt;
   final DateTime? actualEndAt;
+  final DateTime? cancelledAt;
   final List<String> pickupPhotos;
   final List<String> returnPhotos;
   final int? mileageStart;
@@ -47,6 +48,7 @@ class Reservation {
     this.rentalStartedAt,
     this.returnedAt,
     this.actualEndAt,
+    this.cancelledAt,
     this.pickupPhotos = const [],
     this.returnPhotos = const [],
     this.mileageStart,
@@ -90,6 +92,7 @@ class Reservation {
       rentalStartedAt: _parseDate(map['rental_started_at']),
       returnedAt: _parseDate(map['returned_at']),
       actualEndAt: _parseDate(map['actual_end_at']),
+      cancelledAt: _parseDate(map['cancelled_at'] ?? map['updated_at']),
       pickupPhotos: _parseStringList(map['pickup_photos']),
       returnPhotos: _parseStringList(map['return_photos']),
       mileageStart: (map['mileage_start'] as num?)?.toInt(),
@@ -268,6 +271,9 @@ class Reservation {
 
   /// 마이페이지 이용내역 — 취소·완료·시간 경과(미운행 확정 예약)
   bool get isInUsageHistory => isEffectivelyFinished;
+
+  /// 이용내역 — 이용완료 탭 (취소 제외)
+  bool get isUsageHistoryCompleted => isInUsageHistory && !isCancelled;
 
   /// 운행 중 — in_use 또는 이용 시간대 내
   bool get isOperating =>

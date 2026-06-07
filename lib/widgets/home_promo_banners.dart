@@ -100,7 +100,7 @@ class _CouponPromoBanner extends StatelessWidget {
                         ),
                         const SizedBox(height: 4),
                         Text(
-                          '10,000원 즉시지급',
+                          '5,000원 즉시지급',
                           style: TextStyle(
                             color: Colors.white.withValues(alpha: 0.72),
                             fontSize: 10,

@@ -70,6 +70,69 @@ class SuperAdminService {
         parse: (d) => _list(d, SuperAdminResident.fromMap),
       );
 
+  Future<SuperAdminResidentDetail> fetchResidentDetail(String userId) => _rpc(
+        'get_super_admin_resident_detail',
+        params: {'p_user_id': userId},
+        parse: (d) => SuperAdminResidentDetail.fromMap(
+          Map<String, dynamic>.from(d as Map),
+        ),
+      );
+
+  Future<Map<String, Set<String>>> fetchReservationUserIndex() => _rpc(
+        'get_super_admin_reservation_user_ids',
+        parse: (d) {
+          final index = <String, Set<String>>{};
+          if (d is! List) return index;
+          for (final row in d) {
+            final m = Map<String, dynamic>.from(row as Map);
+            final userId = m['user_id']?.toString();
+            final reservationId = m['reservation_id']?.toString();
+            if (userId == null ||
+                userId.isEmpty ||
+                reservationId == null ||
+                reservationId.isEmpty) {
+              continue;
+            }
+            index.putIfAbsent(userId, () => <String>{}).add(reservationId);
+          }
+          return index;
+        },
+      );
+
+  Future<String?> fetchReservationContract(String reservationId) async {
+    final id = reservationId.trim();
+    if (id.isEmpty) return null;
+    try {
+      final data = await supabase.rpc(
+        'get_super_admin_reservation_contract',
+        params: {'p_reservation_id': id},
+      );
+      final text = data?.toString().trim();
+      if (text == null || text.isEmpty) return null;
+      return text;
+    } on PostgrestException catch (e) {
+      throw SuperAdminException(_mapError(e));
+    }
+  }
+
+  Future<String?> ensureReservationContract(String reservationId) async {
+    final id = reservationId.trim();
+    if (id.isEmpty) {
+      throw const SuperAdminException('예약번호가 없습니다.');
+    }
+
+    final cached = await fetchReservationContract(id);
+    if (cached != null && cached.isNotEmpty) return cached;
+
+    await _rpc(
+      'generate_rental_contract_for_super_admin',
+      params: {'p_reservation_id': id},
+      parse: (_) {},
+    );
+
+    return fetchReservationContract(id);
+  }
+
   Future<List<SuperAdminReservation>> fetchReservations() => _rpc(
         'get_super_admin_reservations',
         parse: (d) => _list(d, SuperAdminReservation.fromMap),
@@ -86,6 +149,21 @@ class SuperAdminService {
           if (month != null) 'p_month': month,
         },
         parse: (d) => _list(d, SuperAdminRevenueRow.fromMap),
+      );
+
+  Future<List<SuperAdminSettlementReservation>> fetchSettlementReservations({
+    required String complexId,
+    required int year,
+    required int month,
+  }) =>
+      _rpc(
+        'get_super_admin_settlement_reservations',
+        params: {
+          'p_complex_id': complexId,
+          'p_year': year,
+          'p_month': month,
+        },
+        parse: (d) => _list(d, SuperAdminSettlementReservation.fromMap),
       );
 
   Future<List<SuperAdminCoupon>> fetchCoupons() => _rpc(
@@ -220,18 +298,16 @@ class SuperAdminService {
   Future<String> upsertCoupon({
     String? id,
     required String title,
-    String? description,
     int discountAmount = 0,
-    int minPaymentAmount = 0,
+    int minAmount = 0,
   }) =>
       _rpc(
         'upsert_super_admin_coupon',
         params: {
           if (id != null) 'p_coupon_id': id,
           'p_title': title,
-          if (description != null) 'p_description': description,
           'p_discount_amount': discountAmount,
-          'p_min_payment_amount': minPaymentAmount,
+          'p_min_amount': minAmount,
         },
         parse: (d) => d?.toString() ?? '',
       );
@@ -255,6 +331,27 @@ class SuperAdminService {
           if (expiresAt != null) 'p_expires_at': expiresAt.toUtc().toIso8601String(),
         },
         parse: (_) {},
+      );
+
+  /// 일괄 발급 — p_complexId null·userIds null이면 전체 입주민
+  Future<BulkIssueCouponResult> bulkIssueCoupon({
+    required String couponId,
+    String? complexId,
+    List<String>? userIds,
+  }) =>
+      _rpc(
+        'bulk_issue_coupon',
+        params: {
+          'p_coupon_id': couponId,
+          if (complexId != null) 'p_complex_id': complexId,
+          if (userIds != null && userIds.isNotEmpty) 'p_user_ids': userIds,
+        },
+        parse: (d) {
+          if (d is Map) {
+            return BulkIssueCouponResult.fromMap(Map<String, dynamic>.from(d));
+          }
+          return const BulkIssueCouponResult();
+        },
       );
 
   Future<void> forceCancelReservation(String id) => _rpc(

@@ -2,6 +2,16 @@ import 'package:flutter/material.dart';
 
 import '../theme/danji_colors.dart';
 
+bool _isDisplayablePhotoUrl(String? url) {
+  if (url == null) return false;
+  final trimmed = url.trim();
+  return trimmed.startsWith('http://') || trimmed.startsWith('https://');
+}
+
+List<String> _validPhotoUrls(List<String> photos) {
+  return photos.where(_isDisplayablePhotoUrl).toList();
+}
+
 enum _CompareLayout { sideBySide, stacked }
 
 /// 반납 검수 — 대여 전/반납 후 사진 비교
@@ -38,70 +48,83 @@ class _ReturnInspectionPhotoCompareState
     super.dispose();
   }
 
+  List<String> get _beforePhotos => _validPhotoUrls(widget.beforePhotos);
+  List<String> get _afterPhotos => _validPhotoUrls(widget.afterPhotos);
+
   int get _pageCount {
     final max = [
-      widget.beforePhotos.length,
-      widget.afterPhotos.length,
+      _beforePhotos.length,
+      _afterPhotos.length,
     ].reduce((a, b) => a > b ? a : b);
     return max == 0 ? 1 : max;
   }
 
   @override
   Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        Row(
+    return Material(
+      color: DanjiColors.surface,
+      borderRadius: BorderRadius.circular(12),
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            const Text(
-              '사진 비교',
-              style: TextStyle(
-                fontSize: 14,
-                fontWeight: FontWeight.w700,
-                color: DanjiColors.textPrimary,
-              ),
-            ),
-            const Spacer(),
-            SegmentedButton<_CompareLayout>(
-              segments: const [
-                ButtonSegment(
-                  value: _CompareLayout.sideBySide,
-                  label: Text('좌우'),
+            Row(
+              children: [
+                const Text(
+                  '사진 비교',
+                  style: TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w700,
+                    color: DanjiColors.textPrimary,
+                  ),
                 ),
-                ButtonSegment(
-                  value: _CompareLayout.stacked,
-                  label: Text('상하'),
+                const Spacer(),
+                SegmentedButton<_CompareLayout>(
+                  segments: const [
+                    ButtonSegment(
+                      value: _CompareLayout.sideBySide,
+                      label: Text('좌우'),
+                    ),
+                    ButtonSegment(
+                      value: _CompareLayout.stacked,
+                      label: Text('상하'),
+                    ),
+                  ],
+                  selected: {_layout},
+                  onSelectionChanged: (value) {
+                    setState(() => _layout = value.first);
+                  },
+                  style: ButtonStyle(
+                    visualDensity: VisualDensity.compact,
+                    textStyle: WidgetStateProperty.all(
+                      const TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
                 ),
               ],
-              selected: {_layout},
-              onSelectionChanged: (value) {
-                setState(() => _layout = value.first);
-              },
-              style: ButtonStyle(
-                visualDensity: VisualDensity.compact,
-                textStyle: WidgetStateProperty.all(
-                  const TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
-                ),
-              ),
             ),
+            const SizedBox(height: 12),
+            if (_layout == _CompareLayout.sideBySide)
+              _SideBySideCompare(
+                beforePhotos: _beforePhotos,
+                afterPhotos: _afterPhotos,
+                pageController: _pageController,
+                pageIndex: _pageIndex,
+                pageCount: _pageCount,
+                onPageChanged: (index) => setState(() => _pageIndex = index),
+              )
+            else
+              _StackedCompare(
+                beforePhotos: _beforePhotos,
+                afterPhotos: _afterPhotos,
+              ),
           ],
         ),
-        const SizedBox(height: 12),
-        if (_layout == _CompareLayout.sideBySide)
-          _SideBySideCompare(
-            beforePhotos: widget.beforePhotos,
-            afterPhotos: widget.afterPhotos,
-            pageController: _pageController,
-            pageIndex: _pageIndex,
-            pageCount: _pageCount,
-            onPageChanged: (index) => setState(() => _pageIndex = index),
-          )
-        else
-          _StackedCompare(
-            beforePhotos: widget.beforePhotos,
-            afterPhotos: widget.afterPhotos,
-          ),
-      ],
+      ),
     );
   }
 }
@@ -304,18 +327,27 @@ class _NetworkPhotoThumb extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    if (!_isDisplayablePhotoUrl(url)) {
+      return expand
+          ? const SizedBox.expand(child: _EmptyPhotoBox())
+          : const SizedBox(width: 96, height: 96, child: _EmptyPhotoBox());
+    }
+
     final image = ClipRRect(
       borderRadius: BorderRadius.circular(10),
-      child: Image.network(
-        url,
-        width: expand ? double.infinity : width,
-        height: expand ? double.infinity : 96,
-        fit: BoxFit.cover,
-        errorBuilder: (_, __, ___) => const _EmptyPhotoBox(),
-        loadingBuilder: (context, child, progress) {
-          if (progress == null) return child;
-          return const _EmptyPhotoBox(showProgress: true);
-        },
+      child: ColoredBox(
+        color: DanjiColors.skyLight,
+        child: Image.network(
+          url.trim(),
+          width: expand ? double.infinity : width,
+          height: expand ? double.infinity : 96,
+          fit: BoxFit.cover,
+          errorBuilder: (_, __, ___) => const _EmptyPhotoBox(),
+          loadingBuilder: (context, child, progress) {
+            if (progress == null) return child;
+            return const _EmptyPhotoBox(showProgress: true);
+          },
+        ),
       ),
     );
 

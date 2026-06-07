@@ -7,8 +7,25 @@ import '../../theme/danji_theme.dart';
 import '../../utils/danji_snackbar.dart';
 import '../../widgets/admin_scaffold.dart';
 import '../../widgets/danji_app_bar.dart';
+import '../../widgets/section_card.dart';
 import 'super_admin_common.dart';
 import 'super_admin_nav.dart';
+import 'super_admin_resident_detail_screen.dart';
+
+enum SuperAdminApprovalFilter { all, approved, pending }
+
+extension on SuperAdminApprovalFilter {
+  String get label {
+    switch (this) {
+      case SuperAdminApprovalFilter.all:
+        return '전체';
+      case SuperAdminApprovalFilter.approved:
+        return '승인';
+      case SuperAdminApprovalFilter.pending:
+        return '대기';
+    }
+  }
+}
 
 // ── 단지 관리 ────────────────────────────────────────────────
 class SuperAdminComplexesScreen extends StatefulWidget {
@@ -298,6 +315,7 @@ class _SuperAdminVehiclesScreenState extends State<SuperAdminVehiclesScreen> {
   Future<List<SuperAdminVehicle>>? _vehiclesFuture;
   Future<List<SuperAdminComplex>>? _complexesFuture;
   late SuperAdminVehicleFilter _filter;
+  String? _complexFilter;
 
   @override
   void initState() {
@@ -322,13 +340,17 @@ class _SuperAdminVehiclesScreenState extends State<SuperAdminVehiclesScreen> {
   }
 
   List<SuperAdminVehicle> _applyFilter(List<SuperAdminVehicle> list) {
+    var result = list;
+    if (_complexFilter != null) {
+      result = result.where((v) => v.complexId == _complexFilter).toList();
+    }
     switch (_filter) {
       case SuperAdminVehicleFilter.available:
-        return list.where((v) => !v.inUse && v.isAvailable).toList();
+        return result.where((v) => !v.inUse && v.isAvailable).toList();
       case SuperAdminVehicleFilter.inUse:
-        return list.where((v) => v.inUse).toList();
+        return result.where((v) => v.inUse).toList();
       case SuperAdminVehicleFilter.all:
-        return list;
+        return result;
     }
   }
 
@@ -501,9 +523,47 @@ class _SuperAdminVehiclesScreenState extends State<SuperAdminVehiclesScreen> {
         children: [
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
-            child: SuperAdminVehicleFilterBar(
-              selected: _filter,
-              onChanged: (f) => setState(() => _filter = f),
+            child: Column(
+              children: [
+                SuperAdminVehicleFilterBar(
+                  selected: _filter,
+                  onChanged: (f) => setState(() => _filter = f),
+                ),
+                const SizedBox(height: 8),
+                FutureBuilder<List<SuperAdminComplex>>(
+                  future: _complexesFuture,
+                  builder: (context, cxSnap) {
+                    final complexes = cxSnap.data ?? [];
+                    return SectionCard(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 4,
+                      ),
+                      child: DropdownButtonHideUnderline(
+                        child: DropdownButton<String?>(
+                          isExpanded: true,
+                          value: _complexFilter,
+                          hint: const Text('전체 단지'),
+                          items: [
+                            const DropdownMenuItem(
+                              value: null,
+                              child: Text('전체 단지'),
+                            ),
+                            ...complexes.map(
+                              (c) => DropdownMenuItem(
+                                value: c.id,
+                                child: Text(c.name),
+                              ),
+                            ),
+                          ],
+                          onChanged: (v) =>
+                              setState(() => _complexFilter = v),
+                        ),
+                      ),
+                    );
+                  },
+                ),
+              ],
             ),
           ),
           Expanded(
@@ -719,22 +779,41 @@ class SuperAdminResidentsScreen extends StatefulWidget {
 }
 
 class _SuperAdminResidentsScreenState extends State<SuperAdminResidentsScreen> {
-  List<SuperAdminResident> _residents = [];
+  List<SuperAdminResident> _allResidents = [];
+  List<SuperAdminComplex> _complexes = [];
+  Map<String, Set<String>> _reservationIdsByUser = {};
   Object? _loadError;
   bool _loading = true;
+
+  String? _complexFilter;
+  SuperAdminApprovalFilter _approvalFilter = SuperAdminApprovalFilter.all;
+  final _searchController = TextEditingController();
 
   @override
   void initState() {
     super.initState();
+    _searchController.addListener(() => setState(() {}));
     _reload();
+  }
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
   }
 
   Future<void> _reload() async {
     try {
-      final data = await widget.service.fetchResidents();
+      final results = await Future.wait([
+        widget.service.fetchResidents(),
+        widget.service.fetchComplexes(),
+        widget.service.fetchReservationUserIndex(),
+      ]);
       if (!mounted) return;
       setState(() {
-        _residents = data;
+        _allResidents = results[0] as List<SuperAdminResident>;
+        _complexes = results[1] as List<SuperAdminComplex>;
+        _reservationIdsByUser = results[2] as Map<String, Set<String>>;
         _loadError = null;
         _loading = false;
       });
@@ -747,199 +826,194 @@ class _SuperAdminResidentsScreenState extends State<SuperAdminResidentsScreen> {
     }
   }
 
-  Future<void> _rejectLicense(SuperAdminResident r) async {
-    final reason = TextEditingController();
-    final ok = await showSuperAdminBottomSheet<bool>(
-      context,
-      title: '면허 강제 거절',
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          TextField(
-            controller: reason,
-            decoration: const InputDecoration(labelText: '거절 사유'),
-          ),
-          const SizedBox(height: 12),
-          FilledButton(
-            onPressed: () => Navigator.pop(context, true),
-            style: DanjiTheme.dangerButton,
-            child: const Text('거절'),
-          ),
-        ],
-      ),
-    );
-    if (ok != true) return;
-    try {
-      await widget.service.forceLicenseRejected(
-        r.userId,
-        reason: reason.text.trim().isEmpty ? null : reason.text.trim(),
-      );
-      if (!mounted) return;
-      await _reload();
-    } catch (e) {
-      if (mounted) DanjiSnackBar.show(context, friendlySuperAdminError(e));
-    }
+  bool _matchesSearch(SuperAdminResident r, String query) {
+    if (query.isEmpty) return true;
+
+    final name = (r.fullName ?? '').toLowerCase();
+    if (name.contains(query)) return true;
+
+    final phone = (r.phone ?? '').replaceAll(RegExp(r'\D'), '');
+    final qPhone = query.replaceAll(RegExp(r'\D'), '');
+    if (qPhone.isNotEmpty && phone.contains(qPhone)) return true;
+
+    final reservationIds = _reservationIdsByUser[r.userId] ?? const {};
+    return reservationIds.any((id) => id.toLowerCase().contains(query));
+  }
+
+  List<SuperAdminResident> _filter(List<SuperAdminResident> all) {
+    final query = _searchController.text.trim().toLowerCase();
+    return all.where((r) {
+      if (!_matchesSearch(r, query)) return false;
+      if (_complexFilter != null &&
+          _complexFilter!.isNotEmpty &&
+          r.complexId != _complexFilter) {
+        return false;
+      }
+      switch (_approvalFilter) {
+        case SuperAdminApprovalFilter.approved:
+          return r.approved;
+        case SuperAdminApprovalFilter.pending:
+          return !r.approved;
+        case SuperAdminApprovalFilter.all:
+          return true;
+      }
+    }).toList();
   }
 
   Future<void> _openDetail(SuperAdminResident r) async {
-    await showSuperAdminBottomSheet<void>(
-      context,
-      title: r.fullName ?? r.email ?? '입주민',
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Text(
-            '${r.complexName} ${r.building ?? ''}동 ${r.unit ?? ''}호',
-            style: const TextStyle(color: DanjiColors.textSecondary),
-          ),
-          const SizedBox(height: 8),
-          Wrap(
-            spacing: 6,
-            runSpacing: 6,
-            children: [
-              SuperAdminChip(
-                label: r.approved ? '승인' : '대기',
-                color: r.approved ? SuperAdminUiColors.availableGreen : DanjiColors.danger,
-              ),
-              if (r.licenseVerified)
-                const SuperAdminChip(label: '면허승인', color: DanjiColors.buttonBlue),
-              if (r.isBlacklisted)
-                const SuperAdminChip(label: '블랙리스트', color: DanjiColors.danger),
-            ],
-          ),
-          const SizedBox(height: 16),
-          if (!r.approved)
-            FilledButton(
-              onPressed: () async {
-                Navigator.pop(context);
-                await widget.service.setResidentApproved(r.userId, true);
-                if (!mounted) return;
-                await _reload();
-              },
-              style: superAdminPrimaryFabStyle,
-              child: const Text('승인'),
-            ),
-          if (r.approved) ...[
-            OutlinedButton(
-              onPressed: () async {
-                Navigator.pop(context);
-                await widget.service.setResidentApproved(r.userId, false);
-                if (!mounted) return;
-                await _reload();
-              },
-              child: const Text('거절'),
-            ),
-            const SizedBox(height: 8),
-          ],
-          if (!r.licenseVerified)
-            OutlinedButton(
-              onPressed: () async {
-                Navigator.pop(context);
-                await widget.service.forceLicenseApproved(r.userId);
-                if (!mounted) return;
-                await _reload();
-              },
-              child: const Text('면허 강제 승인'),
-            ),
-          if (r.licenseVerified) ...[
-            OutlinedButton(
-              onPressed: () {
-                Navigator.pop(context);
-                _rejectLicense(r);
-              },
-              child: const Text('면허 강제 거절'),
-            ),
-            const SizedBox(height: 8),
-          ],
-          OutlinedButton(
-            onPressed: () async {
-              Navigator.pop(context);
-              await widget.service.setBlacklist(r.userId, !r.isBlacklisted);
-              if (!mounted) return;
-              await _reload();
-            },
-            child: Text(r.isBlacklisted ? '블랙리스트 해제' : '블랙리스트 등록'),
-          ),
-          const SizedBox(height: 8),
-          FilledButton(
-            onPressed: () async {
-              Navigator.pop(context);
-              final confirm = await superAdminConfirmDialog(
-                context,
-                title: '입주민 삭제',
-                message: '${r.fullName ?? r.email} 입주민을 삭제할까요?',
-                confirmLabel: '삭제',
-                danger: true,
-              );
-              if (!confirm) return;
-              await widget.service.deleteResident(r.userId);
-              if (!mounted) return;
-              await _reload();
-            },
-            style: DanjiTheme.dangerButton,
-            child: const Text('삭제'),
-          ),
-        ],
+    await Navigator.of(context).push<void>(
+      MaterialPageRoute(
+        builder: (_) => SuperAdminResidentDetailScreen(
+          service: widget.service,
+          resident: r,
+        ),
       ),
     );
+    if (mounted) await _reload();
   }
 
-  Widget _buildBody() {
-    if (_loading) return const SuperAdminLoadingBody();
-    if (_loadError != null) {
-      return Center(child: Text(friendlySuperAdminError(_loadError!)));
-    }
-    if (_residents.isEmpty) {
-      return RefreshIndicator(
-        color: DanjiColors.buttonBlue,
-        onRefresh: _reload,
-        child: ListView(
-          physics: const AlwaysScrollableScrollPhysics(),
-          children: const [
-            SizedBox(height: 120),
-            SuperAdminEmptyState('입주민이 없습니다.'),
-          ],
-        ),
+  Widget _buildList(List<SuperAdminResident> filtered) {
+    if (filtered.isEmpty) {
+      final emptyMessage = _allResidents.isEmpty
+          ? '입주민이 없습니다.'
+          : '조건에 맞는 입주민이 없습니다.';
+      return ListView(
+        physics: const AlwaysScrollableScrollPhysics(),
+        children: [
+          const SizedBox(height: 120),
+          SuperAdminEmptyState(emptyMessage),
+        ],
       );
     }
-    return RefreshIndicator(
-      color: DanjiColors.buttonBlue,
-      onRefresh: _reload,
-      child: ListView.separated(
-        physics: const AlwaysScrollableScrollPhysics(),
-        padding: const EdgeInsets.all(16),
-        itemCount: _residents.length,
-        separatorBuilder: (_, __) => const SizedBox(height: 10),
-        itemBuilder: (_, i) {
-          final r = _residents[i];
-          return SuperAdminListCard(
-            icon: Icons.person_outline,
-            title: r.fullName ?? r.email ?? '이름 미등록',
-            subtitle: '${r.complexName} ${r.building ?? ''}동 ${r.unit ?? ''}호',
-            trailing: Wrap(
-              spacing: 4,
-              children: [
-                if (r.isBlacklisted)
-                  const SuperAdminChip(label: 'BL', color: DanjiColors.danger),
-                SuperAdminChip(
-                  label: r.approved ? '승인' : '대기',
-                  color: r.approved ? SuperAdminUiColors.availableGreen : DanjiColors.danger,
-                ),
-              ],
-            ),
-            onTap: () => _openDetail(r),
-          );
-        },
-      ),
+    return ListView.separated(
+      physics: const AlwaysScrollableScrollPhysics(),
+      padding: const EdgeInsets.all(16),
+      itemCount: filtered.length,
+      separatorBuilder: (_, __) => const SizedBox(height: 10),
+      itemBuilder: (_, i) {
+        final r = filtered[i];
+        return SuperAdminListCard(
+          icon: Icons.person_outline,
+          title: r.fullName ?? r.email ?? '이름 미등록',
+          subtitle: '${r.complexName} ${r.building ?? ''}동 ${r.unit ?? ''}호',
+          trailing: Wrap(
+            spacing: 4,
+            children: [
+              if (r.isBlacklisted)
+                const SuperAdminChip(label: 'BL', color: DanjiColors.danger),
+              SuperAdminChip(
+                label: r.approved ? '승인' : '대기',
+                color: r.approved
+                    ? SuperAdminUiColors.availableGreen
+                    : DanjiColors.danger,
+              ),
+            ],
+          ),
+          onTap: () => _openDetail(r),
+        );
+      },
     );
   }
 
   @override
   Widget build(BuildContext context) {
+    if (_loading) {
+      return const AdminScaffold(
+        appBar: DanjiAppBar(title: '입주민 관리'),
+        body: SuperAdminLoadingBody(),
+      );
+    }
+    if (_loadError != null) {
+      return AdminScaffold(
+        appBar: const DanjiAppBar(title: '입주민 관리'),
+        body: Center(child: Text(friendlySuperAdminError(_loadError!))),
+      );
+    }
+
+    final filtered = _filter(_allResidents);
+    final sortedComplexes = List<SuperAdminComplex>.from(_complexes)
+      ..sort((a, b) => a.name.compareTo(b.name));
+
     return AdminScaffold(
       appBar: const DanjiAppBar(title: '입주민 관리'),
-      body: _buildBody(),
+      body: Column(
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+            child: Column(
+              children: [
+                SectionCard(
+                  padding: const EdgeInsets.symmetric(horizontal: 12),
+                  child: TextField(
+                    controller: _searchController,
+                    decoration: const InputDecoration(
+                      hintText: '이름, 전화번호, 예약번호 검색',
+                      border: InputBorder.none,
+                      prefixIcon: Icon(Icons.search, size: 20),
+                      isDense: true,
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 8),
+                SectionCard(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                  child: DropdownButtonHideUnderline(
+                    child: DropdownButton<String?>(
+                      isExpanded: true,
+                      value: _complexFilter,
+                      hint: const Text('전체 단지'),
+                      items: [
+                        const DropdownMenuItem(
+                          value: null,
+                          child: Text('전체 단지'),
+                        ),
+                        ...sortedComplexes.map(
+                          (c) => DropdownMenuItem(
+                            value: c.id,
+                            child: Text(c.name),
+                          ),
+                        ),
+                      ],
+                      onChanged: (v) => setState(() => _complexFilter = v),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 8),
+                SectionCard(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                  child: DropdownButtonHideUnderline(
+                    child: DropdownButton<SuperAdminApprovalFilter>(
+                      isExpanded: true,
+                      value: _approvalFilter,
+                      items: SuperAdminApprovalFilter.values
+                          .map(
+                            (f) => DropdownMenuItem(
+                              value: f,
+                              child: Text(f.label),
+                            ),
+                          )
+                          .toList(),
+                      onChanged: (v) {
+                        if (v == null) return;
+                        setState(() => _approvalFilter = v);
+                      },
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          Expanded(
+            child: RefreshIndicator(
+              color: DanjiColors.buttonBlue,
+              onRefresh: _reload,
+              child: _buildList(filtered),
+            ),
+          ),
+        ],
+      ),
     );
   }
 }

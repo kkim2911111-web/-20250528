@@ -2,7 +2,6 @@
 class CouponDefinition {
   final String id;
   final String title;
-  final String? description;
   final String? discountLabel;
   final int discountAmount;
   final int minPaymentAmount;
@@ -10,7 +9,6 @@ class CouponDefinition {
   const CouponDefinition({
     required this.id,
     required this.title,
-    this.description,
     this.discountLabel,
     this.discountAmount = 0,
     this.minPaymentAmount = 0,
@@ -26,15 +24,15 @@ class CouponDefinition {
       );
     }
 
-    final minRaw = map['min_payment_amount'] ??
+    final minRaw = map['min_amount'] ??
+        map['min_payment_amount'] ??
         map['minimum_payment_amount'] ??
         map['min_order_amount'];
     final minPaymentAmount = (minRaw as num?)?.toInt() ?? 0;
 
     return CouponDefinition(
       id: map['id'].toString(),
-      title: (map['title'] ?? map['name'] ?? '쿠폰').toString(),
-      description: map['description']?.toString(),
+      title: (map['title'] ?? '쿠폰').toString(),
       discountLabel: (map['discount_label'] ??
               map['benefit_text'] ??
               (discountAmount > 0 ? discountAmount.toString() : null))
@@ -58,7 +56,6 @@ class UserCoupon {
   final String userId;
   final String couponId;
   final CouponDefinition? coupon;
-  final String? status;
   final DateTime? expiresAt;
   final DateTime? usedAt;
   final DateTime? createdAt;
@@ -69,7 +66,6 @@ class UserCoupon {
     required this.userId,
     required this.couponId,
     this.coupon,
-    this.status,
     this.expiresAt,
     this.usedAt,
     this.createdAt,
@@ -90,7 +86,6 @@ class UserCoupon {
       userId: map['user_id']?.toString() ?? '',
       couponId: map['coupon_id']?.toString() ?? '',
       coupon: coupon,
-      status: map['status']?.toString(),
       expiresAt: _parseDate(map['expires_at'] ?? map['valid_until']),
       usedAt: _parseDate(map['used_at']),
       createdAt: _parseDate(map['created_at'] ?? map['issued_at']),
@@ -104,13 +99,7 @@ class UserCoupon {
     return DateTime.tryParse(value.toString())?.toLocal();
   }
 
-  bool get isUsed {
-    if (isUsedFlag) return true;
-    final s = status?.toLowerCase();
-    if (s == 'used' || s == 'consumed') return true;
-    if (usedAt != null) return true;
-    return false;
-  }
+  bool get isUsed => isUsedFlag || usedAt != null;
 
   int get discountAmount => coupon?.discountAmount ?? 0;
 
@@ -142,18 +131,11 @@ class UserCoupon {
   /// 기존 호환 — 시각 기준 만료
   bool get isExpired => isExpiredByDate;
 
-  /// DB 자동 만료 처리 (status=expired 등)
-  bool get isAutoExpired {
-    final s = status?.toLowerCase().trim();
-    return s == 'expired';
-  }
-
-  /// 쿠폰함 「만료됨」 탭
-  bool get isCouponExpiredTab =>
-      isExpiredByDate || (isUsed && isAutoExpired);
+  /// 쿠폰함 「만료됨」 탭 — 미사용·기한 만료
+  bool get isCouponExpiredTab => !isUsed && isExpiredByDate;
 
   /// 쿠폰함 「사용 완료」 탭 (예약 결제 등 실제 사용)
-  bool get isCouponUsedTab => isUsed && !isCouponExpiredTab;
+  bool get isCouponUsedTab => isUsed;
 
   /// 쿠폰함 「사용 가능」 탭
   bool get isCouponAvailableTab => !isUsed && !isExpiredByDate;
@@ -167,7 +149,41 @@ class UserCoupon {
 
   String get displayTitle => coupon?.title ?? '쿠폰';
 
-  String? get displayBenefit => coupon?.discountLabel ?? coupon?.description;
+  String? get displayBenefit {
+    final label = coupon?.discountLabel;
+    if (label != null && label.trim().isNotEmpty) return label;
+    final amount = coupon?.discountAmount ?? 0;
+    if (amount > 0) return '₩$amount';
+    return null;
+  }
+
+  /// 사용 상태 라벨 — is_used 기준
+  String get statusDisplayLabel {
+    if (isUsed) return '사용완료';
+    if (isExpiredByDate) return '만료됨';
+    return '미사용';
+  }
+
+  /// 상태 + 만료일 (expires_at 있을 때)
+  String get statusDisplayDetail {
+    final parts = <String>[statusDisplayLabel];
+    final expires = expiresAt;
+    if (expires != null) {
+      parts.add(
+        isExpiredByDate
+            ? '만료 ${_formatStatusDate(expires)}'
+            : '유효 ~${_formatStatusDate(expires)}',
+      );
+    }
+    return parts.join(' · ');
+  }
+
+  static String _formatStatusDate(DateTime d) {
+    final y = d.year.toString().padLeft(4, '0');
+    final m = d.month.toString().padLeft(2, '0');
+    final day = d.day.toString().padLeft(2, '0');
+    return '$y.$m.$day';
+  }
 }
 
 /// 쿠폰 카드 유효기간 문구·색상

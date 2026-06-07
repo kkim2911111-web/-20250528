@@ -399,6 +399,46 @@ class PaymentService {
     );
   }
 
+  /// 반납 검수 면책금 — 관리자가 고객 빌링키로 자동 결제 (Edge Function)
+  Future<Map<String, dynamic>> payDeductibleWithBilling({
+    required String reservationId,
+  }) async {
+    if (!isSupabaseInitialized) {
+      throw StateError('Supabase가 초기화되지 않았습니다.');
+    }
+    final user = supabase.auth.currentUser;
+    if (user == null) {
+      throw const AuthException('로그인이 필요합니다.');
+    }
+
+    try {
+      return await _invokeFunction('billing-deductible-charge', {
+        'reservationId': reservationId,
+      });
+    } on FunctionException catch (e) {
+      throw Exception(_friendlyDeductibleBillingError(e));
+    }
+  }
+
+  String _friendlyDeductibleBillingError(FunctionException error) {
+    final details = error.details;
+    if (details is Map) {
+      final msg = details['error']?.toString();
+      if (msg != null && msg.isNotEmpty) return msg;
+      final code = details['code']?.toString();
+      if (code == 'billing_key_missing') {
+        return '고객에게 등록된 결제카드가 없습니다.';
+      }
+      if (code == 'billing_charge_failed') {
+        return '결제에 실패했습니다. 카드 한도·잔액을 확인해주세요.';
+      }
+    }
+    if (details is String && details.isNotEmpty) {
+      return _mapCancelError(details);
+    }
+    return error.reasonPhrase ?? '면책금 청구에 실패했습니다.';
+  }
+
   /// 대여 연장 — 등록된 빌링키로 추가 요금 결제 후 연장 적용
   Future<Map<String, dynamic>> payRentalExtensionWithBilling({
     required String reservationId,

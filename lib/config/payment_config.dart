@@ -42,10 +42,11 @@ class PaymentConfig {
 
   static const appPaymentHost = 'danjicar.vercel.app';
 
+  /// Web(브라우저) 결제 redirect — https origin
   static String appPaymentRedirectUrl(String segment) =>
       '$mobilePaymentOrigin/payment/$segment';
 
-  /// 레거시 커스텀 스킴 (딥링크용)
+  /// Android/iOS WebView·딥링크 redirect — 커스텀 스킴 (WebView 로딩 멈춤 방지)
   static const appPaymentScheme = 'danjicar';
 
   static Uri appPaymentRedirectUri(String segment) => Uri(
@@ -53,6 +54,9 @@ class PaymentConfig {
         host: 'payment',
         path: '/$segment',
       );
+
+  static String mobileAppRedirectUrl(String segment) =>
+      appPaymentRedirectUri(segment).toString();
 }
 
 enum TossPaymentMethod {

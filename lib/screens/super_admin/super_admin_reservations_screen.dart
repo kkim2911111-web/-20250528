@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
 
 import '../../models/super_admin_models.dart';
 import '../../services/super_admin_service.dart';
@@ -26,6 +27,9 @@ class _SuperAdminReservationsScreenState
   String? _complexFilter;
   late int _year = DateTime.now().year;
   late int _month = DateTime.now().month;
+  DateTime? _filterDate;
+
+  static final _dateLabel = DateFormat('yyyy-MM-dd');
 
   @override
   void initState() {
@@ -51,6 +55,29 @@ class _SuperAdminReservationsScreenState
     }
   }
 
+  void _syncFilterDateWithMonth() {
+    final d = _filterDate;
+    if (d == null) return;
+    if (d.year != _year || d.month != _month) {
+      _filterDate = null;
+    }
+  }
+
+  Future<void> _pickFilterDate() async {
+    final monthStart = DateTime(_year, _month, 1);
+    final monthEnd = DateTime(_year, _month + 1, 0);
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: _filterDate ?? monthStart,
+      firstDate: monthStart,
+      lastDate: monthEnd,
+    );
+    if (picked == null || !mounted) return;
+    setState(() {
+      _filterDate = DateTime(picked.year, picked.month, picked.day);
+    });
+  }
+
   List<SuperAdminReservation> _filter(List<SuperAdminReservation> all) {
     return all.where((r) {
       if (_complexFilter != null &&
@@ -59,8 +86,18 @@ class _SuperAdminReservationsScreenState
         return false;
       }
       final start = r.startAt;
-      if (start == null) return true;
-      return start.year == _year && start.month == _month;
+      if (start == null) return _filterDate == null;
+
+      final local = start.toLocal();
+      if (local.year != _year || local.month != _month) {
+        return false;
+      }
+      if (_filterDate != null) {
+        return local.year == _filterDate!.year &&
+            local.month == _filterDate!.month &&
+            local.day == _filterDate!.day;
+      }
+      return true;
     }).toList();
   }
 
@@ -103,7 +140,7 @@ class _SuperAdminReservationsScreenState
                 if (mounted) DanjiSnackBar.show(context, friendlySuperAdminError(e));
               }
             },
-            child: const Text('강제 취소'),
+            child: const Text('강제 반납'),
           ),
           const SizedBox(height: 8),
           FilledButton(
@@ -127,11 +164,14 @@ class _SuperAdminReservationsScreenState
 
   Widget _buildList(List<SuperAdminReservation> filtered) {
     if (filtered.isEmpty) {
+      final emptyMessage = _reservations.isEmpty
+          ? '예약이 없습니다.'
+          : '조건에 맞는 예약이 없습니다.';
       return ListView(
         physics: const AlwaysScrollableScrollPhysics(),
-        children: const [
-          SizedBox(height: 120),
-          SuperAdminEmptyState('예약이 없습니다.'),
+        children: [
+          const SizedBox(height: 120),
+          SuperAdminEmptyState(emptyMessage),
         ],
       );
     }
@@ -185,8 +225,14 @@ class _SuperAdminReservationsScreenState
                 SuperAdminMonthFilter(
                   year: _year,
                   month: _month,
-                  onYearChanged: (y) => setState(() => _year = y),
-                  onMonthChanged: (m) => setState(() => _month = m),
+                  onYearChanged: (y) => setState(() {
+                    _year = y;
+                    _syncFilterDateWithMonth();
+                  }),
+                  onMonthChanged: (m) => setState(() {
+                    _month = m;
+                    _syncFilterDateWithMonth();
+                  }),
                 ),
                 const SizedBox(height: 8),
                 SectionCard(
@@ -204,6 +250,40 @@ class _SuperAdminReservationsScreenState
                       ],
                       onChanged: (v) => setState(() => _complexFilter = v),
                     ),
+                  ),
+                ),
+                const SizedBox(height: 8),
+                SectionCard(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: OutlinedButton.icon(
+                          onPressed: _pickFilterDate,
+                          icon: const Icon(Icons.calendar_today_outlined, size: 16),
+                          label: Text(
+                            _filterDate == null
+                                ? '날짜 선택'
+                                : _dateLabel.format(_filterDate!),
+                          ),
+                          style: OutlinedButton.styleFrom(
+                            foregroundColor: DanjiColors.buttonBlue,
+                            side: const BorderSide(color: DanjiColors.buttonBlue),
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 12,
+                              vertical: 10,
+                            ),
+                          ),
+                        ),
+                      ),
+                      if (_filterDate != null) ...[
+                        const SizedBox(width: 8),
+                        TextButton(
+                          onPressed: () => setState(() => _filterDate = null),
+                          child: const Text('초기화'),
+                        ),
+                      ],
+                    ],
                   ),
                 ),
               ],

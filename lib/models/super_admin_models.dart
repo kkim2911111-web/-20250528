@@ -228,6 +228,120 @@ class SuperAdminResident {
   }
 }
 
+class SuperAdminResidentRental {
+  final String reservationId;
+  final String vehicleName;
+  final DateTime? startAt;
+  final DateTime? endAt;
+  final int totalPrice;
+  final String status;
+  final String? secondDriverName;
+  final String? secondDriverLicense;
+
+  const SuperAdminResidentRental({
+    required this.reservationId,
+    required this.vehicleName,
+    this.startAt,
+    this.endAt,
+    this.totalPrice = 0,
+    required this.status,
+    this.secondDriverName,
+    this.secondDriverLicense,
+  });
+
+  factory SuperAdminResidentRental.fromMap(Map<String, dynamic> m) {
+    return SuperAdminResidentRental(
+      reservationId: m['reservation_id']?.toString() ?? '',
+      vehicleName: m['vehicle_name']?.toString() ?? '차량',
+      startAt: _dt(m['start_at']),
+      endAt: _dt(m['end_at']),
+      totalPrice: (m['total_price'] as num?)?.toInt() ?? 0,
+      status: m['status']?.toString() ?? '',
+      secondDriverName: m['second_driver_name']?.toString(),
+      secondDriverLicense: m['second_driver_license']?.toString(),
+    );
+  }
+}
+
+class SuperAdminResidentDetail {
+  final String userId;
+  final String complexId;
+  final String complexName;
+  final String? building;
+  final String? unit;
+  final bool approved;
+  final String? fullName;
+  final String? phone;
+  final String? email;
+  final bool isBlacklisted;
+  final bool licenseVerified;
+  final String licenseStatus;
+  final String? licenseNumber;
+  final String? licenseExpiry;
+  final int points;
+  final int couponCount;
+  final int rentalCount;
+  final DateTime? createdAt;
+  final List<SuperAdminResidentRental> rentals;
+
+  const SuperAdminResidentDetail({
+    required this.userId,
+    required this.complexId,
+    required this.complexName,
+    this.building,
+    this.unit,
+    this.approved = false,
+    this.fullName,
+    this.phone,
+    this.email,
+    this.isBlacklisted = false,
+    this.licenseVerified = false,
+    this.licenseStatus = 'none',
+    this.licenseNumber,
+    this.licenseExpiry,
+    this.points = 0,
+    this.couponCount = 0,
+    this.rentalCount = 0,
+    this.createdAt,
+    this.rentals = const [],
+  });
+
+  factory SuperAdminResidentDetail.fromMap(Map<String, dynamic> m) {
+    final rentalsRaw = m['rentals'];
+    final rentals = rentalsRaw is List
+        ? rentalsRaw
+            .map(
+              (e) => SuperAdminResidentRental.fromMap(
+                Map<String, dynamic>.from(e as Map),
+              ),
+            )
+            .toList()
+        : <SuperAdminResidentRental>[];
+
+    return SuperAdminResidentDetail(
+      userId: m['user_id']?.toString() ?? '',
+      complexId: m['complex_id']?.toString() ?? '',
+      complexName: m['complex_name']?.toString() ?? '',
+      building: m['building']?.toString(),
+      unit: m['unit']?.toString(),
+      approved: m['approved'] == true,
+      fullName: m['full_name']?.toString(),
+      phone: m['phone']?.toString(),
+      email: m['email']?.toString(),
+      isBlacklisted: m['is_blacklisted'] == true,
+      licenseVerified: m['license_verified'] == true,
+      licenseStatus: m['license_status']?.toString() ?? 'none',
+      licenseNumber: m['license_number']?.toString(),
+      licenseExpiry: m['license_expiry']?.toString(),
+      points: (m['points'] as num?)?.toInt() ?? 0,
+      couponCount: (m['coupon_count'] as num?)?.toInt() ?? 0,
+      rentalCount: (m['rental_count'] as num?)?.toInt() ?? 0,
+      createdAt: _dt(m['created_at']),
+      rentals: rentals,
+    );
+  }
+}
+
 class SuperAdminReservation {
   final String id;
   final String complexId;
@@ -324,22 +438,49 @@ class SuperAdminRevenueRow {
   }
 }
 
+class SuperAdminSettlementReservation {
+  final String reservationId;
+  final String renterName;
+  final int totalPrice;
+  final DateTime? startAt;
+
+  const SuperAdminSettlementReservation({
+    required this.reservationId,
+    required this.renterName,
+    this.totalPrice = 0,
+    this.startAt,
+  });
+
+  factory SuperAdminSettlementReservation.fromMap(Map<String, dynamic> m) {
+    return SuperAdminSettlementReservation(
+      reservationId: m['reservation_id']?.toString() ?? '',
+      renterName: m['renter_name']?.toString() ?? '',
+      totalPrice: (m['total_price'] as num?)?.toInt() ?? 0,
+      startAt: _dt(m['start_at']),
+    );
+  }
+}
+
 class SuperAdminCoupon {
   final String id;
+  final String? code;
   final String title;
-  final String? description;
   final int discountAmount;
-  final int minPaymentAmount;
+  final int minAmount;
+  final DateTime? expiresAt;
+  final bool isActive;
   final int issuedCount;
   final int usedCount;
   final DateTime? createdAt;
 
   const SuperAdminCoupon({
     required this.id,
+    this.code,
     required this.title,
-    this.description,
     this.discountAmount = 0,
-    this.minPaymentAmount = 0,
+    this.minAmount = 0,
+    this.expiresAt,
+    this.isActive = true,
     this.issuedCount = 0,
     this.usedCount = 0,
     this.createdAt,
@@ -347,14 +488,50 @@ class SuperAdminCoupon {
 
   factory SuperAdminCoupon.fromMap(Map<String, dynamic> m) {
     return SuperAdminCoupon(
-      id: m['coupon_id']?.toString() ?? '',
+      id: m['coupon_id']?.toString() ?? m['id']?.toString() ?? '',
+      code: m['code']?.toString(),
       title: m['title']?.toString() ?? '쿠폰',
-      description: m['description']?.toString(),
       discountAmount: (m['discount_amount'] as num?)?.toInt() ?? 0,
-      minPaymentAmount: (m['min_payment_amount'] as num?)?.toInt() ?? 0,
+      minAmount: (m['min_amount'] as num?)?.toInt() ?? 0,
+      expiresAt: _dt(m['expires_at']),
+      isActive: m['is_active'] != false,
       issuedCount: (m['issued_count'] as num?)?.toInt() ?? 0,
       usedCount: (m['used_count'] as num?)?.toInt() ?? 0,
       createdAt: _dt(m['created_at']),
+    );
+  }
+
+  int get unusedCount {
+    final n = issuedCount - usedCount;
+    return n < 0 ? 0 : n;
+  }
+
+  bool get isMasterExpired {
+    final end = expiresAt;
+    if (end == null) return false;
+    final today = DateTime.now();
+    final endDate = DateTime(end.year, end.month, end.day);
+    final todayDate = DateTime(today.year, today.month, today.day);
+    return endDate.isBefore(todayDate);
+  }
+
+  String get usageSummary =>
+      '발급 $issuedCount · 사용 $usedCount · 미사용 $unusedCount';
+}
+
+class BulkIssueCouponResult {
+  final int issuedCount;
+  final int skippedCount;
+
+  const BulkIssueCouponResult({
+    this.issuedCount = 0,
+    this.skippedCount = 0,
+  });
+
+  factory BulkIssueCouponResult.fromMap(Map<String, dynamic> m) {
+    return BulkIssueCouponResult(
+      issuedCount: (m['issued_count'] as num?)?.toInt() ?? 0,
+      skippedCount: (m['skipped_count'] as num?)?.toInt() ?? 0,
     );
   }
 }

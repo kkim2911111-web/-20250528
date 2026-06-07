@@ -289,7 +289,7 @@ class _SuperAdminDashboardScreenState extends State<SuperAdminDashboardScreen> {
             SuperAdminMenuTile(
               icon: Icons.event_note_outlined,
               title: '전체 예약',
-              subtitle: '예약 목록, 강제취소·완료',
+              subtitle: '예약 목록, 강제반납·완료',
               onTap: () => _open(SuperAdminReservationsScreen(service: _service)),
             ),
             SuperAdminMenuTile(

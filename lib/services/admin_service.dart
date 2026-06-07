@@ -194,17 +194,26 @@ class AdminService {
     final dayStart = DateTime(now.year, now.month, now.day).toUtc();
     final dayEnd = dayStart.add(const Duration(days: 1));
 
+    final monthStart = DateTime(now.year, now.month, 1).toUtc();
+    const todayReservationStatuses = [
+      'confirmed',
+      'in_use',
+      'completed',
+      'returned',
+    ];
+    const salesStatuses = ['confirmed', 'in_use', 'returned', 'completed'];
+    final dayStartIso = dayStart.toIso8601String();
+    final dayEndIso = dayEnd.toIso8601String();
+    final todayDateFilter =
+        'and(start_time.gte."$dayStartIso",start_time.lt."$dayEndIso"),'
+        'and(start_at.gte."$dayStartIso",start_at.lt."$dayEndIso")';
+
     final todayRows = await supabase
         .from('reservations')
         .select('id')
         .inFilter('vehicle_id', vehicleIds)
-        .gte('start_time', dayStart.toIso8601String())
-        .lt('start_time', dayEnd.toIso8601String());
-
-    final monthStart = DateTime(now.year, now.month, 1).toUtc();
-    const salesStatuses = ['confirmed', 'in_use', 'returned', 'completed'];
-    final dayStartIso = dayStart.toIso8601String();
-    final dayEndIso = dayEnd.toIso8601String();
+        .inFilter('status', todayReservationStatuses)
+        .or(todayDateFilter);
     final monthStartIso = monthStart.toIso8601String();
     final todaySalesFilter =
         'and(start_time.gte."$dayStartIso",start_time.lt."$dayEndIso"),'
@@ -575,10 +584,12 @@ class AdminService {
     const baseSelect =
         'id, user_id, status, total_price, start_at, start_time, end_at, end_time, '
         'returned_at, updated_at, return_type, second_driver_name, '
-        'second_driver_license, is_accident, accident_note, pickup_photos, '
-        'return_photos, vehicles(model_name, car_number)';
+        'second_driver_license, is_accident, accident_note, deductible_charged, '
+        'deductible_amount, deductible_charged_at, deductible_waived, '
+        'pickup_photos, return_photos, vehicles(model_name, car_number)';
 
     final orderColumn = status == 'completed' ? 'updated_at' : 'returned_at';
+    final orderAscending = status != 'completed';
 
     Future<List> queryReservations(String select) async {
       try {
@@ -587,7 +598,7 @@ class AdminService {
             .select(select)
             .inFilter('vehicle_id', ids)
             .eq('status', status)
-            .order(orderColumn, ascending: false);
+            .order(orderColumn, ascending: orderAscending);
       } on PostgrestException catch (e) {
         if (!_isRetryableVehicleColumnError(e)) rethrow;
         return await supabase
@@ -595,7 +606,7 @@ class AdminService {
             .select(select)
             .inFilter('vehicle_id', ids)
             .eq('status', status)
-            .order('updated_at', ascending: false);
+            .order(orderColumn, ascending: orderAscending);
       }
     }
 
@@ -607,7 +618,7 @@ class AdminService {
       rawRows = await queryReservations(baseSelect);
     }
 
-    final rows = (rawRows as List)
+    final rows = rawRows
         .map((r) => Map<String, dynamic>.from(r as Map))
         .toList();
 
@@ -686,17 +697,29 @@ class AdminService {
     return result;
   }
 
+  static bool _isDisplayablePhotoUrl(String url) {
+    final trimmed = url.trim();
+    return trimmed.startsWith('http://') || trimmed.startsWith('https://');
+  }
+
+  static List<String> _normalizePhotoUrls(Iterable<String> urls) {
+    return urls
+        .map((url) => url.trim())
+        .where(_isDisplayablePhotoUrl)
+        .toList();
+  }
+
   Future<List<String>> _fetchRidePhotosForStaff({
     required String reservationId,
-    required String phase,
+    required String photoType,
   }) async {
     try {
       final data = await supabase.rpc('get_ride_photos_for_staff', params: {
         'p_reservation_id': reservationId,
-        'p_phase': phase,
+        'p_photo_type': photoType,
       });
       if (data is! List) return const [];
-      return data
+      final urls = data
           .map((row) {
             if (row is Map) {
               return row['photo_url']?.toString().trim() ?? '';
@@ -705,40 +728,83 @@ class AdminService {
           })
           .where((url) => url.isNotEmpty)
           .toList();
+      return _normalizePhotoUrls(urls);
     } on PostgrestException catch (e) {
       final msg = e.message.toLowerCase();
       if (msg.contains('could not find the function') ||
           msg.contains('get_ride_photos_for_staff')) {
         return const [];
       }
+      if (msg.contains('p_photo_type')) {
+        return _fetchRidePhotosLegacyPhase(
+          reservationId: reservationId,
+          photoType: photoType,
+        );
+      }
       rethrow;
     }
   }
 
-  /// 관리자 — 예약 계약서 본문 (없으면 generate_rental_contract 후 재조회)
+  Future<List<String>> _fetchRidePhotosLegacyPhase({
+    required String reservationId,
+    required String photoType,
+  }) async {
+    final legacyPhase = photoType == 'before'
+        ? 'pickup'
+        : photoType == 'after'
+            ? 'return'
+            : photoType;
+    try {
+      final data = await supabase.rpc('get_ride_photos_for_staff', params: {
+        'p_reservation_id': reservationId,
+        'p_phase': legacyPhase,
+      });
+      if (data is! List) return const [];
+      final urls = data
+          .map((row) {
+            if (row is Map) {
+              return row['photo_url']?.toString().trim() ?? '';
+            }
+            return row?.toString().trim() ?? '';
+          })
+          .where((url) => url.isNotEmpty)
+          .toList();
+      return _normalizePhotoUrls(urls);
+    } on PostgrestException {
+      return const [];
+    }
+  }
+
+  static String _normalizeReservationId(String reservationId) {
+    return reservationId.trim();
+  }
+
+  /// 관리자 — 예약 계약서 본문 (없으면 generate_rental_contract_for_staff 후 재조회)
   Future<String?> ensureReservationContractForStaff(
     String reservationId,
   ) async {
+    final id = _normalizeReservationId(reservationId);
+    if (id.isEmpty) {
+      throw const AdminException('예약번호가 없습니다.');
+    }
+
     final complexId = await _requireStaffComplexId();
     final text = await _fetchReservationContractForStaff(
-      reservationId: reservationId,
+      reservationId: id,
       complexId: complexId,
     );
     if (text != null && text.isNotEmpty) return text;
 
-    final numericId = int.tryParse(reservationId.trim());
-    if (numericId == null) return null;
-
     try {
-      await supabase.rpc('generate_rental_contract', params: {
-        'p_reservation_id': numericId,
+      await supabase.rpc('generate_rental_contract_for_staff', params: {
+        'p_reservation_id': id,
       });
     } on PostgrestException catch (e) {
       throw AdminException(mapAdminPostgrestError(e));
     }
 
     return _fetchReservationContractForStaff(
-      reservationId: reservationId,
+      reservationId: id,
       complexId: complexId,
     );
   }
@@ -747,10 +813,13 @@ class AdminService {
     required String reservationId,
     required String complexId,
   }) async {
+    final id = _normalizeReservationId(reservationId);
+    if (id.isEmpty) return null;
+
     final row = await supabase
         .from('reservations')
         .select('contract_content, vehicles(complex_id)')
-        .eq('id', reservationId)
+        .eq('id', id)
         .maybeSingle();
 
     if (row == null) return null;
@@ -768,37 +837,84 @@ class AdminService {
     return text;
   }
 
-  /// reservations.pickup/return_photos 우선, 비어 있으면 ride_photos 폴백
+  /// reservations 배열 우선, 비어 있으면 ride_photos(photo_type before/after) 폴백
   Future<({List<String> before, List<String> after})> resolveInspectionPhotos(
     AdminReservationRow row,
   ) async {
-    var before = row.pickupPhotos;
-    var after = row.returnPhotos;
+    var before = _normalizePhotoUrls(row.pickupPhotos);
+    var after = _normalizePhotoUrls(row.returnPhotos);
 
     if (before.isEmpty) {
       before = await _fetchRidePhotosForStaff(
         reservationId: row.id,
-        phase: 'pickup',
+        photoType: 'before',
       );
     }
     if (after.isEmpty) {
       after = await _fetchRidePhotosForStaff(
         reservationId: row.id,
-        phase: 'return',
+        photoType: 'after',
       );
     }
 
     return (before: before, after: after);
   }
 
+  static const int _reservationRpcPageSize = 500;
+
+  Future<List<Map<String, dynamic>>> _fetchRpcAllPages(
+    String fn, {
+    Map<String, dynamic>? params,
+  }) async {
+    final all = <Map<String, dynamic>>[];
+    var offset = 0;
+
+    while (true) {
+      final data = await supabase.rpc(
+        fn,
+        params: {
+          ...?params,
+          'p_limit': _reservationRpcPageSize,
+          'p_offset': offset,
+        },
+      );
+      if (data == null) break;
+
+      final batch = (data as List)
+          .map((e) => Map<String, dynamic>.from(e as Map))
+          .toList();
+      all.addAll(batch);
+
+      if (batch.length < _reservationRpcPageSize) break;
+      offset += _reservationRpcPageSize;
+    }
+
+    return all;
+  }
+
   Future<List<Map<String, dynamic>>> getAdminReservationsWithConflict() async {
     try {
-      final data = await supabase.rpc('get_admin_reservations_with_conflict');
-      if (data == null) return [];
-      return List<Map<String, dynamic>>.from(data as List);
+      return await _fetchRpcAllPages('get_admin_reservations_with_conflict');
     } on PostgrestException catch (e) {
+      if (_isReservationRpcPaginationUnsupported(e)) {
+        try {
+          final data =
+              await supabase.rpc('get_admin_reservations_with_conflict');
+          if (data == null) return [];
+          return List<Map<String, dynamic>>.from(data as List);
+        } on PostgrestException catch (fallback) {
+          throw AdminException(mapAdminPostgrestError(fallback));
+        }
+      }
       throw AdminException(mapAdminPostgrestError(e));
     }
+  }
+
+  bool _isReservationRpcPaginationUnsupported(PostgrestException e) {
+    final msg = e.message.toLowerCase();
+    return e.code == 'PGRST202' ||
+        msg.contains('p_limit') ||
+        msg.contains('could not find the function');
   }
 
   Future<int> fetchConflictRiskCount() async {
@@ -808,10 +924,17 @@ class AdminService {
 
   Future<List<Map<String, dynamic>>> getAdminCompletedReservations() async {
     try {
-      final data = await supabase.rpc('get_admin_completed_reservations');
-      if (data == null) return [];
-      return List<Map<String, dynamic>>.from(data as List);
+      return await _fetchRpcAllPages('get_admin_completed_reservations');
     } on PostgrestException catch (e) {
+      if (_isReservationRpcPaginationUnsupported(e)) {
+        try {
+          final data = await supabase.rpc('get_admin_completed_reservations');
+          if (data == null) return [];
+          return List<Map<String, dynamic>>.from(data as List);
+        } on PostgrestException catch (fallback) {
+          throw AdminException(mapAdminPostgrestError(fallback));
+        }
+      }
       throw AdminException(mapAdminPostgrestError(e));
     }
   }
@@ -987,6 +1110,60 @@ class AdminService {
     }
   }
 
+  /// 사고 예약 면책금 — 고객 빌링키 자동결제 (Edge Function)
+  Future<int> chargeReservationDeductible(String reservationId) async {
+    final response = await supabase.functions.invoke(
+      'billing-deductible-charge',
+      body: {'reservationId': reservationId},
+    );
+
+    final data = response.data;
+    if (response.status != 200) {
+      final message = _deductibleChargeErrorMessage(data);
+      throw AdminException(message);
+    }
+    if (data is Map) {
+      return (data['amount'] as num?)?.toInt() ??
+          AdminReservationRow.defaultDeductibleAmount;
+    }
+    return AdminReservationRow.defaultDeductibleAmount;
+  }
+
+  String _deductibleChargeErrorMessage(Object? data) {
+    if (data is Map) {
+      final code = data['code']?.toString();
+      if (code == 'billing_key_missing') {
+        return '고객에게 등록된 결제카드가 없습니다.';
+      }
+      if (code == 'deductible_already_charged') {
+        return '이미 면책금이 청구되었습니다.';
+      }
+      if (code == 'deductible_waived') {
+        return '면책금이 면제된 예약입니다.';
+      }
+      if (code == 'not_accident_reservation') {
+        return '사고 예약만 면책금을 청구할 수 있습니다.';
+      }
+      if (code == 'billing_charge_failed') {
+        return '결제에 실패했습니다. 카드 한도·잔액을 확인해주세요.';
+      }
+      final err = data['error']?.toString();
+      if (err != null && err.isNotEmpty) return err;
+    }
+    return '면책금 청구에 실패했습니다.';
+  }
+
+  Future<void> waiveReservationDeductible(String reservationId) async {
+    try {
+      await supabase.rpc(
+        'waive_reservation_deductible_for_staff',
+        params: {'p_reservation_id': reservationId},
+      );
+    } on PostgrestException catch (e) {
+      throw AdminException(mapAdminPostgrestError(e));
+    }
+  }
+
   Future<void> completeReturnInspection(String reservationId) async {
     String? userId;
     try {
@@ -1130,7 +1307,16 @@ String mapAdminPostgrestError(PostgrestException error) {
     return '강제 완료 대상이 아닙니다. (24시간 경과·상태 확인)';
   }
   if (msg.contains('not_no_show_suspect')) {
-    return '노쇼의심 예약만 강제 취소할 수 있습니다.';
+    return '노쇼의심 예약만 강제 반납할 수 있습니다.';
+  }
+  if (msg.contains('deductible_already_charged')) {
+    return '이미 면책금이 청구되었습니다.';
+  }
+  if (msg.contains('deductible_already_waived')) {
+    return '이미 면책금이 면제되었습니다.';
+  }
+  if (msg.contains('not_accident_reservation')) {
+    return '사고 예약만 면책금을 처리할 수 있습니다.';
   }
   return error.message;
 }

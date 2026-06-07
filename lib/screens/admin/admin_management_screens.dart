@@ -8,9 +8,7 @@ import '../../theme/danji_theme.dart';
 import '../../widgets/admin_scaffold.dart';
 import '../../widgets/danji_app_bar.dart';
 import '../../widgets/month_filter_bar.dart';
-import '../../utils/rental_contract_parser.dart';
-import '../../utils/rental_contract_pdf.dart';
-import '../../widgets/rental_contract_cards.dart';
+import '../../widgets/admin_reservation_card_extras.dart';
 import '../../widgets/return_inspection_photo_compare.dart';
 import '../../widgets/section_card.dart';
 import 'admin_vehicle_form_screen.dart';
@@ -620,6 +618,7 @@ class _AdminReturnInspectionScreenState
           ),
         ),
         body: TabBarView(
+          clipBehavior: Clip.hardEdge,
           children: [
             _ReturnInspectionListTab(
               future: _pendingFuture,
@@ -628,98 +627,19 @@ class _AdminReturnInspectionScreenState
               admin: _admin,
               showCompleteButton: true,
               onComplete: _complete,
+              onChanged: _reload,
             ),
             _CompletedReturnInspectionTab(
               future: _completedFuture,
               dateFormat: _date,
               admin: _admin,
+              onChanged: _reload,
             ),
           ],
         ),
       ),
     );
   }
-}
-
-/// 시간 초과 자동 반납(return_type=auto) — 사고(빨강)와 구분되는 주황 배지
-class _SecondDriverBadge extends StatelessWidget {
-  const _SecondDriverBadge();
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.only(left: 8),
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-        decoration: BoxDecoration(
-          color: DanjiColors.skyLight,
-          borderRadius: BorderRadius.circular(6),
-          border: Border.all(color: DanjiColors.buttonBlue.withValues(alpha: 0.45)),
-        ),
-        child: const Text(
-          '2운전자',
-          style: TextStyle(
-            color: DanjiColors.buttonBlue,
-            fontSize: 12,
-            fontWeight: FontWeight.w800,
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-void _showSecondDriverInfoSheet(
-  BuildContext context,
-  AdminReservationRow row,
-) {
-  final license = row.secondDriverLicense?.trim();
-  showModalBottomSheet<void>(
-    context: context,
-    backgroundColor: DanjiColors.surface,
-    shape: const RoundedRectangleBorder(
-      borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-    ),
-    builder: (ctx) {
-      return SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(20, 16, 20, 24),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Text(
-                '제2운전자 정보',
-                style: TextStyle(
-                  fontSize: 18,
-                  fontWeight: FontWeight.w800,
-                  color: DanjiColors.textPrimary,
-                ),
-              ),
-              const SizedBox(height: 16),
-              Text(
-                '이름: ${row.secondDriverName?.trim().isNotEmpty == true ? row.secondDriverName!.trim() : '-'}',
-                style: const TextStyle(
-                  fontSize: 15,
-                  color: DanjiColors.textPrimary,
-                  height: 1.45,
-                ),
-              ),
-              const SizedBox(height: 8),
-              Text(
-                '연락처(면허번호): ${license != null && license.isNotEmpty ? license : '-'}',
-                style: const TextStyle(
-                  fontSize: 15,
-                  color: DanjiColors.textPrimary,
-                  height: 1.45,
-                ),
-              ),
-            ],
-          ),
-        ),
-      );
-    },
-  );
 }
 
 class _NoShowReturnBadge extends StatelessWidget {
@@ -769,11 +689,13 @@ class _CompletedReturnInspectionTab extends StatefulWidget {
   final Future<List<AdminReservationRow>>? future;
   final DateFormat dateFormat;
   final AdminService admin;
+  final VoidCallback? onChanged;
 
   const _CompletedReturnInspectionTab({
     required this.future,
     required this.dateFormat,
     required this.admin,
+    this.onChanged,
   });
 
   @override
@@ -824,100 +746,113 @@ class _CompletedReturnInspectionTabState
     }).toList();
   }
 
+  Widget _buildFilterHeader(String dateLabel) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 4),
+      child: Wrap(
+        spacing: 8,
+        runSpacing: 8,
+        crossAxisAlignment: WrapCrossAlignment.center,
+        children: [
+          _InspectionFilterChip(
+            label: '전체',
+            selected: _filterKind == _InspectionDateFilterKind.all,
+            onTap: () => setState(() {
+              _filterKind = _InspectionDateFilterKind.all;
+              _filterDate = null;
+            }),
+          ),
+          _InspectionFilterChip(
+            label: '검수일자',
+            selected: _filterKind == _InspectionDateFilterKind.inspectionDate,
+            onTap: () => setState(() {
+              _filterKind = _InspectionDateFilterKind.inspectionDate;
+              _filterDate ??= DateTime.now();
+            }),
+          ),
+          _InspectionFilterChip(
+            label: '예약일자',
+            selected: _filterKind == _InspectionDateFilterKind.reservationDate,
+            onTap: () => setState(() {
+              _filterKind = _InspectionDateFilterKind.reservationDate;
+              _filterDate ??= DateTime.now();
+            }),
+          ),
+          if (_filterKind != _InspectionDateFilterKind.all)
+            OutlinedButton.icon(
+              onPressed: _pickFilterDate,
+              icon: const Icon(Icons.calendar_today_outlined, size: 16),
+              label: Text(dateLabel),
+              style: OutlinedButton.styleFrom(
+                foregroundColor: DanjiColors.buttonBlue,
+                side: const BorderSide(color: DanjiColors.buttonBlue),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 8,
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final dateLabel = _filterDate == null
         ? '날짜 선택'
         : DateFormat('yyyy-MM-dd').format(_filterDate!);
 
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        Padding(
-          padding: const EdgeInsets.fromLTRB(20, 12, 20, 0),
-          child: Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            crossAxisAlignment: WrapCrossAlignment.center,
+    return FutureBuilder<List<AdminReservationRow>>(
+      future: widget.future,
+      builder: (context, snap) {
+        if (snap.connectionState == ConnectionState.waiting) {
+          return const Center(child: CircularProgressIndicator());
+        }
+        if (snap.hasError) {
+          return Center(child: Text(friendlyAdminError(snap.error!)));
+        }
+
+        final filtered = _applyFilter(snap.data ?? []);
+
+        if (filtered.isEmpty) {
+          return ListView(
+            physics: const AlwaysScrollableScrollPhysics(),
+            padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
             children: [
-              _InspectionFilterChip(
-                label: '전체',
-                selected: _filterKind == _InspectionDateFilterKind.all,
-                onTap: () => setState(() {
-                  _filterKind = _InspectionDateFilterKind.all;
-                  _filterDate = null;
-                }),
+              _buildFilterHeader(dateLabel),
+              const SizedBox(height: 80),
+              const Center(
+                child: Text('검수 완료된 반납 차량이 없습니다.'),
               ),
-              _InspectionFilterChip(
-                label: '검수일자',
-                selected:
-                    _filterKind == _InspectionDateFilterKind.inspectionDate,
-                onTap: () => setState(() {
-                  _filterKind = _InspectionDateFilterKind.inspectionDate;
-                  _filterDate ??= DateTime.now();
-                }),
-              ),
-              _InspectionFilterChip(
-                label: '예약일자',
-                selected:
-                    _filterKind == _InspectionDateFilterKind.reservationDate,
-                onTap: () => setState(() {
-                  _filterKind = _InspectionDateFilterKind.reservationDate;
-                  _filterDate ??= DateTime.now();
-                }),
-              ),
-              if (_filterKind != _InspectionDateFilterKind.all)
-                OutlinedButton.icon(
-                  onPressed: _pickFilterDate,
-                  icon: const Icon(Icons.calendar_today_outlined, size: 16),
-                  label: Text(dateLabel),
-                  style: OutlinedButton.styleFrom(
-                    foregroundColor: DanjiColors.buttonBlue,
-                    side: const BorderSide(color: DanjiColors.buttonBlue),
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 12,
-                      vertical: 8,
-                    ),
-                  ),
-                ),
             ],
-          ),
-        ),
-        Expanded(
-          child: FutureBuilder<List<AdminReservationRow>>(
-            future: widget.future,
-            builder: (context, snap) {
-              if (snap.connectionState == ConnectionState.waiting) {
-                return const Center(child: CircularProgressIndicator());
-              }
-              if (snap.hasError) {
-                return Center(child: Text(friendlyAdminError(snap.error!)));
-              }
-              final filtered = _applyFilter(snap.data ?? []);
-              if (filtered.isEmpty) {
-                return const Center(
-                  child: Text('검수 완료된 반납 차량이 없습니다.'),
-                );
-              }
-              return ListView.separated(
-                padding: const EdgeInsets.all(20),
-                itemCount: filtered.length,
-                separatorBuilder: (_, __) => const SizedBox(height: 10),
-                itemBuilder: (context, index) {
-                  final row = filtered[index];
-                  return _ReturnInspectionCard(
-                    row: row,
-                    dateFormat: widget.dateFormat,
-                    admin: widget.admin,
-                    showCompleteButton: false,
-                    showInspectionDate: true,
-                  );
-                },
-              );
-            },
-          ),
-        ),
-      ],
+          );
+        }
+
+        return ListView.separated(
+          physics: const AlwaysScrollableScrollPhysics(),
+          padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
+          itemCount: filtered.length + 1,
+          separatorBuilder: (context, index) {
+            if (index == 0) return const SizedBox(height: 12);
+            return const SizedBox(height: 10);
+          },
+          itemBuilder: (context, index) {
+            if (index == 0) {
+              return _buildFilterHeader(dateLabel);
+            }
+            final row = filtered[index - 1];
+            return _ReturnInspectionCard(
+              row: row,
+              dateFormat: widget.dateFormat,
+              admin: widget.admin,
+              showCompleteButton: false,
+              showInspectionDate: true,
+              onChanged: widget.onChanged,
+            );
+          },
+        );
+      },
     );
   }
 }
@@ -971,6 +906,7 @@ class _ReturnInspectionListTab extends StatelessWidget {
   final bool showCompleteButton;
   final bool showInspectionDate;
   final Future<void> Function(AdminReservationRow row)? onComplete;
+  final VoidCallback? onChanged;
 
   const _ReturnInspectionListTab({
     required this.future,
@@ -980,6 +916,7 @@ class _ReturnInspectionListTab extends StatelessWidget {
     required this.showCompleteButton,
     this.showInspectionDate = false,
     this.onComplete,
+    this.onChanged,
   });
 
   @override
@@ -1012,8 +949,145 @@ class _ReturnInspectionListTab extends StatelessWidget {
               onComplete: showCompleteButton && onComplete != null
                   ? () => onComplete!(row)
                   : null,
+              onChanged: onChanged,
             );
           },
+        );
+      },
+    );
+  }
+}
+
+class _DeductibleSection extends StatelessWidget {
+  final AdminReservationRow row;
+  final bool processing;
+  final VoidCallback onCharge;
+  final VoidCallback onWaive;
+
+  const _DeductibleSection({
+    required this.row,
+    required this.processing,
+    required this.onCharge,
+    required this.onWaive,
+  });
+
+  static final _won = NumberFormat('#,###');
+
+  @override
+  Widget build(BuildContext context) {
+    final amount = row.deductibleAmount > 0
+        ? row.deductibleAmount
+        : AdminReservationRow.defaultDeductibleAmount;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Divider(height: 20),
+        const Text(
+          '면책금',
+          style: TextStyle(
+            color: DanjiColors.accentRed,
+            fontWeight: FontWeight.w800,
+            fontSize: 13,
+          ),
+        ),
+        const SizedBox(height: 8),
+        if (row.deductibleCharged) ...[
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+            decoration: BoxDecoration(
+              color: DanjiColors.buttonBlue.withValues(alpha: 0.1),
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(
+                color: DanjiColors.buttonBlue.withValues(alpha: 0.4),
+              ),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Icon(
+                  Icons.check_circle_outline,
+                  size: 16,
+                  color: DanjiColors.buttonBlue,
+                ),
+                const SizedBox(width: 6),
+                Text(
+                  '청구완료 ₩${_won.format(row.deductibleAmount > 0 ? row.deductibleAmount : amount)}',
+                  style: const TextStyle(
+                    color: DanjiColors.buttonBlue,
+                    fontWeight: FontWeight.w800,
+                    fontSize: 13,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ] else if (row.deductibleWaived) ...[
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+            decoration: BoxDecoration(
+              color: DanjiColors.textMuted.withValues(alpha: 0.12),
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(color: DanjiColors.border),
+            ),
+            child: const Text(
+              '면제',
+              style: TextStyle(
+                color: DanjiColors.textSecondary,
+                fontWeight: FontWeight.w800,
+                fontSize: 13,
+              ),
+            ),
+          ),
+        ] else ...[
+          Row(
+            children: [
+              Expanded(
+                child: OutlinedButton(
+                  onPressed: processing ? null : onWaive,
+                  child: const Text('면제'),
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: FilledButton(
+                  onPressed: processing ? null : onCharge,
+                  style: DanjiTheme.dangerButton,
+                  child: processing
+                      ? const SizedBox(
+                          height: 18,
+                          width: 18,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: Colors.white,
+                          ),
+                        )
+                      : Text('₩${_won.format(amount)} 청구'),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ],
+    );
+  }
+}
+
+/// 검수 대기/완료 공통 — 불투명 사진 비교 영역 (로딩 중에도 플레이스홀더 표시)
+class _ReturnInspectionPhotoSection extends StatelessWidget {
+  final Future<({List<String> before, List<String> after})> future;
+
+  const _ReturnInspectionPhotoSection({required this.future});
+
+  @override
+  Widget build(BuildContext context) {
+    return FutureBuilder<({List<String> before, List<String> after})>(
+      future: future,
+      builder: (context, snap) {
+        final photos = snap.data;
+        return ReturnInspectionPhotoCompare(
+          beforePhotos: photos?.before ?? const [],
+          afterPhotos: photos?.after ?? const [],
         );
       },
     );
@@ -1024,6 +1098,7 @@ class _ReturnInspectionCard extends StatefulWidget {
   final AdminReservationRow row;
   final DateFormat dateFormat;
   final VoidCallback? onComplete;
+  final VoidCallback? onChanged;
   final AdminService admin;
   final bool showCompleteButton;
   final bool showInspectionDate;
@@ -1033,6 +1108,7 @@ class _ReturnInspectionCard extends StatefulWidget {
     required this.dateFormat,
     required this.admin,
     this.onComplete,
+    this.onChanged,
     this.showCompleteButton = true,
     this.showInspectionDate = false,
   });
@@ -1043,7 +1119,7 @@ class _ReturnInspectionCard extends StatefulWidget {
 
 class _ReturnInspectionCardState extends State<_ReturnInspectionCard> {
   late Future<({List<String> before, List<String> after})> _photosFuture;
-  bool _loadingContract = false;
+  bool _deductibleProcessing = false;
 
   @override
   void initState() {
@@ -1059,74 +1135,81 @@ class _ReturnInspectionCardState extends State<_ReturnInspectionCard> {
     }
   }
 
-  Future<void> _showContract() async {
-    if (_loadingContract) return;
-    setState(() => _loadingContract = true);
+  Future<void> _chargeDeductible() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('면책금 청구'),
+        content: const Text(
+          '고객 카드로 ₩500,000이 자동 결제됩니다. 진행하시겠습니까?',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('취소'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('청구'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
 
+    setState(() => _deductibleProcessing = true);
     try {
-      var content = widget.row.contractContent?.trim();
-      if (content == null || content.isEmpty) {
-        content = await widget.admin.ensureReservationContractForStaff(
-          widget.row.id,
-        );
-      }
-
+      await widget.admin.chargeReservationDeductible(widget.row.id);
       if (!mounted) return;
-      if (content == null || content.isEmpty) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('계약서가 아직 준비되지 않았습니다.')),
-        );
-        return;
-      }
-
-      final contractText = content;
-      var parsed = RentalContractParsed.parse(contractText);
-      parsed = parsed.withSecondDriverFallback(
-        secondDriverName: widget.row.secondDriverName,
-        secondDriverLicense: widget.row.secondDriverLicense,
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('면책금이 청구되었습니다.')),
       );
-      final displayParsed = parsed.reservationId.isEmpty
-          ? RentalContractParsed(
-              companyName: parsed.companyName,
-              reservationId: widget.row.id,
-              vehicleName: parsed.vehicleName ?? widget.row.vehicleName,
-              rentalPeriod: parsed.rentalPeriod,
-              renterName: parsed.renterName ?? widget.row.renterName,
-              renterPhone: parsed.renterPhone,
-              licenseNumber: parsed.licenseNumber,
-              secondDriverName: parsed.secondDriverName,
-              secondDriverLicense: parsed.secondDriverLicense,
-              originalPrice: parsed.originalPrice,
-              paidPrice: parsed.paidPrice,
-              extraFeeLines: parsed.extraFeeLines,
-              insuranceIntro: parsed.insuranceIntro,
-              insuranceCoverage: parsed.insuranceCoverage,
-              insuranceNotes: parsed.insuranceNotes,
-              complianceItems: parsed.complianceItems,
-              generatedAt: parsed.generatedAt,
-            )
-          : parsed;
-
-      await showModalBottomSheet<void>(
-        context: context,
-        isScrollControlled: true,
-        backgroundColor: Colors.transparent,
-        builder: (ctx) {
-          return _ReturnInspectionContractSheet(
-            contractText: contractText,
-            displayParsed: displayParsed,
-            reservationId: widget.row.id,
-            vehicleName: widget.row.vehicleName,
-          );
-        },
-      );
+      widget.onChanged?.call();
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text(friendlyAdminError(e))),
       );
     } finally {
-      if (mounted) setState(() => _loadingContract = false);
+      if (mounted) setState(() => _deductibleProcessing = false);
+    }
+  }
+
+  Future<void> _waiveDeductible() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('면책금 면제'),
+        content: const Text('이 예약의 면책금을 면제 처리할까요?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('취소'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('면제'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+
+    setState(() => _deductibleProcessing = true);
+    try {
+      await widget.admin.waiveReservationDeductible(widget.row.id);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('면책금이 면제되었습니다.')),
+      );
+      widget.onChanged?.call();
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(friendlyAdminError(e))),
+      );
+    } finally {
+      if (mounted) setState(() => _deductibleProcessing = false);
     }
   }
 
@@ -1138,18 +1221,6 @@ class _ReturnInspectionCardState extends State<_ReturnInspectionCard> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Material(
-            color: Colors.transparent,
-            child: InkWell(
-              onTap: r.hasSecondDriver
-                  ? () => _showSecondDriverInfoSheet(context, r)
-                  : null,
-              borderRadius: BorderRadius.circular(12),
-              child: Padding(
-                padding: const EdgeInsets.symmetric(vertical: 2),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
           Row(
             crossAxisAlignment: CrossAxisAlignment.center,
             children: [
@@ -1162,7 +1233,7 @@ class _ReturnInspectionCardState extends State<_ReturnInspectionCard> {
                   ),
                 ),
               ),
-              if (r.hasSecondDriver) const _SecondDriverBadge(),
+              if (r.hasSecondDriver) const AdminSecondDriverBadge(),
               if (r.isNoShowReturn) const _NoShowReturnBadge(),
               if (r.isAccident) ...[
                 const SizedBox(width: 8),
@@ -1217,41 +1288,19 @@ class _ReturnInspectionCardState extends State<_ReturnInspectionCard> {
             '임차인: ${r.renterDisplayName}',
             style: const TextStyle(color: DanjiColors.textSecondary),
           ),
-          if (r.hasSecondDriver) ...[
-            const SizedBox(height: 4),
-            const Text(
-              '탭하여 제2운전자 정보 보기',
-              style: TextStyle(
-                color: DanjiColors.buttonBlue,
-                fontSize: 12,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-          ],
-                  ],
-                ),
-              ),
-            ),
+          AdminSecondDriverSummary(
+            secondDriverName: r.secondDriverName,
+            secondDriverLicense: r.secondDriverLicense,
           ),
           const SizedBox(height: 10),
-          OutlinedButton.icon(
-            onPressed: _loadingContract ? null : _showContract,
-            icon: _loadingContract
-                ? const SizedBox(
-                    width: 16,
-                    height: 16,
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  )
-                : const Icon(Icons.description_outlined, size: 18),
-            label: const Text('계약서 보기'),
-            style: OutlinedButton.styleFrom(
-              foregroundColor: DanjiColors.brandBlue,
-              side: const BorderSide(color: DanjiColors.brandBlue),
-              minimumSize: const Size.fromHeight(40),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(10),
-              ),
-            ),
+          AdminReservationContractButton(
+            admin: widget.admin,
+            reservationId: r.id,
+            contractContent: r.contractContent,
+            vehicleName: r.vehicleName,
+            renterName: r.renterDisplayName,
+            secondDriverName: r.secondDriverName,
+            secondDriverLicense: r.secondDriverLicense,
           ),
           if (r.isAccident) ...[
             const SizedBox(height: 12),
@@ -1286,28 +1335,19 @@ class _ReturnInspectionCardState extends State<_ReturnInspectionCard> {
                       height: 1.45,
                     ),
                   ),
+                  const SizedBox(height: 12),
+                  _DeductibleSection(
+                    row: r,
+                    processing: _deductibleProcessing,
+                    onCharge: _chargeDeductible,
+                    onWaive: _waiveDeductible,
+                  ),
                 ],
               ),
             ),
           ],
           const SizedBox(height: 16),
-          FutureBuilder<({List<String> before, List<String> after})>(
-            future: _photosFuture,
-            builder: (context, snap) {
-              if (snap.connectionState == ConnectionState.waiting) {
-                return const SizedBox(
-                  height: 120,
-                  child: Center(child: CircularProgressIndicator()),
-                );
-              }
-              final photos = snap.data ??
-                  (before: r.pickupPhotos, after: r.returnPhotos);
-              return ReturnInspectionPhotoCompare(
-                beforePhotos: photos.before,
-                afterPhotos: photos.after,
-              );
-            },
-          ),
+          _ReturnInspectionPhotoSection(future: _photosFuture),
           if (widget.showCompleteButton) ...[
             const SizedBox(height: 16),
             FilledButton(
@@ -1462,157 +1502,6 @@ class _AdminSalesScreenState extends State<AdminSalesScreen> {
           );
         },
       ),
-    );
-  }
-}
-
-class _ReturnInspectionContractSheet extends StatefulWidget {
-  final String contractText;
-  final RentalContractParsed displayParsed;
-  final String reservationId;
-  final String? vehicleName;
-
-  const _ReturnInspectionContractSheet({
-    required this.contractText,
-    required this.displayParsed,
-    required this.reservationId,
-    this.vehicleName,
-  });
-
-  @override
-  State<_ReturnInspectionContractSheet> createState() =>
-      _ReturnInspectionContractSheetState();
-}
-
-class _ReturnInspectionContractSheetState
-    extends State<_ReturnInspectionContractSheet> {
-  bool _downloadingPdf = false;
-
-  Future<void> _downloadPdf() async {
-    setState(() => _downloadingPdf = true);
-    try {
-      final savedPath = await RentalContractPdf.saveContractPdf(
-        contractText: widget.contractText,
-        reservationId: widget.reservationId,
-        vehicleName: widget.vehicleName,
-        parsed: widget.displayParsed,
-      );
-      if (!mounted) return;
-      if (savedPath != null) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('다운로드 폴더에 저장되었습니다.\n$savedPath'),
-          ),
-        );
-      }
-    } catch (e) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('PDF 저장 실패: $e')),
-      );
-    } finally {
-      if (mounted) setState(() => _downloadingPdf = false);
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return DraggableScrollableSheet(
-      initialChildSize: 0.82,
-      minChildSize: 0.45,
-      maxChildSize: 0.95,
-      expand: false,
-      builder: (context, scrollController) {
-        return Container(
-          decoration: const BoxDecoration(
-            color: DanjiColors.background,
-            borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-          ),
-          child: Column(
-            children: [
-              const SizedBox(height: 10),
-              Container(
-                width: 40,
-                height: 4,
-                decoration: BoxDecoration(
-                  color: DanjiColors.border,
-                  borderRadius: BorderRadius.circular(2),
-                ),
-              ),
-              Padding(
-                padding: const EdgeInsets.fromLTRB(20, 16, 12, 8),
-                child: Row(
-                  children: [
-                    const Expanded(
-                      child: Text(
-                        '대여 계약서',
-                        style: TextStyle(
-                          fontWeight: FontWeight.w800,
-                          fontSize: 18,
-                          color: DanjiColors.textPrimary,
-                        ),
-                      ),
-                    ),
-                    IconButton(
-                      onPressed: () => Navigator.pop(context),
-                      icon: const Icon(Icons.close),
-                    ),
-                  ],
-                ),
-              ),
-              Expanded(
-                child: SingleChildScrollView(
-                  controller: scrollController,
-                  padding: const EdgeInsets.fromLTRB(20, 0, 20, 16),
-                  child: widget.displayParsed.hasStructuredLayout
-                      ? RentalContractCardView(parsed: widget.displayParsed)
-                      : Container(
-                          width: double.infinity,
-                          padding: const EdgeInsets.all(16),
-                          decoration: BoxDecoration(
-                            color: DanjiColors.surface,
-                            borderRadius: BorderRadius.circular(12),
-                            border: Border.all(color: DanjiColors.border),
-                          ),
-                          child: SelectableText(
-                            widget.contractText,
-                            style: const TextStyle(
-                              color: DanjiColors.textPrimary,
-                              height: 1.5,
-                            ),
-                          ),
-                        ),
-                ),
-              ),
-              SafeArea(
-                top: false,
-                child: Padding(
-                  padding: const EdgeInsets.fromLTRB(20, 8, 20, 16),
-                  child: SizedBox(
-                    width: double.infinity,
-                    height: 48,
-                    child: FilledButton.icon(
-                      onPressed: _downloadingPdf ? null : _downloadPdf,
-                      style: DanjiTheme.primaryButton,
-                      icon: _downloadingPdf
-                          ? const SizedBox(
-                              width: 18,
-                              height: 18,
-                              child: CircularProgressIndicator(
-                                strokeWidth: 2,
-                                color: Colors.white,
-                              ),
-                            )
-                          : const Icon(Icons.download_outlined, size: 20),
-                      label: const Text('PDF 다운로드'),
-                    ),
-                  ),
-                ),
-              ),
-            ],
-          ),
-        );
-      },
     );
   }
 }

@@ -314,6 +314,10 @@ class AdminReservationRow {
   final DateTime? updatedAt;
   final String? secondDriverName;
   final String? secondDriverLicense;
+  final bool deductibleCharged;
+  final int deductibleAmount;
+  final DateTime? deductibleChargedAt;
+  final bool deductibleWaived;
 
   const AdminReservationRow({
     required this.id,
@@ -334,7 +338,13 @@ class AdminReservationRow {
     this.updatedAt,
     this.secondDriverName,
     this.secondDriverLicense,
+    this.deductibleCharged = false,
+    this.deductibleAmount = 0,
+    this.deductibleChargedAt,
+    this.deductibleWaived = false,
   });
+
+  static const int defaultDeductibleAmount = 500000;
 
   /// 시간 초과 자동 반납(노쇼) — return_type = 'auto'
   bool get isNoShowReturn =>
@@ -383,6 +393,11 @@ class AdminReservationRow {
     return '이름 미등록';
   }
 
+  static String _reservationIdFromMap(Map<String, dynamic> map) {
+    final raw = map['id'] ?? map['reservation_id'];
+    return raw?.toString().trim() ?? '';
+  }
+
   static List<String> _photoUrlsFromMap(
     Map<String, dynamic> map,
     List<String> keys,
@@ -421,7 +436,7 @@ class AdminReservationRow {
     final contract = map['contract_content']?.toString().trim();
 
     return AdminReservationRow(
-      id: map['id'].toString(),
+      id: _reservationIdFromMap(map),
       status: map['status']?.toString() ?? '',
       totalPrice: (map['total_price'] as num?)?.toInt() ?? 0,
       startAt: DateTime.tryParse(
@@ -452,6 +467,12 @@ class AdminReservationRow {
           ?.toLocal(),
       secondDriverName: map['second_driver_name']?.toString(),
       secondDriverLicense: map['second_driver_license']?.toString(),
+      deductibleCharged: map['deductible_charged'] == true,
+      deductibleAmount: (map['deductible_amount'] as num?)?.toInt() ?? 0,
+      deductibleChargedAt: DateTime.tryParse(
+        map['deductible_charged_at']?.toString() ?? '',
+      )?.toLocal(),
+      deductibleWaived: map['deductible_waived'] == true,
     );
   }
 }

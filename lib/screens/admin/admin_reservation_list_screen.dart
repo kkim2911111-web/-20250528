@@ -8,6 +8,7 @@ import '../../theme/danji_colors.dart';
 import '../../utils/danji_snackbar.dart';
 import '../../widgets/admin_scaffold.dart';
 import '../../widgets/danji_app_bar.dart';
+import '../../widgets/admin_reservation_card_extras.dart';
 import '../../widgets/section_card.dart';
 
 enum _ReservationFilter { all, inUse, waiting, conflict, completed }
@@ -24,10 +25,14 @@ class _AdminReservationLists {
 
 class AdminReservationListScreen extends StatefulWidget {
   final bool openConflictTab;
+  final bool openInUseTab;
+  final bool openWaitingTab;
 
   const AdminReservationListScreen({
     super.key,
     this.openConflictTab = false,
+    this.openInUseTab = false,
+    this.openWaitingTab = false,
   });
 
   @override
@@ -45,10 +50,19 @@ class _AdminReservationListScreenState
   _ReservationFilter _filter = _ReservationFilter.all;
   Future<_AdminReservationLists>? _future;
 
+  late int _year = DateTime.now().year;
+  late int _month = DateTime.now().month;
+  DateTime? _filterDay;
+  static final _dayLabel = DateFormat('yyyy-MM-dd');
+
   @override
   void initState() {
     super.initState();
-    if (widget.openConflictTab) {
+    if (widget.openInUseTab) {
+      _filter = _ReservationFilter.inUse;
+    } else if (widget.openWaitingTab) {
+      _filter = _ReservationFilter.waiting;
+    } else if (widget.openConflictTab) {
       _filter = _ReservationFilter.conflict;
     }
     _reload();
@@ -71,9 +85,79 @@ class _AdminReservationListScreenState
     );
   }
 
-  List<Map<String, dynamic>> _applyFilter(_AdminReservationLists data) {
+  void _syncFilterDayWithMonth() {
+    final d = _filterDay;
+    if (d == null) return;
+    if (d.year != _year || d.month != _month) {
+      _filterDay = null;
+    }
+  }
+
+  void _shiftMonth(int delta) {
+    setState(() {
+      var m = _month + delta;
+      var y = _year;
+      while (m < 1) {
+        m += 12;
+        y--;
+      }
+      while (m > 12) {
+        m -= 12;
+        y++;
+      }
+      _year = y;
+      _month = m;
+      _syncFilterDayWithMonth();
+    });
+  }
+
+  Future<void> _pickFilterDay() async {
+    final monthStart = DateTime(_year, _month, 1);
+    final monthEnd = DateTime(_year, _month + 1, 0);
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: _filterDay ?? monthStart,
+      firstDate: monthStart,
+      lastDate: monthEnd,
+    );
+    if (picked == null || !mounted) return;
+    setState(() {
+      _filterDay = DateTime(picked.year, picked.month, picked.day);
+    });
+  }
+
+  DateTime? _rowPeriodAnchor(
+    Map<String, dynamic> row, {
+    required bool completedTab,
+  }) {
+    if (completedTab) {
+      return _parseDate(row['sort_at']) ?? _parseDate(row['start_at']);
+    }
+    return _parseDate(row['start_at']);
+  }
+
+  List<Map<String, dynamic>> _applyPeriodFilter(
+    List<Map<String, dynamic>> rows, {
+    required bool completedTab,
+  }) {
+    return rows.where((row) {
+      final anchor = _rowPeriodAnchor(row, completedTab: completedTab);
+      if (anchor == null) return _filterDay == null;
+
+      final local = anchor.toLocal();
+      if (local.year != _year || local.month != _month) return false;
+
+      final day = _filterDay;
+      if (day == null) return true;
+      return local.year == day.year &&
+          local.month == day.month &&
+          local.day == day.day;
+    }).toList();
+  }
+
+  List<Map<String, dynamic>> _applyTabFilter(_AdminReservationLists data) {
     if (_filter == _ReservationFilter.completed) {
-      return data.completed.where(_isCompletedTabRow).toList();
+      return List<Map<String, dynamic>>.from(data.completed);
     }
 
     final rows = data.active;
@@ -90,6 +174,87 @@ class _AdminReservationListScreenState
     }
   }
 
+  List<Map<String, dynamic>> _applyFilter(_AdminReservationLists data) {
+    final tabbed = _applyTabFilter(data);
+    return _applyPeriodFilter(
+      tabbed,
+      completedTab: _filter == _ReservationFilter.completed,
+    );
+  }
+
+  Widget _buildPeriodFilterBar() {
+    final monthTitle = '$_year년 $_month월';
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+      child: Column(
+        children: [
+          SectionCard(
+            padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
+            child: Row(
+              children: [
+                IconButton(
+                  onPressed: () => _shiftMonth(-1),
+                  icon: const Icon(Icons.chevron_left),
+                  color: DanjiColors.buttonBlue,
+                ),
+                Expanded(
+                  child: Text(
+                    monthTitle,
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(
+                      fontWeight: FontWeight.w800,
+                      fontSize: 15,
+                    ),
+                  ),
+                ),
+                IconButton(
+                  onPressed: () => _shiftMonth(1),
+                  icon: const Icon(Icons.chevron_right),
+                  color: DanjiColors.buttonBlue,
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 8),
+          SectionCard(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+            child: Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton.icon(
+                    onPressed: _pickFilterDay,
+                    icon: const Icon(Icons.calendar_today_outlined, size: 16),
+                    label: Text(
+                      _filterDay == null
+                          ? '날짜 선택'
+                          : _dayLabel.format(_filterDay!),
+                    ),
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: DanjiColors.buttonBlue,
+                      side: const BorderSide(color: DanjiColors.buttonBlue),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 10,
+                      ),
+                    ),
+                  ),
+                ),
+                if (_filterDay != null) ...[
+                  const SizedBox(width: 8),
+                  TextButton(
+                    onPressed: () => setState(() => _filterDay = null),
+                    child: const Text('초기화'),
+                  ),
+                ],
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   Future<void> _confirmForceCancel(Map<String, dynamic> row) async {
     final id = _reservationId(row);
     if (id == null) return;
@@ -97,9 +262,9 @@ class _AdminReservationListScreenState
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('강제 취소'),
+        title: const Text('강제 반납'),
         content: const Text(
-          '시작 시간이 지났으나 대여하지 않은 예약을 취소 처리하시겠습니까?',
+          '시작 시간이 지났으나 대여하지 않은 예약을 강제 반납 처리하시겠습니까?',
         ),
         actions: [
           TextButton(
@@ -108,7 +273,7 @@ class _AdminReservationListScreenState
           ),
           FilledButton(
             onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('강제 취소'),
+            child: const Text('강제 반납'),
           ),
         ],
       ),
@@ -118,7 +283,7 @@ class _AdminReservationListScreenState
     try {
       await _admin.forceCancelReservation(id);
       if (!mounted) return;
-      DanjiSnackBar.show(context, '예약이 강제 취소되었습니다');
+      DanjiSnackBar.show(context, '예약이 강제 반납되었습니다');
       _reload();
     } catch (e) {
       if (!mounted) return;
@@ -168,7 +333,7 @@ class _AdminReservationListScreenState
   @override
   Widget build(BuildContext context) {
     return AdminScaffold(
-      appBar: const DanjiAppBar(title: '예약 관리'),
+      appBar: const DanjiAppBar(title: '대여 관리'),
       body: FutureBuilder<_AdminReservationLists>(
         future: _future,
         builder: (context, snap) {
@@ -229,6 +394,7 @@ class _AdminReservationListScreenState
                   ),
                 ),
               ),
+              _buildPeriodFilterBar(),
               Expanded(
                 child: RefreshIndicator(
                   color: DanjiColors.buttonBlue,
@@ -266,11 +432,17 @@ class _AdminReservationListScreenState
     }
     final filtered = _applyFilter(snap.data!);
     if (filtered.isEmpty) {
+      final hasData = snap.data!.active.isNotEmpty ||
+          snap.data!.completed.isNotEmpty;
       return ListView(
         physics: const AlwaysScrollableScrollPhysics(),
-        children: const [
-          SizedBox(height: 80),
-          Center(child: Text('표시할 예약이 없습니다.')),
+        children: [
+          SizedBox(height: hasData ? 80 : 40),
+          Center(
+            child: Text(
+              hasData ? '조건에 맞는 예약이 없습니다.' : '표시할 예약이 없습니다.',
+            ),
+          ),
         ],
       );
     }
@@ -288,6 +460,7 @@ class _AdminReservationListScreenState
             row: row,
             dateTime: _dateTime,
             won: _won,
+            admin: _admin,
           );
         }
         final isNoShowSuspect = _isNoShowSuspect(row);
@@ -397,23 +570,30 @@ class _CompletedReservationCard extends StatelessWidget {
   final Map<String, dynamic> row;
   final DateFormat dateTime;
   final NumberFormat won;
+  final AdminService admin;
 
   const _CompletedReservationCard({
     required this.row,
     required this.dateTime,
     required this.won,
+    required this.admin,
   });
 
   @override
   Widget build(BuildContext context) {
     final vehicleName = _str(row, 'vehicle_name') ?? '차량';
+    final carNumber = _str(row, 'car_number');
     final renterName = AdminReservationRow.resolveRenterDisplayName(
       directRenterName: _str(row, 'renter_name'),
     );
-    final status = _status(row);
     final start = _parseDate(row['start_at']);
     final end = _parseDate(row['end_at']);
     final totalPrice = (row['total_price'] as num?)?.toInt() ?? 0;
+    final reservationId = _reservationId(row);
+    final secondDriverName = _str(row, 'second_driver_name');
+    final secondDriverLicense = _str(row, 'second_driver_license');
+    final hasSecondDriver =
+        adminHasSecondDriver(secondDriverName: secondDriverName);
 
     return Container(
       padding: const EdgeInsets.all(16),
@@ -445,9 +625,32 @@ class _CompletedReservationCard extends StatelessWidget {
                   ),
                 ),
               ),
-              _StatusBadge(status: status),
+              Wrap(
+                spacing: 6,
+                runSpacing: 4,
+                crossAxisAlignment: WrapCrossAlignment.center,
+                children: [
+                  if (hasSecondDriver)
+                    GestureDetector(
+                      onTap: () => showAdminSecondDriverInfoSheet(
+                        context,
+                        secondDriverName: secondDriverName,
+                        secondDriverLicense: secondDriverLicense,
+                      ),
+                      child: const AdminSecondDriverBadge(),
+                    ),
+                  _CompletedTabStatusBadge(row: row),
+                ],
+              ),
             ],
           ),
+          if (carNumber != null && carNumber.isNotEmpty) ...[
+            const SizedBox(height: 4),
+            Text(
+              carNumber,
+              style: const TextStyle(color: DanjiColors.textSecondary),
+            ),
+          ],
           const SizedBox(height: 8),
           _ReservationRenterSummary(
             row: row,
@@ -455,15 +658,41 @@ class _CompletedReservationCard extends StatelessWidget {
             renterName: renterName,
             totalPrice: totalPrice,
           ),
+          AdminSecondDriverSummary(
+            secondDriverName: secondDriverName,
+            secondDriverLicense: secondDriverLicense,
+            padding: const EdgeInsets.only(top: 6),
+          ),
           const SizedBox(height: 6),
           Text(
-            '대여기간: ${_formatOptionalDateTime(dateTime, start)} ~ '
+            '${_formatOptionalDateTime(dateTime, start)} ~ '
             '${_formatOptionalDateTime(dateTime, end)}',
             style: const TextStyle(
               color: DanjiColors.textSecondary,
               height: 1.4,
             ),
           ),
+          if (reservationId != null) ...[
+            const SizedBox(height: 8),
+            Text(
+              '예약 #$reservationId',
+              style: const TextStyle(
+                color: DanjiColors.textPrimary,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ],
+          if (reservationId != null) ...[
+            const SizedBox(height: 12),
+            AdminReservationContractButton(
+              admin: admin,
+              reservationId: reservationId,
+              vehicleName: vehicleName,
+              renterName: renterName,
+              secondDriverName: secondDriverName,
+              secondDriverLicense: secondDriverLicense,
+            ),
+          ],
         ],
       ),
     );
@@ -516,6 +745,10 @@ class _ReservationCardState extends State<_ReservationCard> {
     final start = _parseDate(row['start_at']);
     final end = _parseDate(row['end_at']);
     final nextStart = _parseDate(row['next_start_at']);
+    final secondDriverName = _str(row, 'second_driver_name');
+    final secondDriverLicense = _str(row, 'second_driver_license');
+    final hasSecondDriver =
+        adminHasSecondDriver(secondDriverName: secondDriverName);
 
     final cardBody = AnimatedSwitcher(
       duration: const Duration(milliseconds: 220),
@@ -543,6 +776,9 @@ class _ReservationCardState extends State<_ReservationCard> {
               onForceCancel: widget.onForceCancel,
               showForceComplete: widget.showForceComplete,
               onForceComplete: widget.onForceComplete,
+              secondDriverName: secondDriverName,
+              secondDriverLicense: secondDriverLicense,
+              hasSecondDriver: hasSecondDriver,
             ),
     );
 
@@ -671,6 +907,9 @@ class _CurrentReservationPanel extends StatelessWidget {
   final VoidCallback? onForceCancel;
   final bool showForceComplete;
   final VoidCallback? onForceComplete;
+  final String? secondDriverName;
+  final String? secondDriverLicense;
+  final bool hasSecondDriver;
 
   const _CurrentReservationPanel({
     super.key,
@@ -690,6 +929,9 @@ class _CurrentReservationPanel extends StatelessWidget {
     this.onForceCancel,
     required this.showForceComplete,
     this.onForceComplete,
+    this.secondDriverName,
+    this.secondDriverLicense,
+    this.hasSecondDriver = false,
   });
 
   @override
@@ -710,8 +952,24 @@ class _CurrentReservationPanel extends StatelessWidget {
                 ),
               ),
             ),
-            _StatusBadge(status: status),
-            if (showNoShowSuspect) const _NoShowSuspectBadge(),
+            Wrap(
+              spacing: 6,
+              runSpacing: 4,
+              crossAxisAlignment: WrapCrossAlignment.center,
+              children: [
+                if (hasSecondDriver)
+                  GestureDetector(
+                    onTap: () => showAdminSecondDriverInfoSheet(
+                      context,
+                      secondDriverName: secondDriverName,
+                      secondDriverLicense: secondDriverLicense,
+                    ),
+                    child: const AdminSecondDriverBadge(),
+                  ),
+                _StatusBadge(status: status),
+                if (showNoShowSuspect) const _NoShowSuspectBadge(),
+              ],
+            ),
           ],
         ),
         if (carNumber != null && carNumber!.isNotEmpty) ...[
@@ -730,6 +988,11 @@ class _CurrentReservationPanel extends StatelessWidget {
           ),
           totalPrice: (row['total_price'] as num?)?.toInt() ?? 0,
         ),
+        AdminSecondDriverSummary(
+          secondDriverName: secondDriverName,
+          secondDriverLicense: secondDriverLicense,
+          padding: const EdgeInsets.only(top: 6),
+        ),
         const SizedBox(height: 6),
         Text(
           '${_formatOptionalDateTime(dateTime, start)} ~ '
@@ -739,6 +1002,16 @@ class _CurrentReservationPanel extends StatelessWidget {
             height: 1.4,
           ),
         ),
+        if (_reservationId(row) != null) ...[
+          const SizedBox(height: 8),
+          Text(
+            '예약 #${_reservationId(row)}',
+            style: const TextStyle(
+              color: DanjiColors.textPrimary,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ],
         if (nextStart != null) ...[
           const SizedBox(height: 6),
           Text(
@@ -777,7 +1050,7 @@ class _CurrentReservationPanel extends StatelessWidget {
                 foregroundColor: const Color(0xFFE65100),
                 side: const BorderSide(color: Color(0xFFE65100)),
               ),
-              child: const Text('강제 취소'),
+              child: const Text('강제 반납'),
             ),
           ),
         ],
@@ -908,6 +1181,38 @@ class _ReservationRenterSummary extends StatelessWidget {
   }
 }
 
+class _CompletedTabStatusBadge extends StatelessWidget {
+  final Map<String, dynamic> row;
+
+  const _CompletedTabStatusBadge({required this.row});
+
+  @override
+  Widget build(BuildContext context) {
+    if (_isNoShowCompleted(row)) {
+      return Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+        decoration: BoxDecoration(
+          color: const Color(0xFFFFF3E0),
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(
+            color: const Color(0xFFFF6D00).withValues(alpha: 0.45),
+          ),
+        ),
+        child: const Text(
+          '노쇼완료',
+          style: TextStyle(
+            color: Color(0xFFE65100),
+            fontWeight: FontWeight.w700,
+            fontSize: 12,
+          ),
+        ),
+      );
+    }
+
+    return const _StatusBadge(status: 'completed');
+  }
+}
+
 class _StatusBadge extends StatelessWidget {
   final String status;
 
@@ -995,8 +1300,10 @@ bool _isScheduledTabRow(Map<String, dynamic> row) {
   return start.isAfter(DateTime.now());
 }
 
-bool _isCompletedTabRow(Map<String, dynamic> row) =>
-    _status(row) == 'completed';
+bool _isNoShowCompleted(Map<String, dynamic> row) {
+  if (row['is_no_show'] == true) return true;
+  return _str(row, 'return_type')?.toLowerCase() == 'auto';
+}
 
 String? _str(Map<String, dynamic> row, String key) {
   final v = row[key];

@@ -30,6 +30,8 @@ class MyReservationsScreen extends StatefulWidget {
   State<MyReservationsScreen> createState() => _MyReservationsScreenState();
 }
 
+enum _HistoryTab { all, completed, cancelled }
+
 class _MyReservationsScreenState extends State<MyReservationsScreen> {
   final _service = RentalService();
   final _dateFormat = DateFormat('yyyy-MM-dd HH:mm');
@@ -40,6 +42,7 @@ class _MyReservationsScreenState extends State<MyReservationsScreen> {
   int _listKey = 0;
   final _hiddenIds = <String>{};
   late DateTime _selectedMonth;
+  _HistoryTab _historyTab = _HistoryTab.all;
 
   @override
   void initState() {
@@ -66,17 +69,37 @@ class _MyReservationsScreenState extends State<MyReservationsScreen> {
     });
   }
 
-  bool _reservationInSelectedMonth(Reservation reservation) {
-    final dt = reservation.startAt ??
+  DateTime? _historyAnchorDate(Reservation reservation) {
+    if (reservation.isCancelled) {
+      return reservation.cancelledAt ??
+          reservation.startAt ??
+          reservation.endAt;
+    }
+    return reservation.startAt ??
         reservation.endAt ??
         reservation.returnedAt;
+  }
+
+  bool _reservationInSelectedMonth(Reservation reservation) {
+    final dt = _historyAnchorDate(reservation);
     if (dt == null) return false;
     return dt.year == _selectedMonth.year &&
         dt.month == _selectedMonth.month;
   }
 
+  List<Reservation> _filterHistoryByTab(List<Reservation> list) {
+    switch (_historyTab) {
+      case _HistoryTab.all:
+        return list;
+      case _HistoryTab.completed:
+        return list.where((r) => r.isUsageHistoryCompleted).toList();
+      case _HistoryTab.cancelled:
+        return list.where((r) => r.isCancelled).toList();
+    }
+  }
+
   GroupedReservations _filterFinishedByMonth(GroupedReservations grouped) {
-    final finished = grouped.finished
+    final finished = _filterHistoryByTab(grouped.finished)
         .where(_reservationInSelectedMonth)
         .toList();
     return GroupedReservations(
@@ -518,6 +541,17 @@ class _MyReservationsScreenState extends State<MyReservationsScreen> {
     );
   }
 
+  String _emptyHistoryMessage(String monthLabel) {
+    switch (_historyTab) {
+      case _HistoryTab.all:
+        return '$monthLabel 이용내역이 없습니다.';
+      case _HistoryTab.completed:
+        return '$monthLabel 이용완료 내역이 없습니다.';
+      case _HistoryTab.cancelled:
+        return '$monthLabel 취소 내역이 없습니다.';
+    }
+  }
+
   Widget _buildHistoryList(
     GroupedReservations groupedRaw,
     GroupedReservations grouped,
@@ -529,6 +563,11 @@ class _MyReservationsScreenState extends State<MyReservationsScreen> {
       physics: const AlwaysScrollableScrollPhysics(),
       padding: const EdgeInsets.all(20),
       children: [
+        _HistoryTabBar(
+          selected: _historyTab,
+          onChanged: (tab) => setState(() => _historyTab = tab),
+        ),
+        const SizedBox(height: 12),
         _MonthFilterBar(
           label: monthLabel,
           canGoNext: _canGoNextMonth,
@@ -552,36 +591,101 @@ class _MyReservationsScreenState extends State<MyReservationsScreen> {
         ] else if (grouped.finished.isEmpty) ...[
           const SizedBox(height: 60),
           Text(
-            '$monthLabel 이용내역이 없습니다.',
+            _emptyHistoryMessage(monthLabel),
             textAlign: TextAlign.center,
             style: const TextStyle(color: DanjiColors.textSecondary),
           ),
         ] else ...[
-          const _SectionHeader(
-            title: '이용 완료',
-            icon: Icons.check_circle_outline,
-            color: DanjiColors.sectionFinished,
-          ),
-          const SizedBox(height: 10),
-          ...grouped.finished.map(
-            (item) => Padding(
-              padding: const EdgeInsets.only(bottom: 12),
-              child: _ReservationCard(
-                reservation: item,
-                pricing: groupedRaw.paymentPricing[item.id],
-                dateFormat: _dateFormat,
-                won: _won,
-                variant: _CardVariant.finished,
-                showReservationId: true,
-                showContractButton: _showContractOnFinishedCard(item),
-                onContractTap: _showContractOnFinishedCard(item)
-                    ? () => _openContract(item)
-                    : null,
+          if (_historyTab != _HistoryTab.cancelled &&
+              grouped.finished.any((r) => !r.isCancelled)) ...[
+            if (_historyTab == _HistoryTab.all)
+              const _SectionHeader(
+                title: '이용 완료',
+                icon: Icons.check_circle_outline,
+                color: DanjiColors.sectionFinished,
+              ),
+            if (_historyTab == _HistoryTab.all) const SizedBox(height: 10),
+            ...grouped.finished.where((r) => !r.isCancelled).map(
+              (item) => Padding(
+                padding: const EdgeInsets.only(bottom: 12),
+                child: _ReservationCard(
+                  reservation: item,
+                  pricing: groupedRaw.paymentPricing[item.id],
+                  dateFormat: _dateFormat,
+                  won: _won,
+                  variant: _CardVariant.finished,
+                  showReservationId: true,
+                  showContractButton: _showContractOnFinishedCard(item),
+                  onContractTap: _showContractOnFinishedCard(item)
+                      ? () => _openContract(item)
+                      : null,
+                ),
               ),
             ),
-          ),
+          ],
+          if (_historyTab != _HistoryTab.completed &&
+              grouped.finished.any((r) => r.isCancelled)) ...[
+            if (_historyTab == _HistoryTab.all) const SizedBox(height: 8),
+            if (_historyTab == _HistoryTab.all)
+              const _SectionHeader(
+                title: '예약 취소',
+                icon: Icons.event_busy_outlined,
+                color: DanjiColors.textMuted,
+              ),
+            if (_historyTab == _HistoryTab.all) const SizedBox(height: 10),
+            ...grouped.finished.where((r) => r.isCancelled).map(
+              (item) => Padding(
+                padding: const EdgeInsets.only(bottom: 12),
+                child: _ReservationCard(
+                  reservation: item,
+                  pricing: groupedRaw.paymentPricing[item.id],
+                  dateFormat: _dateFormat,
+                  won: _won,
+                  variant: _CardVariant.cancelled,
+                  showReservationId: true,
+                ),
+              ),
+            ),
+          ],
         ],
       ],
+    );
+  }
+}
+
+class _HistoryTabBar extends StatelessWidget {
+  final _HistoryTab selected;
+  final ValueChanged<_HistoryTab> onChanged;
+
+  const _HistoryTabBar({
+    required this.selected,
+    required this.onChanged,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(4),
+      decoration: BoxDecoration(
+        color: DanjiColors.surface,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: DanjiColors.border),
+      ),
+      child: SegmentedButton<_HistoryTab>(
+        style: ButtonStyle(
+          visualDensity: VisualDensity.compact,
+          textStyle: WidgetStateProperty.all(
+            const TextStyle(fontSize: 13, fontWeight: FontWeight.w700),
+          ),
+        ),
+        segments: const [
+          ButtonSegment(value: _HistoryTab.all, label: Text('전체')),
+          ButtonSegment(value: _HistoryTab.completed, label: Text('이용완료')),
+          ButtonSegment(value: _HistoryTab.cancelled, label: Text('취소')),
+        ],
+        selected: {selected},
+        onSelectionChanged: (s) => onChanged(s.first),
+      ),
     );
   }
 }
@@ -638,7 +742,7 @@ class _MonthFilterBar extends StatelessWidget {
   }
 }
 
-enum _CardVariant { operating, waiting, finished }
+enum _CardVariant { operating, waiting, finished, cancelled }
 
 class _SectionHeader extends StatelessWidget {
   final String title;
@@ -721,7 +825,21 @@ class _ReservationCard extends StatelessWidget {
         return DanjiColors.sectionWaiting;
       case _CardVariant.finished:
         return DanjiColors.sectionFinished;
+      case _CardVariant.cancelled:
+        return DanjiColors.textMuted;
     }
+  }
+
+  String get _statusBadgeLabel {
+    if (variant == _CardVariant.cancelled) return '예약취소';
+    return reservation.displayStatusLabel;
+  }
+
+  int get _refundAmount {
+    if (pricing != null && pricing!.finalPrice > 0) {
+      return pricing!.finalPrice;
+    }
+    return reservation.totalPrice;
   }
 
   String? get _guideMessage {
@@ -767,7 +885,9 @@ class _ReservationCard extends StatelessWidget {
         border: Border.all(
           color: variant == _CardVariant.finished
               ? DanjiColors.border
-              : _accentColor.withValues(alpha: 0.35),
+              : variant == _CardVariant.cancelled
+                  ? DanjiColors.border
+                  : _accentColor.withValues(alpha: 0.35),
           width: variant == _CardVariant.operating ? 1.5 : 1,
         ),
         boxShadow: [
@@ -812,9 +932,11 @@ class _ReservationCard extends StatelessWidget {
                   borderRadius: BorderRadius.circular(999),
                 ),
                 child: Text(
-                  reservation.displayStatusLabel,
+                  _statusBadgeLabel,
                   style: DanjiTypography.caption.copyWith(
-                    color: _accentColor,
+                    color: variant == _CardVariant.cancelled
+                        ? DanjiColors.accentRed
+                        : _accentColor,
                     fontWeight: FontWeight.w600,
                   ),
                 ),
@@ -830,6 +952,27 @@ class _ReservationCard extends StatelessWidget {
                 fontWeight: FontWeight.w600,
               ),
             ),
+          ],
+          if (variant == _CardVariant.cancelled &&
+              reservation.cancelledAt != null) ...[
+            const SizedBox(height: 8),
+            Text(
+              '취소일 ${dateFormat.format(reservation.cancelledAt!)}',
+              style: DanjiTypography.secondary.copyWith(
+                color: DanjiColors.textSecondary,
+                height: 1.4,
+              ),
+            ),
+            if (_refundAmount > 0) ...[
+              const SizedBox(height: 4),
+              Text(
+                '환불금액 ₩${won.format(_refundAmount)}',
+                style: DanjiTypography.caption.copyWith(
+                  color: DanjiColors.accentRed,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ],
           ],
           if (start != null && end != null) ...[
             const SizedBox(height: 8),
@@ -855,8 +998,9 @@ class _ReservationCard extends StatelessWidget {
               style: DanjiTypography.secondary,
             ),
           ],
-          if (reservation.totalPrice > 0 ||
-              (pricing != null && pricing!.finalPrice > 0)) ...[
+          if (variant != _CardVariant.cancelled &&
+              (reservation.totalPrice > 0 ||
+                  (pricing != null && pricing!.finalPrice > 0))) ...[
             const SizedBox(height: 4),
             ReservationPriceDisplay(
               reservationTotalPrice: reservation.totalPrice,

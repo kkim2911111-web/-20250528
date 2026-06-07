@@ -1,11 +1,13 @@
+import 'dart:async';
 import 'dart:convert';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
-import 'package:url_launcher/url_launcher.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 
 import '../config/payment_config.dart';
 import '../theme/danji_colors.dart';
+import '../utils/payment_webview_redirect.dart';
 import '../widgets/danji_app_bar.dart';
 
 /// Android/iOS — Toss Payments v2 결제창 (WebView)
@@ -35,7 +37,10 @@ class TossPaymentWebViewScreen extends StatefulWidget {
 }
 
 class _TossPaymentWebViewScreenState extends State<TossPaymentWebViewScreen> {
+  static const _allowedSegments = {'success', 'fail'};
+
   late final WebViewController _controller;
+  StreamSubscription<String>? _deepLinkSub;
   var _loading = true;
   String? _error;
   var _completed = false;
@@ -45,11 +50,15 @@ class _TossPaymentWebViewScreenState extends State<TossPaymentWebViewScreen> {
   @override
   void initState() {
     super.initState();
+    if (!kIsWeb && defaultTargetPlatform == TargetPlatform.android) {
+      _deepLinkSub = PaymentDeepLinkChannel.stream.listen(_handleRedirectUrl);
+    }
+
     _controller = WebViewController()
       ..setJavaScriptMode(JavaScriptMode.unrestricted)
       ..setNavigationDelegate(
         NavigationDelegate(
-          onPageStarted: (url) => _handleRedirectUrl(url),
+          onPageStarted: _handleRedirectUrl,
           onPageFinished: (_) {
             if (mounted) setState(() => _loading = false);
           },
@@ -61,10 +70,12 @@ class _TossPaymentWebViewScreenState extends State<TossPaymentWebViewScreen> {
               _error = error.description;
             });
           },
-          onNavigationRequest: (request) async {
-            final decision = await _navigationDecisionFor(request.url);
-            return decision;
-          },
+          onNavigationRequest: (request) => PaymentWebViewRedirect.navigationDecision(
+            url: request.url,
+            allowedSegments: _allowedSegments,
+            completed: _completed,
+            onRedirect: _completeWithRedirect,
+          ),
         ),
       )
       ..loadHtmlString(
@@ -73,61 +84,29 @@ class _TossPaymentWebViewScreenState extends State<TossPaymentWebViewScreen> {
       );
   }
 
-  Future<NavigationDecision> _navigationDecisionFor(String url) async {
-    if (_tryHandlePaymentRedirect(url)) {
-      return NavigationDecision.prevent;
-    }
-
-    final uri = Uri.tryParse(url);
-    if (uri == null) return NavigationDecision.navigate;
-
-    if (uri.scheme == 'http' || uri.scheme == 'https') {
-      return NavigationDecision.navigate;
-    }
-
-    try {
-      if (await canLaunchUrl(uri)) {
-        await launchUrl(uri, mode: LaunchMode.externalApplication);
-      }
-    } catch (_) {}
-    return NavigationDecision.prevent;
+  @override
+  void dispose() {
+    _deepLinkSub?.cancel();
+    super.dispose();
   }
 
   void _handleRedirectUrl(String? url) {
-    if (url == null || url.isEmpty) return;
-    _tryHandlePaymentRedirect(url);
+    if (url == null || url.isEmpty || _completed) return;
+    final result = PaymentWebViewRedirect.parse(
+      url,
+      allowedSegments: _allowedSegments,
+    );
+    if (result != null) {
+      _completeWithRedirect(result);
+    }
   }
 
-  bool _tryHandlePaymentRedirect(String url) {
-    if (_completed) return true;
-
-    final uri = Uri.tryParse(url);
-    if (uri == null) return false;
-
-    String? segment;
-    if (uri.scheme == PaymentConfig.appPaymentScheme &&
-        uri.host == 'payment' &&
-        uri.pathSegments.isNotEmpty) {
-      segment = uri.pathSegments.first;
-    } else if (uri.scheme == 'https' &&
-        uri.host == PaymentConfig.appPaymentHost &&
-        uri.pathSegments.length >= 2 &&
-        uri.pathSegments.first == 'payment') {
-      segment = uri.pathSegments[1];
-    }
-
-    if (segment != 'success' && segment != 'fail') {
-      return false;
-    }
-
-    final params = Map<String, String>.from(uri.queryParameters);
-    params['_route'] = segment!;
+  void _completeWithRedirect(PaymentRedirectResult result) {
+    if (_completed) return;
     _completed = true;
-
     if (mounted) {
-      Navigator.of(context).pop(params);
+      Navigator.of(context).pop(result.params);
     }
-    return true;
   }
 
   String _buildPaymentHtml() {
@@ -138,8 +117,8 @@ class _TossPaymentWebViewScreenState extends State<TossPaymentWebViewScreen> {
       'orderId': widget.orderId,
       'orderName': widget.orderName,
       'customerKey': widget.customerKey,
-      'successUrl': PaymentConfig.appPaymentRedirectUrl('success'),
-      'failUrl': PaymentConfig.appPaymentRedirectUrl('fail'),
+      'successUrl': PaymentConfig.mobileAppRedirectUrl('success'),
+      'failUrl': PaymentConfig.mobileAppRedirectUrl('fail'),
       if (widget.customerEmail != null) 'customerEmail': widget.customerEmail,
       if (widget.customerName != null) 'customerName': widget.customerName,
       if (widget.method.isKakaoPay) 'easyPay': 'KAKAOPAY',

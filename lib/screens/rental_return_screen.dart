@@ -7,9 +7,11 @@ import '../models/fuel_level.dart';
 import '../models/reservation.dart';
 import '../services/rental_service.dart';
 import '../services/rental_start_service.dart';
+import '../utils/danji_snackbar.dart';
 import '../widgets/danji_app_bar.dart';
 import '../widgets/fuel_level_selector.dart';
 import '../widgets/rental_pickup_photo_grid.dart';
+import '../widgets/smart_key_door_buttons.dart';
 import '../theme/danji_colors.dart';
 import '../widgets/section_card.dart';
 
@@ -36,6 +38,8 @@ class _RentalReturnScreenState extends State<RentalReturnScreen> {
   List<Uint8List> _photos = [];
   FuelLevel? _fuelLevel;
   bool _isAccident = false;
+  bool _doorLockConfirmed = false;
+  bool _doorLockLoading = false;
 
   @override
   void initState() {
@@ -138,7 +142,62 @@ class _RentalReturnScreenState extends State<RentalReturnScreen> {
     });
   }
 
+  Future<void> _onDoorLock() async {
+    final reservation = _reservation;
+    if (reservation == null || _doorLockConfirmed || _doorLockLoading) return;
+
+    setState(() => _doorLockLoading = true);
+    try {
+      await _service.setDoorLock(
+        reservationId: reservation.id,
+        unlocked: false,
+      );
+      if (!mounted) return;
+
+      DanjiSnackBar.show(
+        context,
+        '${reservation.vehicle?.name ?? '차량'} 문이 잠겼습니다.',
+      );
+
+      final confirmed = await showDialog<bool>(
+        context: context,
+        barrierDismissible: false,
+        builder: (ctx) => AlertDialog(
+          title: const Text('문 잠금 확인'),
+          content: const Text('문이 잠겼는지 확인해 주세요'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('취소'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('확인'),
+            ),
+          ],
+        ),
+      );
+
+      if (confirmed == true && mounted) {
+        setState(() => _doorLockConfirmed = true);
+      }
+    } catch (e) {
+      if (!mounted) return;
+      DanjiSnackBar.show(
+        context,
+        e.toString().replaceFirst('RentalException: ', ''),
+      );
+    } finally {
+      if (mounted) setState(() => _doorLockLoading = false);
+    }
+  }
+
   Future<void> _submit() async {
+    if (!_doorLockConfirmed) {
+      setState(() => _error = '문 잠금 확인 후 반납할 수 있습니다.');
+      return;
+    }
+
     final mileage = int.tryParse(_mileageController.text.trim());
     if (_photos.length < RentalStartService.minPhotos) {
       setState(() => _error =
@@ -360,6 +419,58 @@ class _RentalReturnScreenState extends State<RentalReturnScreen> {
                         ],
                       ),
                     ),
+                    const SizedBox(height: 16),
+                    SectionCard(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          const Text(
+                            '문 잠금',
+                            style: TextStyle(
+                              color: DanjiColors.textPrimary,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                          const SizedBox(height: 6),
+                          const Text(
+                            '반납 전 차량 문을 잠그고 직접 확인해 주세요.',
+                            style: TextStyle(
+                              color: DanjiColors.textSecondary,
+                              height: 1.4,
+                            ),
+                          ),
+                          const SizedBox(height: 14),
+                          SmartKeyDoorButton(
+                            label: '문닫힘',
+                            icon: Icons.lock_rounded,
+                            variant: SmartKeyDoorButtonVariant.lock,
+                            enabled: !_doorLockConfirmed && !_doorLockLoading,
+                            loading: _doorLockLoading,
+                            onPressed: _onDoorLock,
+                          ),
+                          if (_doorLockConfirmed) ...[
+                            const SizedBox(height: 12),
+                            Row(
+                              children: [
+                                Icon(
+                                  Icons.check_circle,
+                                  size: 18,
+                                  color: DanjiColors.buttonBlue,
+                                ),
+                                const SizedBox(width: 6),
+                                Text(
+                                  '문 잠금 확인 완료',
+                                  style: TextStyle(
+                                    color: DanjiColors.buttonBlue,
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ],
+                        ],
+                      ),
+                    ),
                     if (_error != null) ...[
                       const SizedBox(height: 12),
                       Text(
@@ -367,11 +478,25 @@ class _RentalReturnScreenState extends State<RentalReturnScreen> {
                         style: const TextStyle(color: DanjiColors.accentRed),
                       ),
                     ],
+                    if (!_doorLockConfirmed) ...[
+                      const SizedBox(height: 12),
+                      const Text(
+                        '문 잠금 확인 후 반납할 수 있습니다.',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          color: DanjiColors.textMuted,
+                          fontSize: 13,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ],
                     const SizedBox(height: 20),
                     SizedBox(
                       height: 60,
                       child: FilledButton(
-                        onPressed: _submitting ? null : _submit,
+                        onPressed: _doorLockConfirmed && !_submitting
+                            ? _submit
+                            : null,
                         style: FilledButton.styleFrom(
                           backgroundColor: DanjiColors.brandBlue,
                           foregroundColor: Colors.white,
