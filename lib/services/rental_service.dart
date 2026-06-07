@@ -790,11 +790,17 @@ contract_content
         .select('full_name')
         .eq('user_id', reservation.userId)
         .maybeSingle();
+    final renterName = profile?['full_name']?.toString();
     await PushNotificationService.instance.staffRentalStarted(
       complexId: vehicle.complexId,
       reservationId: reservation.id,
       vehicleName: vehicle.name,
-      renterName: profile?['full_name']?.toString(),
+      renterName: renterName,
+    );
+    await PushNotificationService.instance.customerRentalStarted(
+      userId: reservation.userId,
+      reservationId: reservation.id,
+      endAt: reservation.endAt?.toUtc().toIso8601String(),
     );
   }
 

@@ -64,28 +64,56 @@ class _AdminReservationListScreenState
 
   List<Map<String, dynamic>> _applyFilter(_AdminReservationLists data) {
     if (_filter == _ReservationFilter.completed) {
-      return data.completed;
+      return data.completed.where(_isCompletedTabRow).toList();
     }
 
     final rows = data.active;
     switch (_filter) {
       case _ReservationFilter.inUse:
-        return rows.where((r) {
-          final s = _status(r);
-          return s == 'in_use' || s == 'returning';
-        }).toList();
+        return rows.where(_isInProgressTabRow).toList();
       case _ReservationFilter.waiting:
-        return rows
-            .where((r) {
-              final s = _status(r);
-              return s == 'confirmed' || s == 'pending';
-            })
-            .toList();
+        return rows.where(_isScheduledTabRow).toList();
       case _ReservationFilter.conflict:
-        return rows.where((r) => _isConflictRisk(r)).toList();
+        return rows.where(_isBackToBackConflict).toList();
       case _ReservationFilter.all:
       case _ReservationFilter.completed:
         return rows;
+    }
+  }
+
+  Future<void> _confirmForceCancel(Map<String, dynamic> row) async {
+    final id = _reservationId(row);
+    if (id == null) return;
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('강제 취소'),
+        content: const Text(
+          '시작 시간이 지났으나 대여하지 않은 예약을 취소 처리하시겠습니까?',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('닫기'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('강제 취소'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+
+    try {
+      await _admin.forceCancelReservation(id);
+      if (!mounted) return;
+      DanjiSnackBar.show(context, '예약이 강제 취소되었습니다');
+      _reload();
+    } catch (e) {
+      if (!mounted) return;
+      DanjiSnackBar.show(context, friendlyAdminError(e));
     }
   }
 
@@ -125,7 +153,7 @@ class _AdminReservationListScreenState
 
   int _conflictCount(_AdminReservationLists? data) {
     if (data == null) return 0;
-    return data.active.where(_isConflictRisk).length;
+    return data.active.where(_isBackToBackConflict).length;
   }
 
   @override
@@ -253,11 +281,20 @@ class _AdminReservationListScreenState
             won: _won,
           );
         }
+        final isNoShowSuspect = _isNoShowSuspect(row);
+        final isBackToBack = _isBackToBackConflict(row);
+
         return _ReservationCard(
           row: row,
           dateTime: _dateTime,
           timeOnly: _timeOnly,
           won: _won,
+          enableConflictSwipe:
+              _filter == _ReservationFilter.conflict && isBackToBack,
+          showConflictHighlight: isBackToBack,
+          showNoShowSuspect: isNoShowSuspect,
+          showForceCancel: isNoShowSuspect,
+          onForceCancel: () => _confirmForceCancel(row),
           showForceComplete: _isStuckReservation(row),
           onForceComplete: () => _confirmForceComplete(row),
         );
@@ -411,8 +448,8 @@ class _CompletedReservationCard extends StatelessWidget {
           ),
           const SizedBox(height: 6),
           Text(
-            '대여기간: ${start != null ? dateTime.format(start) : '-'} ~ '
-            '${end != null ? dateTime.format(end) : '-'}',
+            '대여기간: ${_formatOptionalDateTime(dateTime, start)} ~ '
+            '${_formatOptionalDateTime(dateTime, end)}',
             style: const TextStyle(
               color: DanjiColors.textSecondary,
               height: 1.4,
@@ -424,11 +461,16 @@ class _CompletedReservationCard extends StatelessWidget {
   }
 }
 
-class _ReservationCard extends StatelessWidget {
+class _ReservationCard extends StatefulWidget {
   final Map<String, dynamic> row;
   final DateFormat dateTime;
   final DateFormat timeOnly;
   final NumberFormat won;
+  final bool enableConflictSwipe;
+  final bool showConflictHighlight;
+  final bool showNoShowSuspect;
+  final bool showForceCancel;
+  final VoidCallback? onForceCancel;
   final bool showForceComplete;
   final VoidCallback? onForceComplete;
 
@@ -437,13 +479,28 @@ class _ReservationCard extends StatelessWidget {
     required this.dateTime,
     required this.timeOnly,
     required this.won,
+    this.enableConflictSwipe = false,
+    this.showConflictHighlight = false,
+    this.showNoShowSuspect = false,
+    this.showForceCancel = false,
+    this.onForceCancel,
     this.showForceComplete = false,
     this.onForceComplete,
   });
 
   @override
+  State<_ReservationCard> createState() => _ReservationCardState();
+}
+
+class _ReservationCardState extends State<_ReservationCard> {
+  bool _showNextReservation = false;
+
+  @override
   Widget build(BuildContext context) {
-    final conflict = _isConflictRisk(row);
+    final row = widget.row;
+    final conflict = widget.showConflictHighlight;
+    final canSwipe =
+        widget.enableConflictSwipe && _hasNextReservationInfo(row);
     final vehicleName = _str(row, 'vehicle_name') ?? '차량';
     final carNumber = _str(row, 'car_number');
     final status = _status(row);
@@ -451,111 +508,344 @@ class _ReservationCard extends StatelessWidget {
     final end = _parseDate(row['end_at']);
     final nextStart = _parseDate(row['next_start_at']);
 
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: SectionCard.cardColor,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(
-          color: conflict ? DanjiColors.accentRed : DanjiColors.border,
-          width: conflict ? 2 : 1,
-        ),
-        boxShadow: const [
-          BoxShadow(
-            color: Color(0x0A000000),
-            blurRadius: 8,
-            offset: Offset(0, 2),
+    final cardBody = AnimatedSwitcher(
+      duration: const Duration(milliseconds: 220),
+      child: _showNextReservation && canSwipe
+          ? _NextReservationPanel(
+              key: const ValueKey('next'),
+              row: row,
+              dateTime: widget.dateTime,
+            )
+          : _CurrentReservationPanel(
+              key: const ValueKey('current'),
+              vehicleName: vehicleName,
+              carNumber: carNumber,
+              status: status,
+              row: row,
+              won: widget.won,
+              start: start,
+              end: end,
+              nextStart: nextStart,
+              dateTime: widget.dateTime,
+              timeOnly: widget.timeOnly,
+              conflict: conflict,
+              showNoShowSuspect: widget.showNoShowSuspect,
+              showForceCancel: widget.showForceCancel,
+              onForceCancel: widget.onForceCancel,
+              showForceComplete: widget.showForceComplete,
+              onForceComplete: widget.onForceComplete,
+            ),
+    );
+
+    return GestureDetector(
+      onHorizontalDragEnd: canSwipe
+          ? (details) {
+              final velocity = details.primaryVelocity ?? 0;
+              if (velocity < -120) {
+                setState(() => _showNextReservation = true);
+              } else if (velocity > 120) {
+                setState(() => _showNextReservation = false);
+              }
+            }
+          : null,
+      child: Container(
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: SectionCard.cardColor,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(
+            color: conflict ? DanjiColors.accentRed : DanjiColors.border,
+            width: conflict ? 2 : 1,
           ),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Expanded(
-                child: Text(
-                  vehicleName,
-                  style: const TextStyle(
-                    fontWeight: FontWeight.w800,
-                    fontSize: 16,
-                    color: DanjiColors.textPrimary,
-                  ),
-                ),
-              ),
-              _StatusBadge(status: status),
-            ],
-          ),
-          if (carNumber != null && carNumber.isNotEmpty) ...[
-            const SizedBox(height: 4),
-            Text(
-              carNumber,
-              style: const TextStyle(color: DanjiColors.textSecondary),
+          boxShadow: const [
+            BoxShadow(
+              color: Color(0x0A000000),
+              blurRadius: 8,
+              offset: Offset(0, 2),
             ),
           ],
-          const SizedBox(height: 8),
-          _ReservationRenterSummary(
-            row: row,
-            won: won,
-            renterName: AdminReservationRow.resolveRenterDisplayName(
-              directRenterName: _str(row, 'renter_name'),
-            ),
-            totalPrice: (row['total_price'] as num?)?.toInt() ?? 0,
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            cardBody,
+            if (canSwipe) ...[
+              const SizedBox(height: 10),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  _SwipeDot(active: !_showNextReservation),
+                  const SizedBox(width: 6),
+                  _SwipeDot(active: _showNextReservation),
+                ],
+              ),
+              const SizedBox(height: 2),
+              Text(
+                _showNextReservation ? '← 스와이프: 현재 예약' : '스와이프: 다음 예약자 →',
+                textAlign: TextAlign.center,
+                style: const TextStyle(
+                  color: DanjiColors.textMuted,
+                  fontSize: 11,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _SwipeDot extends StatelessWidget {
+  final bool active;
+
+  const _SwipeDot({required this.active});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 7,
+      height: 7,
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        color: active ? DanjiColors.buttonBlue : DanjiColors.border,
+      ),
+    );
+  }
+}
+
+class _NoShowSuspectBadge extends StatelessWidget {
+  const _NoShowSuspectBadge();
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(left: 8),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+        decoration: BoxDecoration(
+          color: const Color(0xFFFFF3E0),
+          borderRadius: BorderRadius.circular(6),
+          border: Border.all(
+            color: const Color(0xFFFF6D00).withValues(alpha: 0.65),
+            width: 1.2,
           ),
+        ),
+        child: const Text(
+          '노쇼의심',
+          style: TextStyle(
+            color: Color(0xFFE65100),
+            fontSize: 12,
+            fontWeight: FontWeight.w800,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _CurrentReservationPanel extends StatelessWidget {
+  final String vehicleName;
+  final String? carNumber;
+  final String status;
+  final Map<String, dynamic> row;
+  final NumberFormat won;
+  final DateTime? start;
+  final DateTime? end;
+  final DateTime? nextStart;
+  final DateFormat dateTime;
+  final DateFormat timeOnly;
+  final bool conflict;
+  final bool showNoShowSuspect;
+  final bool showForceCancel;
+  final VoidCallback? onForceCancel;
+  final bool showForceComplete;
+  final VoidCallback? onForceComplete;
+
+  const _CurrentReservationPanel({
+    super.key,
+    required this.vehicleName,
+    required this.carNumber,
+    required this.status,
+    required this.row,
+    required this.won,
+    required this.start,
+    required this.end,
+    required this.nextStart,
+    required this.dateTime,
+    required this.timeOnly,
+    required this.conflict,
+    this.showNoShowSuspect = false,
+    this.showForceCancel = false,
+    this.onForceCancel,
+    required this.showForceComplete,
+    this.onForceComplete,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Expanded(
+              child: Text(
+                vehicleName,
+                style: const TextStyle(
+                  fontWeight: FontWeight.w800,
+                  fontSize: 16,
+                  color: DanjiColors.textPrimary,
+                ),
+              ),
+            ),
+            _StatusBadge(status: status),
+            if (showNoShowSuspect) const _NoShowSuspectBadge(),
+          ],
+        ),
+        if (carNumber != null && carNumber!.isNotEmpty) ...[
+          const SizedBox(height: 4),
+          Text(
+            carNumber!,
+            style: const TextStyle(color: DanjiColors.textSecondary),
+          ),
+        ],
+        const SizedBox(height: 8),
+        _ReservationRenterSummary(
+          row: row,
+          won: won,
+          renterName: AdminReservationRow.resolveRenterDisplayName(
+            directRenterName: _str(row, 'renter_name'),
+          ),
+          totalPrice: (row['total_price'] as num?)?.toInt() ?? 0,
+        ),
+        const SizedBox(height: 6),
+        Text(
+          '${_formatOptionalDateTime(dateTime, start)} ~ '
+          '${_formatOptionalDateTime(dateTime, end)}',
+          style: const TextStyle(
+            color: DanjiColors.textSecondary,
+            height: 1.4,
+          ),
+        ),
+        if (nextStart != null) ...[
           const SizedBox(height: 6),
           Text(
-            '${start != null ? dateTime.format(start) : '-'} ~ '
-            '${end != null ? dateTime.format(end) : '-'}',
+            '다음예약: ${timeOnly.format(nextStart!)}',
             style: const TextStyle(
               color: DanjiColors.textSecondary,
-              height: 1.4,
+              fontSize: 13,
             ),
           ),
-          if (nextStart != null) ...[
-            const SizedBox(height: 6),
-            Text(
-              '다음예약: ${timeOnly.format(nextStart)}',
-              style: const TextStyle(
-                color: DanjiColors.textSecondary,
+        ],
+        if (conflict) ...[
+          const SizedBox(height: 10),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+            decoration: BoxDecoration(
+              color: const Color(0xFFFFF0F0),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: const Text(
+              '⚠️ 충돌위험',
+              style: TextStyle(
+                color: DanjiColors.accentRed,
+                fontWeight: FontWeight.w800,
                 fontSize: 13,
               ),
             ),
-          ],
-          if (conflict) ...[
-            const SizedBox(height: 10),
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-              decoration: BoxDecoration(
-                color: const Color(0xFFFFF0F0),
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: const Text(
-                '⚠️ 충돌위험',
-                style: TextStyle(
-                  color: DanjiColors.accentRed,
-                  fontWeight: FontWeight.w800,
-                  fontSize: 13,
-                ),
-              ),
-            ),
-          ],
-          if (showForceComplete && onForceComplete != null) ...[
-            const SizedBox(height: 12),
-            Align(
-              alignment: Alignment.centerRight,
-              child: OutlinedButton(
-                onPressed: onForceComplete,
-                style: OutlinedButton.styleFrom(
-                  foregroundColor: DanjiColors.accentRed,
-                  side: const BorderSide(color: DanjiColors.accentRed),
-                ),
-                child: const Text('강제 완료'),
-              ),
-            ),
-          ],
+          ),
         ],
-      ),
+        if (showForceCancel && onForceCancel != null) ...[
+          const SizedBox(height: 12),
+          Align(
+            alignment: Alignment.centerRight,
+            child: OutlinedButton(
+              onPressed: onForceCancel,
+              style: OutlinedButton.styleFrom(
+                foregroundColor: const Color(0xFFE65100),
+                side: const BorderSide(color: Color(0xFFE65100)),
+              ),
+              child: const Text('강제 취소'),
+            ),
+          ),
+        ],
+        if (showForceComplete && onForceComplete != null) ...[
+          const SizedBox(height: 12),
+          Align(
+            alignment: Alignment.centerRight,
+            child: OutlinedButton(
+              onPressed: onForceComplete,
+              style: OutlinedButton.styleFrom(
+                foregroundColor: DanjiColors.accentRed,
+                side: const BorderSide(color: DanjiColors.accentRed),
+              ),
+              child: const Text('강제 완료'),
+            ),
+          ),
+        ],
+      ],
+    );
+  }
+}
+
+class _NextReservationPanel extends StatelessWidget {
+  final Map<String, dynamic> row;
+  final DateFormat dateTime;
+
+  const _NextReservationPanel({
+    super.key,
+    required this.row,
+    required this.dateTime,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final nextStart = _parseDate(row['next_start_at']);
+    final nextName = AdminReservationRow.resolveRenterDisplayName(
+      directRenterName: _str(row, 'next_renter_name'),
+    );
+    final nextPhone = _renterPhoneLabel(row, phoneKey: 'next_renter_phone');
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text(
+          '다음 예약자',
+          style: TextStyle(
+            fontWeight: FontWeight.w800,
+            fontSize: 16,
+            color: DanjiColors.textPrimary,
+          ),
+        ),
+        const SizedBox(height: 10),
+        Text(
+          '이름: $nextName',
+          style: const TextStyle(
+            color: DanjiColors.textSecondary,
+            height: 1.4,
+          ),
+        ),
+        const SizedBox(height: 6),
+        Text(
+          '전화번호: $nextPhone',
+          style: const TextStyle(
+            color: DanjiColors.textSecondary,
+            height: 1.4,
+          ),
+        ),
+        const SizedBox(height: 6),
+        Text(
+          '예약 시작: ${_formatOptionalDateTime(dateTime, nextStart)}',
+          style: const TextStyle(
+            color: DanjiColors.textPrimary,
+            fontWeight: FontWeight.w700,
+            height: 1.4,
+          ),
+        ),
+      ],
     );
   }
 }
@@ -656,11 +946,60 @@ class _StatusBadge extends StatelessWidget {
   }
 }
 
-String _renterPhoneLabel(Map<String, dynamic> row) {
-  final phone = _str(row, 'renter_phone');
+String _formatOptionalDateTime(DateFormat format, DateTime? value) {
+  if (value == null) return '-';
+  return format.format(value);
+}
+
+String _renterPhoneLabel(
+  Map<String, dynamic> row, {
+  String phoneKey = 'renter_phone',
+}) {
+  final phone = _str(row, phoneKey);
   if (phone != null && phone != '미등록') return phone;
   return '미등록';
 }
+
+bool _hasNextReservationInfo(Map<String, dynamic> row) {
+  return _parseDate(row['next_start_at']) != null ||
+      _str(row, 'next_renter_name') != null ||
+      _str(row, 'next_renter_phone') != null;
+}
+
+bool _isNoShowSuspect(Map<String, dynamic> row) {
+  if (_status(row) != 'confirmed') return false;
+  final start = _parseDate(row['start_at']);
+  if (start == null) return false;
+  return !start.isAfter(DateTime.now());
+}
+
+bool _isInProgressTabRow(Map<String, dynamic> row) {
+  final status = _status(row);
+  if (status == 'in_use') return true;
+  return _isNoShowSuspect(row);
+}
+
+bool _isScheduledTabRow(Map<String, dynamic> row) {
+  if (_status(row) != 'confirmed') return false;
+  final start = _parseDate(row['start_at']);
+  if (start == null) return false;
+  return start.isAfter(DateTime.now());
+}
+
+bool _isBackToBackConflict(Map<String, dynamic> row) {
+  if (_status(row) != 'in_use') return false;
+  if (_isNoShowSuspect(row)) return false;
+
+  final end = _parseDate(row['end_at']);
+  final nextStart = _parseDate(row['next_start_at']);
+  if (end == null || nextStart == null) return false;
+
+  return end.toUtc().millisecondsSinceEpoch ==
+      nextStart.toUtc().millisecondsSinceEpoch;
+}
+
+bool _isCompletedTabRow(Map<String, dynamic> row) =>
+    _status(row) == 'completed';
 
 String? _str(Map<String, dynamic> row, String key) {
   final v = row[key];
@@ -674,11 +1013,6 @@ String? _reservationId(Map<String, dynamic> row) =>
 
 String _status(Map<String, dynamic> row) =>
     _str(row, 'status')?.toLowerCase() ?? '';
-
-bool _isConflictRisk(Map<String, dynamic> row) {
-  final v = row['is_conflict_risk'];
-  return v == true || v == 'true' || v == 1;
-}
 
 bool _isStuckReservation(Map<String, dynamic> row) {
   final status = _status(row);

@@ -120,6 +120,20 @@ class PushNotificationService {
         },
       );
 
+  Future<void> customerRentalStarted({
+    required String userId,
+    required String reservationId,
+    String? endAt,
+  }) =>
+      dispatch(
+        'customer_rental_started',
+        payload: {
+          'userId': userId,
+          'reservationId': reservationId,
+          if (endAt != null) 'endAt': endAt,
+        },
+      );
+
   Future<void> customerPaymentCompleted({
     required String userId,
     required String reservationId,

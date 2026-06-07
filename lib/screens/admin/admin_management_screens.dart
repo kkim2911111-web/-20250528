@@ -629,12 +629,10 @@ class _AdminReturnInspectionScreenState
               showCompleteButton: true,
               onComplete: _complete,
             ),
-            _ReturnInspectionListTab(
+            _CompletedReturnInspectionTab(
               future: _completedFuture,
-              emptyMessage: '검수 완료된 반납 차량이 없습니다.',
               dateFormat: _date,
               admin: _admin,
-              showCompleteButton: false,
             ),
           ],
         ),
@@ -644,6 +642,86 @@ class _AdminReturnInspectionScreenState
 }
 
 /// 시간 초과 자동 반납(return_type=auto) — 사고(빨강)와 구분되는 주황 배지
+class _SecondDriverBadge extends StatelessWidget {
+  const _SecondDriverBadge();
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(left: 8),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+        decoration: BoxDecoration(
+          color: DanjiColors.skyLight,
+          borderRadius: BorderRadius.circular(6),
+          border: Border.all(color: DanjiColors.buttonBlue.withValues(alpha: 0.45)),
+        ),
+        child: const Text(
+          '2운전자',
+          style: TextStyle(
+            color: DanjiColors.buttonBlue,
+            fontSize: 12,
+            fontWeight: FontWeight.w800,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+void _showSecondDriverInfoSheet(
+  BuildContext context,
+  AdminReservationRow row,
+) {
+  final license = row.secondDriverLicense?.trim();
+  showModalBottomSheet<void>(
+    context: context,
+    backgroundColor: DanjiColors.surface,
+    shape: const RoundedRectangleBorder(
+      borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+    ),
+    builder: (ctx) {
+      return SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(20, 16, 20, 24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                '제2운전자 정보',
+                style: TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.w800,
+                  color: DanjiColors.textPrimary,
+                ),
+              ),
+              const SizedBox(height: 16),
+              Text(
+                '이름: ${row.secondDriverName?.trim().isNotEmpty == true ? row.secondDriverName!.trim() : '-'}',
+                style: const TextStyle(
+                  fontSize: 15,
+                  color: DanjiColors.textPrimary,
+                  height: 1.45,
+                ),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                '연락처(면허번호): ${license != null && license.isNotEmpty ? license : '-'}',
+                style: const TextStyle(
+                  fontSize: 15,
+                  color: DanjiColors.textPrimary,
+                  height: 1.45,
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    },
+  );
+}
+
 class _NoShowReturnBadge extends StatelessWidget {
   const _NoShowReturnBadge();
 
@@ -685,12 +763,213 @@ class _NoShowReturnBadge extends StatelessWidget {
   }
 }
 
+enum _InspectionDateFilterKind { all, inspectionDate, reservationDate }
+
+class _CompletedReturnInspectionTab extends StatefulWidget {
+  final Future<List<AdminReservationRow>>? future;
+  final DateFormat dateFormat;
+  final AdminService admin;
+
+  const _CompletedReturnInspectionTab({
+    required this.future,
+    required this.dateFormat,
+    required this.admin,
+  });
+
+  @override
+  State<_CompletedReturnInspectionTab> createState() =>
+      _CompletedReturnInspectionTabState();
+}
+
+class _CompletedReturnInspectionTabState
+    extends State<_CompletedReturnInspectionTab> {
+  _InspectionDateFilterKind _filterKind = _InspectionDateFilterKind.all;
+  DateTime? _filterDate;
+
+  Future<void> _pickFilterDate() async {
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: _filterDate ?? DateTime.now(),
+      firstDate: DateTime(2025),
+      lastDate: DateTime.now().add(const Duration(days: 365)),
+    );
+    if (picked == null || !mounted) return;
+    setState(() {
+      _filterDate = DateTime(picked.year, picked.month, picked.day);
+    });
+  }
+
+  List<AdminReservationRow> _applyFilter(List<AdminReservationRow> rows) {
+    if (_filterKind == _InspectionDateFilterKind.all || _filterDate == null) {
+      return rows;
+    }
+
+    bool sameDay(DateTime? value) {
+      if (value == null) return false;
+      final local = value.toLocal();
+      return local.year == _filterDate!.year &&
+          local.month == _filterDate!.month &&
+          local.day == _filterDate!.day;
+    }
+
+    return rows.where((row) {
+      switch (_filterKind) {
+        case _InspectionDateFilterKind.inspectionDate:
+          return sameDay(row.updatedAt);
+        case _InspectionDateFilterKind.reservationDate:
+          return sameDay(row.startAt);
+        case _InspectionDateFilterKind.all:
+          return true;
+      }
+    }).toList();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final dateLabel = _filterDate == null
+        ? '날짜 선택'
+        : DateFormat('yyyy-MM-dd').format(_filterDate!);
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(20, 12, 20, 0),
+          child: Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            children: [
+              _InspectionFilterChip(
+                label: '전체',
+                selected: _filterKind == _InspectionDateFilterKind.all,
+                onTap: () => setState(() {
+                  _filterKind = _InspectionDateFilterKind.all;
+                  _filterDate = null;
+                }),
+              ),
+              _InspectionFilterChip(
+                label: '검수일자',
+                selected:
+                    _filterKind == _InspectionDateFilterKind.inspectionDate,
+                onTap: () => setState(() {
+                  _filterKind = _InspectionDateFilterKind.inspectionDate;
+                  _filterDate ??= DateTime.now();
+                }),
+              ),
+              _InspectionFilterChip(
+                label: '예약일자',
+                selected:
+                    _filterKind == _InspectionDateFilterKind.reservationDate,
+                onTap: () => setState(() {
+                  _filterKind = _InspectionDateFilterKind.reservationDate;
+                  _filterDate ??= DateTime.now();
+                }),
+              ),
+              if (_filterKind != _InspectionDateFilterKind.all)
+                OutlinedButton.icon(
+                  onPressed: _pickFilterDate,
+                  icon: const Icon(Icons.calendar_today_outlined, size: 16),
+                  label: Text(dateLabel),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: DanjiColors.buttonBlue,
+                    side: const BorderSide(color: DanjiColors.buttonBlue),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 8,
+                    ),
+                  ),
+                ),
+            ],
+          ),
+        ),
+        Expanded(
+          child: FutureBuilder<List<AdminReservationRow>>(
+            future: widget.future,
+            builder: (context, snap) {
+              if (snap.connectionState == ConnectionState.waiting) {
+                return const Center(child: CircularProgressIndicator());
+              }
+              if (snap.hasError) {
+                return Center(child: Text(friendlyAdminError(snap.error!)));
+              }
+              final filtered = _applyFilter(snap.data ?? []);
+              if (filtered.isEmpty) {
+                return const Center(
+                  child: Text('검수 완료된 반납 차량이 없습니다.'),
+                );
+              }
+              return ListView.separated(
+                padding: const EdgeInsets.all(20),
+                itemCount: filtered.length,
+                separatorBuilder: (_, __) => const SizedBox(height: 10),
+                itemBuilder: (context, index) {
+                  final row = filtered[index];
+                  return _ReturnInspectionCard(
+                    row: row,
+                    dateFormat: widget.dateFormat,
+                    admin: widget.admin,
+                    showCompleteButton: false,
+                    showInspectionDate: true,
+                  );
+                },
+              );
+            },
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _InspectionFilterChip extends StatelessWidget {
+  final String label;
+  final bool selected;
+  final VoidCallback onTap;
+
+  const _InspectionFilterChip({
+    required this.label,
+    required this.selected,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: selected ? DanjiColors.buttonBlue : DanjiColors.surface,
+      borderRadius: BorderRadius.circular(20),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(20),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(
+              color: selected ? DanjiColors.buttonBlue : DanjiColors.border,
+            ),
+          ),
+          child: Text(
+            label,
+            style: TextStyle(
+              fontWeight: FontWeight.w700,
+              fontSize: 13,
+              color: selected ? Colors.white : DanjiColors.textPrimary,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 class _ReturnInspectionListTab extends StatelessWidget {
   final Future<List<AdminReservationRow>>? future;
   final String emptyMessage;
   final DateFormat dateFormat;
   final AdminService admin;
   final bool showCompleteButton;
+  final bool showInspectionDate;
   final Future<void> Function(AdminReservationRow row)? onComplete;
 
   const _ReturnInspectionListTab({
@@ -699,6 +978,7 @@ class _ReturnInspectionListTab extends StatelessWidget {
     required this.dateFormat,
     required this.admin,
     required this.showCompleteButton,
+    this.showInspectionDate = false,
     this.onComplete,
   });
 
@@ -728,6 +1008,7 @@ class _ReturnInspectionListTab extends StatelessWidget {
               dateFormat: dateFormat,
               admin: admin,
               showCompleteButton: showCompleteButton,
+              showInspectionDate: showInspectionDate,
               onComplete: showCompleteButton && onComplete != null
                   ? () => onComplete!(row)
                   : null,
@@ -745,6 +1026,7 @@ class _ReturnInspectionCard extends StatefulWidget {
   final VoidCallback? onComplete;
   final AdminService admin;
   final bool showCompleteButton;
+  final bool showInspectionDate;
 
   const _ReturnInspectionCard({
     required this.row,
@@ -752,6 +1034,7 @@ class _ReturnInspectionCard extends StatefulWidget {
     required this.admin,
     this.onComplete,
     this.showCompleteButton = true,
+    this.showInspectionDate = false,
   });
 
   @override
@@ -851,6 +1134,18 @@ class _ReturnInspectionCardState extends State<_ReturnInspectionCard> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          Material(
+            color: Colors.transparent,
+            child: InkWell(
+              onTap: r.hasSecondDriver
+                  ? () => _showSecondDriverInfoSheet(context, r)
+                  : null,
+              borderRadius: BorderRadius.circular(12),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(vertical: 2),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
           Row(
             crossAxisAlignment: CrossAxisAlignment.center,
             children: [
@@ -863,6 +1158,7 @@ class _ReturnInspectionCardState extends State<_ReturnInspectionCard> {
                   ),
                 ),
               ),
+              if (r.hasSecondDriver) const _SecondDriverBadge(),
               if (r.isNoShowReturn) const _NoShowReturnBadge(),
               if (r.isAccident) ...[
                 const SizedBox(width: 8),
@@ -894,6 +1190,16 @@ class _ReturnInspectionCardState extends State<_ReturnInspectionCard> {
             '${r.endAt != null ? widget.dateFormat.format(r.endAt!) : '-'}',
             style: const TextStyle(color: DanjiColors.textSecondary),
           ),
+          if (widget.showInspectionDate) ...[
+            const SizedBox(height: 6),
+            Text(
+              '검수 완료: ${r.updatedAt != null ? widget.dateFormat.format(r.updatedAt!) : '-'}',
+              style: const TextStyle(
+                color: DanjiColors.textPrimary,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ],
           const SizedBox(height: 10),
           Text(
             '예약번호: ${r.reservationNumberLabel}',
@@ -906,6 +1212,22 @@ class _ReturnInspectionCardState extends State<_ReturnInspectionCard> {
           Text(
             '임차인: ${r.renterDisplayName}',
             style: const TextStyle(color: DanjiColors.textSecondary),
+          ),
+          if (r.hasSecondDriver) ...[
+            const SizedBox(height: 4),
+            const Text(
+              '탭하여 제2운전자 정보 보기',
+              style: TextStyle(
+                color: DanjiColors.buttonBlue,
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ],
+                  ],
+                ),
+              ),
+            ),
           ),
           const SizedBox(height: 10),
           OutlinedButton.icon(

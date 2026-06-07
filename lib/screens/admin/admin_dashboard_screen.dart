@@ -10,6 +10,7 @@ import '../../widgets/section_card.dart';
 import 'admin_complex_info_screen.dart';
 import 'admin_license_review_screen.dart';
 import 'admin_management_screens.dart';
+import 'admin_notice_screen.dart';
 import 'admin_reservation_list_screen.dart';
 import 'admin_vehicle_form_screen.dart';
 
@@ -33,6 +34,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
   final _admin = AdminService();
   final _auth = AuthService.instance;
   final _won = NumberFormat('#,###');
+  final _dateLineFormat = DateFormat('M월 d일 (E)', 'ko_KR');
 
   Future<BranchStats>? _statsFuture;
 
@@ -114,7 +116,29 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                   ),
                 ],
               ),
-              const SizedBox(height: 12),
+              const SizedBox(height: 10),
+              FutureBuilder<BranchStats>(
+                future: _statsFuture,
+                builder: (context, snap) {
+                  final stats = snap.data ?? BranchStats.empty;
+                  final dateLabel = _dateLineFormat.format(DateTime.now());
+                  return SectionCard(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                    child: Text(
+                      '$dateLabel  |  오늘 ₩${_won.format(stats.todaySales)}  |  '
+                      '이번달 ₩${_won.format(stats.monthSales)}',
+                      style: const TextStyle(
+                        color: DanjiColors.textPrimary,
+                        fontWeight: FontWeight.w700,
+                        fontSize: 13,
+                        height: 1.35,
+                      ),
+                    ),
+                  );
+                },
+              ),
+              const SizedBox(height: 10),
               FutureBuilder<BranchStats>(
                 future: _statsFuture,
                 builder: (context, snap) {
@@ -160,37 +184,6 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                   );
                 },
               ),
-              const SizedBox(height: 8),
-              SectionCard(
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                child: Row(
-                  children: [
-                    const Text(
-                      '이번 달 매출',
-                      style: TextStyle(
-                        color: DanjiColors.textSecondary,
-                        fontWeight: FontWeight.w600,
-                        fontSize: 13,
-                      ),
-                    ),
-                    const Spacer(),
-                    FutureBuilder<BranchStats>(
-                      future: _statsFuture,
-                      builder: (context, snap) {
-                        final amount = snap.data?.monthSales ?? 0;
-                        return Text(
-                          '₩${_won.format(amount)}',
-                          style: const TextStyle(
-                            color: DanjiColors.textPrimary,
-                            fontWeight: FontWeight.w800,
-                            fontSize: 16,
-                          ),
-                        );
-                      },
-                    ),
-                  ],
-                ),
-              ),
               const SizedBox(height: 20),
             const Text(
               '관리 메뉴',
@@ -201,6 +194,12 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
               ),
             ),
             const SizedBox(height: 8),
+            _MenuTile(
+              icon: Icons.campaign_outlined,
+              title: '공지사항',
+              subtitle: '단지·전체 공지 등록·수정',
+              onTap: () => _open(AdminNoticeScreen(profile: profile)),
+            ),
             _MenuTile(
               icon: Icons.apartment_outlined,
               title: '사업자 정보',

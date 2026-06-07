@@ -5,6 +5,7 @@ import 'package:image_picker/image_picker.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../models/license_review_item.dart';
+import '../models/notice.dart';
 import '../models/staff_profile.dart';
 import '../repositories/staff_repository.dart';
 import '../supabase_client.dart';
@@ -200,20 +201,42 @@ class AdminService {
         .lt('start_time', dayEnd.toIso8601String());
 
     final monthStart = DateTime(now.year, now.month, 1).toUtc();
-    final salesRows = await supabase
+    const salesStatuses = ['confirmed', 'in_use', 'returned', 'completed'];
+    final dayStartIso = dayStart.toIso8601String();
+    final dayEndIso = dayEnd.toIso8601String();
+    final monthStartIso = monthStart.toIso8601String();
+    final todaySalesFilter =
+        'and(start_time.gte."$dayStartIso",start_time.lt."$dayEndIso"),'
+        'and(start_at.gte."$dayStartIso",start_at.lt."$dayEndIso")';
+    final monthSalesFilter =
+        'and(start_time.gte."$monthStartIso"),and(start_at.gte."$monthStartIso")';
+
+    final todaySalesRows = await supabase
         .from('reservations')
         .select('total_price')
         .inFilter('vehicle_id', vehicleIds)
-        .inFilter('status', ['confirmed', 'in_use', 'returned', 'completed'])
-        .gte('start_time', monthStart.toIso8601String());
+        .inFilter('status', salesStatuses)
+        .or(todaySalesFilter);
+
+    final monthSalesRows = await supabase
+        .from('reservations')
+        .select('total_price')
+        .inFilter('vehicle_id', vehicleIds)
+        .inFilter('status', salesStatuses)
+        .or(monthSalesFilter);
 
     var available = 0;
     for (final v in vehicles) {
       if (v['is_available'] == true) available++;
     }
 
+    var todaySales = 0;
+    for (final r in todaySalesRows as List) {
+      todaySales += (r['total_price'] as num?)?.toInt() ?? 0;
+    }
+
     var monthSales = 0;
-    for (final r in salesRows as List) {
+    for (final r in monthSalesRows as List) {
       monthSales += (r['total_price'] as num?)?.toInt() ?? 0;
     }
 
@@ -222,6 +245,7 @@ class AdminService {
       availableVehicles: available - (inUseRows as List).length,
       inOperation: (inUseRows).length,
       todayReservations: (todayRows as List).length,
+      todaySales: todaySales,
       monthSales: monthSales,
     );
   }
@@ -549,8 +573,11 @@ class AdminService {
 
     const baseSelect =
         'id, user_id, status, total_price, start_at, start_time, end_at, end_time, '
-        'return_type, is_accident, accident_note, pickup_photos, return_photos, '
-        'vehicles(model_name, car_number)';
+        'returned_at, updated_at, return_type, second_driver_name, '
+        'second_driver_license, is_accident, accident_note, pickup_photos, '
+        'return_photos, vehicles(model_name, car_number)';
+
+    final orderColumn = status == 'completed' ? 'updated_at' : 'returned_at';
 
     Future<List> queryReservations(String select) async {
       try {
@@ -559,7 +586,7 @@ class AdminService {
             .select(select)
             .inFilter('vehicle_id', ids)
             .eq('status', status)
-            .order('returned_at', ascending: false);
+            .order(orderColumn, ascending: false);
       } on PostgrestException catch (e) {
         if (!_isRetryableVehicleColumnError(e)) rethrow;
         return await supabase
@@ -793,6 +820,16 @@ class AdminService {
     }
   }
 
+  Future<void> forceCancelReservation(String reservationId) async {
+    try {
+      await supabase.rpc('cancel_reservation_for_staff', params: {
+        'p_reservation_id': reservationId,
+      });
+    } on PostgrestException catch (e) {
+      throw AdminException(mapAdminPostgrestError(e));
+    }
+  }
+
   Future<List<AdminReservationRow>> fetchOperatingReservations(
     String complexId,
   ) async {
@@ -970,6 +1007,67 @@ class AdminService {
       throw AdminException(mapAdminPostgrestError(e));
     }
   }
+
+  /// 공지사항 목록 (본인 단지 + 전체 공지)
+  Future<List<Notice>> fetchNotices(String complexId) async {
+    final rows = await supabase
+        .from('notices')
+        .select('id, complex_id, title, content, is_active, created_at')
+        .or('complex_id.is.null,complex_id.eq.$complexId')
+        .order('created_at', ascending: false);
+
+    return (rows as List)
+        .map((e) => Notice.fromMap(Map<String, dynamic>.from(e)))
+        .toList();
+  }
+
+  Future<Notice> createNotice({
+    required String complexId,
+    required String title,
+    required String content,
+    bool isGlobal = false,
+    bool isActive = true,
+  }) async {
+    final row = await supabase
+        .from('notices')
+        .insert({
+          'complex_id': isGlobal ? null : complexId,
+          'title': title.trim(),
+          'content': content.trim(),
+          'is_active': isActive,
+        })
+        .select('id, complex_id, title, content, is_active, created_at')
+        .single();
+
+    return Notice.fromMap(Map<String, dynamic>.from(row));
+  }
+
+  Future<Notice> updateNotice({
+    required String noticeId,
+    required String title,
+    required String content,
+    required bool isActive,
+    bool isGlobal = false,
+    required String complexId,
+  }) async {
+    final row = await supabase
+        .from('notices')
+        .update({
+          'complex_id': isGlobal ? null : complexId,
+          'title': title.trim(),
+          'content': content.trim(),
+          'is_active': isActive,
+        })
+        .eq('id', noticeId)
+        .select('id, complex_id, title, content, is_active, created_at')
+        .single();
+
+    return Notice.fromMap(Map<String, dynamic>.from(row));
+  }
+
+  Future<void> deleteNotice(String noticeId) async {
+    await supabase.from('notices').delete().eq('id', noticeId);
+  }
 }
 
 String mapAdminPostgrestError(PostgrestException error) {
@@ -1024,6 +1122,9 @@ String mapAdminPostgrestError(PostgrestException error) {
   }
   if (msg.contains('not_eligible_for_force_complete')) {
     return '강제 완료 대상이 아닙니다. (24시간 경과·상태 확인)';
+  }
+  if (msg.contains('not_no_show_suspect')) {
+    return '노쇼의심 예약만 강제 취소할 수 있습니다.';
   }
   return error.message;
 }

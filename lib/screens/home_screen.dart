@@ -5,6 +5,7 @@ import 'package:url_launcher/url_launcher.dart';
 
 import '../models/grouped_reservations.dart';
 import '../models/home_banner.dart';
+import '../models/notice.dart';
 import '../models/reservation.dart';
 import '../supabase_client.dart';
 import '../theme/danji_colors.dart';
@@ -12,12 +13,15 @@ import '../theme/danji_typography.dart';
 import '../resident_profile_screen.dart';
 import '../services/banner_service.dart';
 import '../services/my_page_service.dart';
+import '../services/notice_service.dart';
+import '../services/notification_inbox_service.dart';
 import '../services/rental_service.dart';
 import '../services/reservation_refresh_bus.dart';
 import '../theme/danji_theme.dart';
 import '../utils/network_retry.dart';
 import 'booking_screen.dart';
 import 'my_reservations_screen.dart';
+import 'notification_list_screen.dart';
 import '../utils/accident_emergency_flow.dart';
 import '../utils/rental_extension_flow.dart';
 import '../utils/rental_navigation.dart';
@@ -43,10 +47,14 @@ class HomeScreenState extends State<HomeScreen> {
   final _rentalService = RentalService();
   final _myPageService = MyPageService();
   final _bannerService = BannerService();
+  final _noticeService = NoticeService();
+  final _inboxService = NotificationInboxService();
   final _timeFormat = DateFormat('HH:mm');
 
   Future<_HomeData>? _future;
   Future<HomeBanner?>? _bannerFuture;
+  Future<List<Notice>>? _noticesFuture;
+  Future<int>? _unreadCountFuture;
   final _hiddenReservationIds = <String>{};
 
   @override
@@ -71,6 +79,8 @@ class HomeScreenState extends State<HomeScreen> {
     setState(() {
       _future = _load();
       _bannerFuture = _bannerService.fetchActiveBanner();
+      _noticesFuture = _noticeService.fetchActiveNotices();
+      _unreadCountFuture = _inboxService.fetchUnreadCount();
     });
   }
 
@@ -79,8 +89,18 @@ class HomeScreenState extends State<HomeScreen> {
     setState(() {
       _future = next;
       _bannerFuture = _bannerService.fetchActiveBanner();
+      _noticesFuture = _noticeService.fetchActiveNotices();
+      _unreadCountFuture = _inboxService.fetchUnreadCount();
     });
     await next;
+  }
+
+  void _openNotifications() {
+    Navigator.of(context)
+        .push(
+      MaterialPageRoute(builder: (_) => const NotificationListScreen()),
+    )
+        .then((_) => reload());
   }
 
   Future<_HomeData> _load() async {
@@ -196,12 +216,20 @@ class HomeScreenState extends State<HomeScreen> {
         toolbarHeight: DanjiBrandTitle.homeToolbarHeight,
         title: const DanjiBrandTitle(),
         actions: [
-          IconButton(
-            icon: const Icon(Icons.notifications_outlined),
-            color: DanjiColors.textPrimary,
-            tooltip: '알림',
-            onPressed: () {
-              DanjiSnackBar.show(context, '알림 기능은 준비 중입니다.');
+          FutureBuilder<int>(
+            future: _unreadCountFuture,
+            builder: (context, snap) {
+              final count = snap.data ?? 0;
+              return IconButton(
+                icon: Badge(
+                  isLabelVisible: count > 0,
+                  label: Text(count > 99 ? '99+' : '$count'),
+                  child: const Icon(Icons.notifications_outlined),
+                ),
+                color: DanjiColors.textPrimary,
+                tooltip: '알림',
+                onPressed: _openNotifications,
+              );
             },
           ),
         ],
@@ -234,6 +262,8 @@ class HomeScreenState extends State<HomeScreen> {
                   hasResidentRegistration: data.hasResidentRegistration,
                   onResidentTap: _openResidentVerification,
                 ),
+                const SizedBox(height: 12),
+                _HomeNoticesSection(future: _noticesFuture),
                 const SizedBox(height: 12),
                 if (data.error != null) ...[
                   _ErrorBanner(message: data.error.toString()),
@@ -772,6 +802,146 @@ class _PageDots extends StatelessWidget {
           ),
         );
       }),
+    );
+  }
+}
+
+class _HomeNoticesSection extends StatelessWidget {
+  final Future<List<Notice>>? future;
+
+  const _HomeNoticesSection({required this.future});
+
+  @override
+  Widget build(BuildContext context) {
+    return FutureBuilder<List<Notice>>(
+      future: future,
+      builder: (context, snap) {
+        if (snap.connectionState == ConnectionState.waiting) {
+          return const SizedBox.shrink();
+        }
+        final notices = snap.data ?? [];
+        if (notices.isEmpty) return const SizedBox.shrink();
+
+        return Container(
+          width: double.infinity,
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: DanjiColors.surface,
+            borderRadius: BorderRadius.circular(16),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Icon(
+                    Icons.campaign_outlined,
+                    size: 18,
+                    color: DanjiColors.primaryBlue,
+                  ),
+                  const SizedBox(width: 6),
+                  Text(
+                    '공지사항',
+                    style: DanjiTypography.subtitle.copyWith(fontSize: 15),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 10),
+              ...notices.take(3).map((notice) {
+                return Padding(
+                  padding: const EdgeInsets.only(bottom: 8),
+                  child: _NoticeRow(notice: notice),
+                );
+              }),
+            ],
+          ),
+        );
+      },
+    );
+  }
+}
+
+class _NoticeRow extends StatefulWidget {
+  final Notice notice;
+
+  const _NoticeRow({required this.notice});
+
+  @override
+  State<_NoticeRow> createState() => _NoticeRowState();
+}
+
+class _NoticeRowState extends State<_NoticeRow> {
+  bool _expanded = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final notice = widget.notice;
+    return Material(
+      color: DanjiColors.skyLight,
+      borderRadius: BorderRadius.circular(10),
+      child: InkWell(
+        onTap: () => setState(() => _expanded = !_expanded),
+        borderRadius: BorderRadius.circular(10),
+        child: Padding(
+          padding: const EdgeInsets.all(12),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  if (notice.isGlobal)
+                    Container(
+                      margin: const EdgeInsets.only(right: 6),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 6,
+                        vertical: 2,
+                      ),
+                      decoration: BoxDecoration(
+                        color: DanjiColors.primaryBlue.withValues(alpha: 0.12),
+                        borderRadius: BorderRadius.circular(4),
+                      ),
+                      child: const Text(
+                        '전체',
+                        style: TextStyle(
+                          fontSize: 10,
+                          fontWeight: FontWeight.w700,
+                          color: DanjiColors.primaryBlue,
+                        ),
+                      ),
+                    ),
+                  Expanded(
+                    child: Text(
+                      notice.title,
+                      style: const TextStyle(
+                        fontWeight: FontWeight.w700,
+                        fontSize: 14,
+                        color: DanjiColors.textPrimary,
+                      ),
+                    ),
+                  ),
+                  Icon(
+                    _expanded
+                        ? Icons.keyboard_arrow_up
+                        : Icons.keyboard_arrow_down,
+                    size: 20,
+                    color: DanjiColors.textMuted,
+                  ),
+                ],
+              ),
+              if (_expanded && notice.content.isNotEmpty) ...[
+                const SizedBox(height: 8),
+                Text(
+                  notice.content,
+                  style: DanjiTypography.bodyRegular.copyWith(
+                    color: DanjiColors.textSecondary,
+                    height: 1.45,
+                  ),
+                ),
+              ],
+            ],
+          ),
+        ),
+      ),
     );
   }
 }

@@ -15,6 +15,7 @@ export type PushScenario =
   | 'customer_reservation_confirmed'
   | 'customer_reservation_cancelled'
   | 'customer_payment_completed'
+  | 'customer_rental_started'
   | 'customer_rental_start_10min'
   | 'customer_return_10min'
   | 'customer_return_10min_next_booking'
@@ -121,6 +122,16 @@ export function buildPushMessage(
           : '결제가 완료됐습니다. 포인트가 적립됩니다.',
         data: { ...data, type: 'reservation' },
       };
+    case 'customer_rental_started': {
+      const returnWhen = fmtDateTime(payload.endAt);
+      return {
+        title: '대여가 시작되었습니다',
+        body: returnWhen
+          ? `반납시간을 꼭 확인해주세요 (${returnWhen})`
+          : '반납시간을 꼭 확인해주세요.',
+        data: { ...data, type: 'reservation' },
+      };
+    }
     case 'customer_rental_start_10min':
       return {
         title: '곧 대여가 시작됩니다',
@@ -219,6 +230,51 @@ export function buildPushMessage(
   }
 }
 
+async function fetchComplexStaffUserIds(
+  admin: SupabaseClient,
+  complexId: string,
+): Promise<string[]> {
+  const { data, error } = await admin
+    .from('staff_users')
+    .select('user_id')
+    .eq('complex_id', complexId)
+    .eq('approved', true);
+
+  if (error) {
+    console.error('staff_users fetch failed:', error.message);
+    return [];
+  }
+
+  return (data ?? [])
+    .map((row) => row.user_id as string)
+    .filter((id) => id && id.length > 0);
+}
+
+async function saveInAppNotification(params: {
+  admin: SupabaseClient;
+  userId: string;
+  title: string;
+  body: string;
+  type: string;
+  reservationId?: string | null;
+}): Promise<void> {
+  const { error } = await params.admin.from('notifications').insert({
+    user_id: params.userId,
+    title: params.title,
+    body: params.body,
+    type: params.type,
+    reservation_id: params.reservationId ?? null,
+    is_read: false,
+  });
+
+  if (error) {
+    console.error(
+      `in-app notification save failed (user=${params.userId}):`,
+      error.message,
+    );
+  }
+}
+
 export async function resolveComplexId(
   admin: SupabaseClient,
   payload: Record<string, string>,
@@ -270,6 +326,10 @@ export async function dispatchPushScenario(params: {
   let customerSent = 0;
   let staffSent = 0;
 
+  const notificationType =
+    message.data.type?.toString() || params.scenario;
+  const reservationId = payload.reservationId ?? null;
+
   if (STAFF_SCENARIOS.has(params.scenario)) {
     const complexId = await resolveComplexId(params.admin, payload);
     if (!complexId) {
@@ -283,6 +343,24 @@ export async function dispatchPushScenario(params: {
       data: message.data,
     });
     staffSent = staffResult.sent;
+
+    const staffUserIds = await fetchComplexStaffUserIds(
+      params.admin,
+      complexId,
+    );
+    await Promise.all(
+      staffUserIds.map((staffUserId) =>
+        saveInAppNotification({
+          admin: params.admin,
+          userId: staffUserId,
+          title: message.title,
+          body: message.body,
+          type: notificationType,
+          reservationId,
+        })
+      ),
+    );
+
     return {
       customerSent,
       staffSent,
@@ -304,6 +382,16 @@ export async function dispatchPushScenario(params: {
   });
 
   customerSent = userResult.sent;
+
+  await saveInAppNotification({
+    admin: params.admin,
+    userId,
+    title: message.title,
+    body: message.body,
+    type: notificationType,
+    reservationId,
+  });
+
   return {
     customerSent,
     staffSent,

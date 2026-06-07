@@ -57,6 +57,18 @@ Deno.serve(async (req) => {
       data: Object.keys(data).length ? data : undefined,
     });
 
+    const { error: inboxError } = await admin.from('notifications').insert({
+      user_id: userId,
+      title,
+      body: message,
+      type: type ?? 'manual',
+      reservation_id: reservationId ?? null,
+      is_read: false,
+    });
+    if (inboxError) {
+      console.error('in-app notification save failed:', inboxError.message);
+    }
+
     return jsonResponse({
       ok: true,
       sent: result.sent,

@@ -186,6 +186,26 @@ class _RentalStartScreenState extends State<RentalStartScreen> {
                   ),
                 ),
                 const SizedBox(height: 12),
+                SectionCard(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        '대여 전 안내',
+                        style: DanjiTypography.subtitleLarge.copyWith(
+                          fontSize: 15,
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        '• 통행료, 범칙금, 과태료는 임차인 부담입니다.\n'
+                        '• 주유비는 임차인 부담입니다.',
+                        style: DanjiTypography.secondary.copyWith(height: 1.5),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 12),
                 _StepBar(
                   step1Done: _ctrl.step1Complete,
                   step2Done: _ctrl.step2Complete,

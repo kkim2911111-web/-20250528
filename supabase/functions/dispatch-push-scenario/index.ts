@@ -9,6 +9,7 @@ const USER_TRIGGER_SCENARIOS: Set<PushScenario> = new Set([
   'customer_signup_complete',
   'customer_reservation_confirmed',
   'customer_reservation_cancelled',
+  'customer_rental_started',
   'staff_new_signup',
   'staff_license_review_request',
   'staff_resident_review_request',
@@ -112,7 +113,8 @@ Deno.serve(async (req) => {
         if (
           scenario === 'customer_signup_complete' ||
           scenario === 'customer_reservation_confirmed' ||
-          scenario === 'customer_reservation_cancelled'
+          scenario === 'customer_reservation_cancelled' ||
+          scenario === 'customer_rental_started'
         ) {
           payload.userId = caller.id;
         } else if (scenario.startsWith('staff_')) {

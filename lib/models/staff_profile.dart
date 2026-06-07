@@ -44,6 +44,7 @@ class BranchStats {
   final int availableVehicles;
   final int inOperation;
   final int todayReservations;
+  final int todaySales;
   final int monthSales;
 
   const BranchStats({
@@ -51,6 +52,7 @@ class BranchStats {
     required this.availableVehicles,
     required this.inOperation,
     required this.todayReservations,
+    required this.todaySales,
     required this.monthSales,
   });
 
@@ -59,6 +61,7 @@ class BranchStats {
     availableVehicles: 0,
     inOperation: 0,
     todayReservations: 0,
+    todaySales: 0,
     monthSales: 0,
   );
 }
@@ -307,6 +310,10 @@ class AdminReservationRow {
   final String? renterName;
   final String? contractContent;
   final String? returnType;
+  final DateTime? returnedAt;
+  final DateTime? updatedAt;
+  final String? secondDriverName;
+  final String? secondDriverLicense;
 
   const AdminReservationRow({
     required this.id,
@@ -323,11 +330,20 @@ class AdminReservationRow {
     this.renterName,
     this.contractContent,
     this.returnType,
+    this.returnedAt,
+    this.updatedAt,
+    this.secondDriverName,
+    this.secondDriverLicense,
   });
 
   /// 시간 초과 자동 반납(노쇼) — return_type = 'auto'
   bool get isNoShowReturn =>
       returnType?.trim().toLowerCase() == 'auto';
+
+  bool get hasSecondDriver {
+    final name = secondDriverName?.trim();
+    return name != null && name.isNotEmpty;
+  }
 
   String get reservationNumberLabel => '#$id';
 
@@ -430,6 +446,12 @@ class AdminReservationRow {
       contractContent:
           contract != null && contract.isNotEmpty ? contract : null,
       returnType: map['return_type']?.toString(),
+      returnedAt: DateTime.tryParse(map['returned_at']?.toString() ?? '')
+          ?.toLocal(),
+      updatedAt: DateTime.tryParse(map['updated_at']?.toString() ?? '')
+          ?.toLocal(),
+      secondDriverName: map['second_driver_name']?.toString(),
+      secondDriverLicense: map['second_driver_license']?.toString(),
     );
   }
 }
