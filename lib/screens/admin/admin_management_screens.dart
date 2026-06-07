@@ -1421,6 +1421,70 @@ class _AdminSalesScreenState extends State<AdminSalesScreen> {
     });
   }
 
+  Widget _settlementRow(
+    String label,
+    int amount, {
+    bool emphasize = false,
+    bool isDeduction = false,
+  }) {
+    final prefix = isDeduction && amount > 0 ? '-' : '';
+    final textStyle = TextStyle(
+      fontWeight: emphasize ? FontWeight.w800 : FontWeight.w600,
+      fontSize: emphasize ? 16 : 14,
+      color: emphasize
+          ? DanjiColors.buttonBlue
+          : (isDeduction ? DanjiColors.textSecondary : DanjiColors.textPrimary),
+    );
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 6),
+      child: Row(
+        children: [
+          Expanded(child: Text(label, style: textStyle)),
+          Text(
+            '$prefix₩${_won.format(amount)}',
+            style: textStyle,
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSettlementSection(SalesSummary summary) {
+    final gross = summary.totalAmount;
+    final vat = (gross * 0.10).round();
+    final corporateTax = (gross * 0.033).round();
+    final fee = summary.vehicleCount * 100000;
+    final net = gross - vat - corporateTax - fee;
+
+    return SectionCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          const Text(
+            '정산 계산',
+            style: TextStyle(
+              fontWeight: FontWeight.w800,
+              fontSize: 16,
+            ),
+          ),
+          const SizedBox(height: 8),
+          _settlementRow('총매출', gross),
+          const Divider(height: 16),
+          _settlementRow('부가세 (10%)', vat, isDeduction: true),
+          _settlementRow('법인세 (3.3%)', corporateTax, isDeduction: true),
+          _settlementRow(
+            '수수료 (차량 ${summary.vehicleCount}대 × ₩100,000)',
+            fee,
+            isDeduction: true,
+          ),
+          const Divider(height: 16),
+          _settlementRow('최종 정산금', net, emphasize: true),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final monthLabel = _monthHeaderFormat.format(_selectedMonth);
@@ -1467,6 +1531,8 @@ class _AdminSalesScreenState extends State<AdminSalesScreen> {
                   ],
                 ),
               ),
+              const SizedBox(height: 16),
+              _buildSettlementSection(summary),
               const SizedBox(height: 16),
               const Text(
                 '차량별 매출',

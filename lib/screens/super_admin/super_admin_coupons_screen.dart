@@ -90,6 +90,9 @@ class _SuperAdminCouponsScreenState extends State<SuperAdminCouponsScreen> {
         title: title.text.trim(),
         discountAmount: int.tryParse(discount.text) ?? 0,
         minAmount: int.tryParse(minPay.text) ?? 0,
+        code: c == null
+            ? 'COUPON_${DateTime.now().millisecondsSinceEpoch}'
+            : null,
       );
       if (!mounted) return;
       await _reload();

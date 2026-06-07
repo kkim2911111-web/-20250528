@@ -480,11 +480,13 @@ class AdminReservationRow {
 class SalesSummary {
   final int totalAmount;
   final int reservationCount;
+  final int vehicleCount;
   final List<SalesRow> rows;
 
   const SalesSummary({
     required this.totalAmount,
     required this.reservationCount,
+    this.vehicleCount = 0,
     required this.rows,
   });
 }

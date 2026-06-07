@@ -993,11 +993,13 @@ class AdminService {
         .from('vehicles')
         .select('id, model_name')
         .eq('complex_id', complexId);
-    if ((vehicles as List).isEmpty) {
+    final vehicleList = vehicles as List;
+    final registeredVehicleCount = vehicleList.length;
+    if (vehicleList.isEmpty) {
       return const SalesSummary(totalAmount: 0, reservationCount: 0, rows: []);
     }
 
-    final ids = vehicles.map((v) => v['id']).toList();
+    final ids = vehicleList.map((v) => v['id']).toList();
     final now = DateTime.now();
     final targetYear = year ?? now.year;
     final targetMonth = month ?? now.month;
@@ -1040,6 +1042,7 @@ class AdminService {
     return SalesSummary(
       totalAmount: total,
       reservationCount: count,
+      vehicleCount: registeredVehicleCount,
       rows: byVehicle.values.toList()
         ..sort((a, b) => b.amount.compareTo(a.amount)),
     );

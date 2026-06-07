@@ -300,6 +300,7 @@ class SuperAdminService {
     required String title,
     int discountAmount = 0,
     int minAmount = 0,
+    String? code,
   }) =>
       _rpc(
         'upsert_super_admin_coupon',
@@ -308,6 +309,7 @@ class SuperAdminService {
           'p_title': title,
           'p_discount_amount': discountAmount,
           'p_min_amount': minAmount,
+          if (code != null) 'p_code': code,
         },
         parse: (d) => d?.toString() ?? '',
       );
