@@ -27,6 +27,7 @@ class _SuperAdminDashboardScreenState extends State<SuperAdminDashboardScreen> {
   final _auth = AuthService.instance;
 
   SuperAdminDashboard _dashboard = const SuperAdminDashboard();
+  Map<String, int> _vehicleCountByComplexId = {};
   Object? _loadError;
   bool _loading = true;
 
@@ -38,10 +39,17 @@ class _SuperAdminDashboardScreenState extends State<SuperAdminDashboardScreen> {
 
   Future<void> _reload() async {
     try {
-      final data = await _service.fetchDashboard();
+      final results = await Future.wait([
+        _service.fetchDashboard(),
+        _service.fetchComplexes(),
+      ]);
       if (!mounted) return;
+      final complexes = results[1] as List<SuperAdminComplex>;
       setState(() {
-        _dashboard = data;
+        _dashboard = results[0] as SuperAdminDashboard;
+        _vehicleCountByComplexId = {
+          for (final c in complexes) c.id: c.vehicleCount,
+        };
         _loadError = null;
         _loading = false;
       });
@@ -127,8 +135,7 @@ class _SuperAdminDashboardScreenState extends State<SuperAdminDashboardScreen> {
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
               child: Text(
                 '${superAdminDateLine.format(DateTime.now())}  |  '
-                '오늘 ₩${superAdminWon.format(_dashboard.todayRevenue)}  |  '
-                '이번달 ₩${superAdminWon.format(_dashboard.monthRevenue)}',
+                '오늘 매출 ₩${superAdminWon.format(_dashboard.todayRevenue)}',
                 style: const TextStyle(
                   color: DanjiColors.textPrimary,
                   fontWeight: FontWeight.w700,
@@ -237,19 +244,12 @@ class _SuperAdminDashboardScreenState extends State<SuperAdminDashboardScreen> {
                       ),
                     ],
                   ),
-                  const SizedBox(height: 6),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: SuperAdminCompactStatCard(
-                          label: '누적매출',
-                          value: '₩${superAdminWon.format(_dashboard.totalRevenue)}',
-                          icon: Icons.payments_outlined,
-                          color: SuperAdminUiColors.revenueSky,
-                          onTap: () => _open(SuperAdminRevenueScreen(service: _service)),
-                        ),
-                      ),
-                    ],
+                  const SizedBox(height: 10),
+                  SuperAdminMonthlyRevenuePanel(
+                    service: _service,
+                    vehicleCountByComplexId: _vehicleCountByComplexId,
+                    onOpenRevenue: () =>
+                        _open(SuperAdminRevenueScreen(service: _service)),
                   ),
                 ],
               ),

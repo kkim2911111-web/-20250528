@@ -3,6 +3,7 @@ import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
+import '../../models/super_admin_models.dart';
 import '../../services/super_admin_service.dart';
 import '../../theme/danji_colors.dart';
 import '../../theme/danji_theme.dart';
@@ -22,6 +23,22 @@ abstract final class SuperAdminUiColors {
 final superAdminWon = NumberFormat('#,###');
 final superAdminDateTime = DateFormat('yyyy-MM-dd HH:mm');
 final superAdminDateLine = DateFormat('M월 d일 (E)', 'ko_KR');
+
+/// 플랫폼 수수료 — 단지 차량 1대당 월 10만원
+const superAdminPlatformFeePerVehicle = 100000;
+
+int superAdminPlatformFee(int vehicleCount) =>
+    vehicleCount * superAdminPlatformFeePerVehicle;
+
+DateTime superAdminMonthFromPageIndex(int pageIndex) {
+  final now = DateTime.now();
+  return DateTime(now.year, now.month - pageIndex);
+}
+
+int superAdminPageIndexForMonth(int year, int month) {
+  final now = DateTime.now();
+  return (now.year - year) * 12 + (now.month - month);
+}
 
 class SuperAdminSectionTitle extends StatelessWidget {
   final String title;
@@ -217,6 +234,7 @@ class SuperAdminMonthFilter extends StatelessWidget {
   final int month;
   final ValueChanged<int> onYearChanged;
   final ValueChanged<int> onMonthChanged;
+  final void Function(int year, int month)? onPeriodChanged;
 
   const SuperAdminMonthFilter({
     super.key,
@@ -224,6 +242,7 @@ class SuperAdminMonthFilter extends StatelessWidget {
     required this.month,
     required this.onYearChanged,
     required this.onMonthChanged,
+    this.onPeriodChanged,
   });
 
   void _shift(int delta) {
@@ -236,6 +255,10 @@ class SuperAdminMonthFilter extends StatelessWidget {
     while (m > 12) {
       m -= 12;
       y++;
+    }
+    if (onPeriodChanged != null) {
+      onPeriodChanged!(y, m);
+      return;
     }
     if (y != year) onYearChanged(y);
     onMonthChanged(m);
@@ -478,6 +501,313 @@ class SuperAdminPeriodFilter extends SuperAdminMonthFilter {
     required super.onYearChanged,
     required super.onMonthChanged,
   });
+}
+
+/// 최고관리자 대시보드 — 월별 스와이프 매출·단지별 수수료
+class SuperAdminMonthlyRevenuePanel extends StatefulWidget {
+  final SuperAdminService service;
+  final Map<String, int> vehicleCountByComplexId;
+  final VoidCallback? onOpenRevenue;
+
+  const SuperAdminMonthlyRevenuePanel({
+    super.key,
+    required this.service,
+    required this.vehicleCountByComplexId,
+    this.onOpenRevenue,
+  });
+
+  @override
+  State<SuperAdminMonthlyRevenuePanel> createState() =>
+      _SuperAdminMonthlyRevenuePanelState();
+}
+
+class _SuperAdminMonthlyRevenuePanelState
+    extends State<SuperAdminMonthlyRevenuePanel> {
+  static const _maxPastMonths = 36;
+
+  late final PageController _pageController;
+  int _pageIndex = 0;
+  final _revenueCache = <String, Future<List<SuperAdminRevenueRow>>>{};
+
+  @override
+  void initState() {
+    super.initState();
+    _pageController = PageController(initialPage: 0);
+  }
+
+  @override
+  void dispose() {
+    _pageController.dispose();
+    super.dispose();
+  }
+
+  DateTime get _selectedMonth => superAdminMonthFromPageIndex(_pageIndex);
+
+  Future<List<SuperAdminRevenueRow>> _revenueFor(int year, int month) {
+    final key = '$year-$month';
+    return _revenueCache.putIfAbsent(
+      key,
+      () => widget.service.fetchRevenue(year: year, month: month),
+    );
+  }
+
+  void _goToPage(int pageIndex) {
+    final clamped = pageIndex.clamp(0, _maxPastMonths);
+    if (clamped == _pageIndex) return;
+    setState(() => _pageIndex = clamped);
+    _pageController.animateToPage(
+      clamped,
+      duration: const Duration(milliseconds: 280),
+      curve: Curves.easeOutCubic,
+    );
+  }
+
+  void _syncMonthFromFilter(int year, int month) {
+    final idx = superAdminPageIndexForMonth(year, month);
+    if (idx < 0 || idx > _maxPastMonths) return;
+    _goToPage(idx);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final month = _selectedMonth;
+
+    return SectionCard(
+      padding: const EdgeInsets.fromLTRB(8, 8, 8, 12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          SuperAdminMonthFilter(
+            year: month.year,
+            month: month.month,
+            onYearChanged: (_) {},
+            onMonthChanged: (_) {},
+            onPeriodChanged: _syncMonthFromFilter,
+          ),
+          const SizedBox(height: 4),
+          const Padding(
+            padding: EdgeInsets.symmetric(horizontal: 8),
+            child: Text(
+              '좌우 스와이프로 월 이동 · completed · 반납 완료일 기준',
+              style: TextStyle(
+                color: DanjiColors.textMuted,
+                fontSize: 11,
+              ),
+            ),
+          ),
+          const SizedBox(height: 8),
+          SizedBox(
+            height: 300,
+            child: PageView.builder(
+              controller: _pageController,
+              onPageChanged: (index) => setState(() => _pageIndex = index),
+              itemCount: _maxPastMonths + 1,
+              itemBuilder: (context, index) {
+                final pageMonth = superAdminMonthFromPageIndex(index);
+                return _SuperAdminMonthRevenuePage(
+                  future: _revenueFor(pageMonth.year, pageMonth.month),
+                  vehicleCountByComplexId: widget.vehicleCountByComplexId,
+                  onOpenRevenue: widget.onOpenRevenue,
+                );
+              },
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _SuperAdminMonthRevenuePage extends StatelessWidget {
+  final Future<List<SuperAdminRevenueRow>> future;
+  final Map<String, int> vehicleCountByComplexId;
+  final VoidCallback? onOpenRevenue;
+
+  const _SuperAdminMonthRevenuePage({
+    required this.future,
+    required this.vehicleCountByComplexId,
+    this.onOpenRevenue,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return FutureBuilder<List<SuperAdminRevenueRow>>(
+      future: future,
+      builder: (context, snap) {
+        if (snap.connectionState == ConnectionState.waiting) {
+          return const Center(
+            child: CircularProgressIndicator(color: DanjiColors.buttonBlue),
+          );
+        }
+        if (snap.hasError) {
+          return Center(
+            child: Padding(
+              padding: const EdgeInsets.all(12),
+              child: Text(
+                friendlySuperAdminError(snap.error!),
+                textAlign: TextAlign.center,
+                style: const TextStyle(color: DanjiColors.textSecondary),
+              ),
+            ),
+          );
+        }
+
+        final rows = snap.data ?? [];
+        var totalRevenue = 0;
+        var totalFee = 0;
+        for (final r in rows) {
+          totalRevenue += r.totalRevenue;
+          totalFee += superAdminPlatformFee(
+            vehicleCountByComplexId[r.complexId] ?? 0,
+          );
+        }
+
+        final visible = [...rows]
+          ..sort((a, b) => b.totalRevenue.compareTo(a.totalRevenue));
+
+        return InkWell(
+          borderRadius: BorderRadius.circular(12),
+          onTap: onOpenRevenue,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 4),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Row(
+                  children: [
+                    Expanded(
+                      child: _RevenueSummaryChip(
+                        label: '월 매출',
+                        value: '₩${superAdminWon.format(totalRevenue)}',
+                        color: SuperAdminUiColors.revenueSky,
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: _RevenueSummaryChip(
+                        label: '월 수수료',
+                        value: '₩${superAdminWon.format(totalFee)}',
+                        color: SuperAdminUiColors.staffViolet,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 10),
+                Expanded(
+                  child: visible.isEmpty
+                      ? const Center(
+                          child: Text(
+                            '해당 월 매출·등록 차량이 없습니다.',
+                            style: TextStyle(color: DanjiColors.textSecondary),
+                          ),
+                        )
+                      : ListView.separated(
+                          padding: EdgeInsets.zero,
+                          itemCount: visible.length,
+                          separatorBuilder: (_, __) =>
+                              const SizedBox(height: 6),
+                          itemBuilder: (context, i) {
+                            final r = visible[i];
+                            final vehicles =
+                                vehicleCountByComplexId[r.complexId] ?? 0;
+                            final fee = superAdminPlatformFee(vehicles);
+                            return Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 10,
+                                vertical: 8,
+                              ),
+                              decoration: BoxDecoration(
+                                color: DanjiColors.background,
+                                borderRadius: BorderRadius.circular(10),
+                                border: Border.all(color: DanjiColors.border),
+                              ),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    r.complexName,
+                                    style: const TextStyle(
+                                      fontWeight: FontWeight.w800,
+                                      fontSize: 13,
+                                      color: DanjiColors.textPrimary,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 4),
+                                  Text(
+                                    '매출 ₩${superAdminWon.format(r.totalRevenue)}',
+                                    style: const TextStyle(
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.w600,
+                                      color: DanjiColors.textPrimary,
+                                    ),
+                                  ),
+                                  Text(
+                                    '수수료 ₩${superAdminWon.format(fee)} '
+                                        '($vehicles대 × 10만원)',
+                                    style: const TextStyle(
+                                      fontSize: 11,
+                                      color: DanjiColors.textSecondary,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            );
+                          },
+                        ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+}
+
+class _RevenueSummaryChip extends StatelessWidget {
+  final String label;
+  final String value;
+  final Color color;
+
+  const _RevenueSummaryChip({
+    required this.label,
+    required this.value,
+    required this.color,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: color.withValues(alpha: 0.2)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            label,
+            style: TextStyle(
+              color: color,
+              fontSize: 11,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            value,
+            style: TextStyle(
+              color: color,
+              fontSize: 16,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 }
 
 @Deprecated('Use SuperAdminCompactStatCard')
