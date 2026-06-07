@@ -198,6 +198,8 @@ class _MyReservationsScreenState extends State<MyReservationsScreen> {
           reservationId: reservation.id,
           vehicleName: reservation.vehicle?.name,
           initialContent: content,
+          secondDriverName: reservation.secondDriverName,
+          secondDriverLicense: reservation.secondDriverLicense,
         ),
       ),
     );

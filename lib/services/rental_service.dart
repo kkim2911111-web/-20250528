@@ -31,7 +31,7 @@ payment_key,order_id,payment_status,rental_started_at,returned_at,actual_end_at,
 return_type,early_return_confirmed_at,
 pickup_photos,return_photos,mileage_start,mileage_end,
 fuel_level_start,fuel_level_end,is_accident,accident_note,door_unlocked,
-contract_content
+contract_content,second_driver_name,second_driver_license
 ''';
 
   static const _selectCore =

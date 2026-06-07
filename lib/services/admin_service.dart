@@ -7,6 +7,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../models/license_review_item.dart';
 import '../models/notice.dart';
 import '../models/staff_profile.dart';
+import '../utils/admin_conflict.dart';
 import '../repositories/staff_repository.dart';
 import '../supabase_client.dart';
 import 'push_notification_service.dart';
@@ -798,6 +799,11 @@ class AdminService {
     } on PostgrestException catch (e) {
       throw AdminException(mapAdminPostgrestError(e));
     }
+  }
+
+  Future<int> fetchConflictRiskCount() async {
+    final rows = await getAdminReservationsWithConflict();
+    return countBackToBackConflicts(rows);
   }
 
   Future<List<Map<String, dynamic>>> getAdminCompletedReservations() async {

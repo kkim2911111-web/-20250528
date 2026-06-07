@@ -38,7 +38,7 @@ class RentalContractCardView extends StatelessWidget {
             _InfoRow(label: '면허번호', value: parsed.licenseNumber),
           ],
         ),
-        if (parsed.secondDriverName != null) ...[
+        if (parsed.hasSecondDriver) ...[
           const SizedBox(height: 12),
           _SectionCard(
             title: '제2운전자',

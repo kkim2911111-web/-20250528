@@ -1080,7 +1080,11 @@ class _ReturnInspectionCardState extends State<_ReturnInspectionCard> {
       }
 
       final contractText = content;
-      final parsed = RentalContractParsed.parse(contractText);
+      var parsed = RentalContractParsed.parse(contractText);
+      parsed = parsed.withSecondDriverFallback(
+        secondDriverName: widget.row.secondDriverName,
+        secondDriverLicense: widget.row.secondDriverLicense,
+      );
       final displayParsed = parsed.reservationId.isEmpty
           ? RentalContractParsed(
               companyName: parsed.companyName,
@@ -1491,6 +1495,7 @@ class _ReturnInspectionContractSheetState
         contractText: widget.contractText,
         reservationId: widget.reservationId,
         vehicleName: widget.vehicleName,
+        parsed: widget.displayParsed,
       );
       if (!mounted) return;
       if (savedPath != null) {

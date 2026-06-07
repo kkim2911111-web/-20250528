@@ -40,6 +40,39 @@ class RentalContractParsed {
 
   String get headerBrand => '$companyName · 단지카';
 
+  bool get hasSecondDriver {
+    final name = secondDriverName?.trim();
+    return name != null && name.isNotEmpty;
+  }
+
+  RentalContractParsed withSecondDriverFallback({
+    String? secondDriverName,
+    String? secondDriverLicense,
+  }) {
+    if (hasSecondDriver) return this;
+    final name = secondDriverName?.trim();
+    if (name == null || name.isEmpty) return this;
+    return RentalContractParsed(
+      companyName: companyName,
+      reservationId: reservationId,
+      vehicleName: vehicleName,
+      rentalPeriod: rentalPeriod,
+      renterName: renterName,
+      renterPhone: renterPhone,
+      licenseNumber: licenseNumber,
+      secondDriverName: name,
+      secondDriverLicense: secondDriverLicense?.trim(),
+      originalPrice: originalPrice,
+      paidPrice: paidPrice,
+      extraFeeLines: extraFeeLines,
+      insuranceIntro: insuranceIntro,
+      insuranceCoverage: insuranceCoverage,
+      insuranceNotes: insuranceNotes,
+      complianceItems: complianceItems,
+      generatedAt: generatedAt,
+    );
+  }
+
   bool get hasStructuredLayout =>
       reservationId.isNotEmpty ||
       vehicleName != null ||

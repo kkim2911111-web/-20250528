@@ -12,12 +12,16 @@ class RentalContractScreen extends StatefulWidget {
   final String reservationId;
   final String? vehicleName;
   final String? initialContent;
+  final String? secondDriverName;
+  final String? secondDriverLicense;
 
   const RentalContractScreen({
     super.key,
     required this.reservationId,
     this.vehicleName,
     this.initialContent,
+    this.secondDriverName,
+    this.secondDriverLicense,
   });
 
   @override
@@ -67,7 +71,11 @@ class _RentalContractScreenState extends State<RentalContractScreen> {
   }
 
   RentalContractParsed _parsedContent() {
-    final parsed = RentalContractParsed.parse(_content ?? '');
+    var parsed = RentalContractParsed.parse(_content ?? '');
+    parsed = parsed.withSecondDriverFallback(
+      secondDriverName: widget.secondDriverName,
+      secondDriverLicense: widget.secondDriverLicense,
+    );
     if (parsed.vehicleName == null &&
         widget.vehicleName?.trim().isNotEmpty == true) {
       return RentalContractParsed(
@@ -125,6 +133,7 @@ class _RentalContractScreenState extends State<RentalContractScreen> {
         contractText: text,
         reservationId: widget.reservationId,
         vehicleName: widget.vehicleName,
+        parsed: _parsedContent(),
       );
       if (!mounted) return;
       if (savedPath != null) {

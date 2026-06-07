@@ -5,6 +5,8 @@ import 'package:path_provider/path_provider.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
 
+import 'rental_contract_parser.dart';
+
 /// contract_content → PDF 생성·저장
 class RentalContractPdf {
   RentalContractPdf._();
@@ -20,9 +22,11 @@ class RentalContractPdf {
     required String contractText,
     required String reservationId,
     String? vehicleName,
+    RentalContractParsed? parsed,
   }) async {
     final font = await PdfGoogleFonts.notoSansKRRegular();
     final doc = pw.Document();
+    final structured = parsed ?? RentalContractParsed.parse(contractText);
     doc.addPage(
       pw.MultiPage(
         theme: pw.ThemeData.withFont(base: font),
@@ -47,6 +51,26 @@ class RentalContractPdf {
             '예약번호: $reservationId',
             style: pw.TextStyle(font: font, fontSize: 10),
           ),
+          if (structured.hasSecondDriver) ...[
+            pw.SizedBox(height: 12),
+            pw.Text(
+              '제2운전자',
+              style: pw.TextStyle(
+                font: font,
+                fontSize: 12,
+                fontWeight: pw.FontWeight.bold,
+              ),
+            ),
+            pw.SizedBox(height: 4),
+            pw.Text(
+              '성명: ${structured.secondDriverName}',
+              style: pw.TextStyle(font: font, fontSize: 10),
+            ),
+            pw.Text(
+              '면허번호: ${structured.secondDriverLicense ?? '—'}',
+              style: pw.TextStyle(font: font, fontSize: 10),
+            ),
+          ],
           pw.SizedBox(height: 16),
           pw.Text(
             contractText,
@@ -64,11 +88,13 @@ class RentalContractPdf {
     required String contractText,
     required String reservationId,
     String? vehicleName,
+    RentalContractParsed? parsed,
   }) async {
     final doc = await buildDocument(
       contractText: contractText,
       reservationId: reservationId,
       vehicleName: vehicleName,
+      parsed: parsed,
     );
     final bytes = await doc.save();
     final filename = downloadFilename(reservationId);

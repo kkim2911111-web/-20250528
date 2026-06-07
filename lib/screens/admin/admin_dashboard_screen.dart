@@ -37,6 +37,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
   final _dateLineFormat = DateFormat('M월 d일 (E)', 'ko_KR');
 
   Future<BranchStats>? _statsFuture;
+  Future<int>? _conflictFuture;
 
   @override
   void initState() {
@@ -47,6 +48,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
   void _reload() {
     setState(() {
       _statsFuture = _admin.fetchBranchStats(widget.profile.complexId);
+      _conflictFuture = _admin.fetchConflictRiskCount();
     });
   }
 
@@ -184,6 +186,24 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                   );
                 },
               ),
+              FutureBuilder<int>(
+                future: _conflictFuture,
+                builder: (context, snap) {
+                  final count = snap.data ?? 0;
+                  if (count <= 0) return const SizedBox.shrink();
+                  return Padding(
+                    padding: const EdgeInsets.only(top: 12),
+                    child: _ConflictWarningCard(
+                      count: count,
+                      onTap: () => _open(
+                        const AdminReservationListScreen(
+                          openConflictTab: true,
+                        ),
+                      ),
+                    ),
+                  );
+                },
+              ),
               const SizedBox(height: 20),
             const Text(
               '관리 메뉴',
@@ -288,6 +308,49 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
 
   void _open(Widget screen) {
     Navigator.of(context).push(MaterialPageRoute(builder: (_) => screen));
+  }
+}
+
+class _ConflictWarningCard extends StatelessWidget {
+  final int count;
+  final VoidCallback onTap;
+
+  const _ConflictWarningCard({
+    required this.count,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: DanjiColors.danger,
+      borderRadius: BorderRadius.circular(12),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(12),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+          child: Row(
+            children: [
+              Expanded(
+                child: Text(
+                  '⚠️ 충돌위험 예약 $count건',
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.w800,
+                    fontSize: 15,
+                  ),
+                ),
+              ),
+              Icon(
+                Icons.chevron_right,
+                color: Colors.white.withValues(alpha: 0.9),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 }
 

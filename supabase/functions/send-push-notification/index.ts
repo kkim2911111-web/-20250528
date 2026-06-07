@@ -17,15 +17,25 @@ Deno.serve(async (req) => {
 
     const admin = getAdminClient();
 
-    const { data: staff, error: staffError } = await admin
-      .from('staff_users')
-      .select('id')
+    const { data: profile } = await admin
+      .from('user_profiles')
+      .select('is_super_admin')
       .eq('user_id', caller.id)
-      .eq('approved', true)
       .maybeSingle();
 
-    if (staffError || !staff) {
-      return jsonResponse({ error: '관리자 권한이 필요합니다.' }, 403);
+    const isSuperAdmin = profile?.is_super_admin === true;
+
+    if (!isSuperAdmin) {
+      const { data: staff, error: staffError } = await admin
+        .from('staff_users')
+        .select('id')
+        .eq('user_id', caller.id)
+        .eq('approved', true)
+        .maybeSingle();
+
+      if (staffError || !staff) {
+        return jsonResponse({ error: '관리자 권한이 필요합니다.' }, 403);
+      }
     }
 
     const body = await req.json();

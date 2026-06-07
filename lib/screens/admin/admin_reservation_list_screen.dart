@@ -3,6 +3,7 @@ import 'package:intl/intl.dart';
 
 import '../../models/staff_profile.dart';
 import '../../services/admin_service.dart';
+import '../../utils/admin_conflict.dart' as conflict;
 import '../../theme/danji_colors.dart';
 import '../../utils/danji_snackbar.dart';
 import '../../widgets/admin_scaffold.dart';
@@ -22,7 +23,12 @@ class _AdminReservationLists {
 }
 
 class AdminReservationListScreen extends StatefulWidget {
-  const AdminReservationListScreen({super.key});
+  final bool openConflictTab;
+
+  const AdminReservationListScreen({
+    super.key,
+    this.openConflictTab = false,
+  });
 
   @override
   State<AdminReservationListScreen> createState() =>
@@ -42,6 +48,9 @@ class _AdminReservationListScreenState
   @override
   void initState() {
     super.initState();
+    if (widget.openConflictTab) {
+      _filter = _ReservationFilter.conflict;
+    }
     _reload();
   }
 
@@ -74,7 +83,7 @@ class _AdminReservationListScreenState
       case _ReservationFilter.waiting:
         return rows.where(_isScheduledTabRow).toList();
       case _ReservationFilter.conflict:
-        return rows.where(_isBackToBackConflict).toList();
+        return rows.where(conflict.isBackToBackConflictRow).toList();
       case _ReservationFilter.all:
       case _ReservationFilter.completed:
         return rows;
@@ -153,7 +162,7 @@ class _AdminReservationListScreenState
 
   int _conflictCount(_AdminReservationLists? data) {
     if (data == null) return 0;
-    return data.active.where(_isBackToBackConflict).length;
+    return conflict.countBackToBackConflicts(data.active);
   }
 
   @override
@@ -282,7 +291,7 @@ class _AdminReservationListScreenState
           );
         }
         final isNoShowSuspect = _isNoShowSuspect(row);
-        final isBackToBack = _isBackToBackConflict(row);
+        final isBackToBack = conflict.isBackToBackConflictRow(row);
 
         return _ReservationCard(
           row: row,
@@ -984,18 +993,6 @@ bool _isScheduledTabRow(Map<String, dynamic> row) {
   final start = _parseDate(row['start_at']);
   if (start == null) return false;
   return start.isAfter(DateTime.now());
-}
-
-bool _isBackToBackConflict(Map<String, dynamic> row) {
-  if (_status(row) != 'in_use') return false;
-  if (_isNoShowSuspect(row)) return false;
-
-  final end = _parseDate(row['end_at']);
-  final nextStart = _parseDate(row['next_start_at']);
-  if (end == null || nextStart == null) return false;
-
-  return end.toUtc().millisecondsSinceEpoch ==
-      nextStart.toUtc().millisecondsSinceEpoch;
 }
 
 bool _isCompletedTabRow(Map<String, dynamic> row) =>

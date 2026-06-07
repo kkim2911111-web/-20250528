@@ -30,6 +30,8 @@ class Reservation {
   final bool licenseVerified;
   final Vehicle? vehicle;
   final String? contractContent;
+  final String? secondDriverName;
+  final String? secondDriverLicense;
 
   const Reservation({
     required this.id,
@@ -58,7 +60,14 @@ class Reservation {
     this.licenseVerified = false,
     this.vehicle,
     this.contractContent,
+    this.secondDriverName,
+    this.secondDriverLicense,
   });
+
+  bool get hasSecondDriver {
+    final name = secondDriverName?.trim();
+    return name != null && name.isNotEmpty;
+  }
 
   factory Reservation.fromMap(Map<String, dynamic> map) {
     final vehicleRaw = map['vehicles'];
@@ -94,6 +103,8 @@ class Reservation {
       licenseVerified: map['license_verified'] == true,
       vehicle: vehicle,
       contractContent: map['contract_content']?.toString(),
+      secondDriverName: map['second_driver_name']?.toString(),
+      secondDriverLicense: map['second_driver_license']?.toString(),
     );
   }
 
