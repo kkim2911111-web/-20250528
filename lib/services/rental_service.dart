@@ -8,6 +8,7 @@ import '../constants/payment_order_status.dart';
 import '../models/reservation.dart';
 import '../models/vehicle.dart';
 import '../supabase_client.dart';
+import '../utils/reservation_display.dart';
 import 'payment_service.dart';
 import 'reservation_refresh_bus.dart';
 import 'push_notification_service.dart';
@@ -205,6 +206,9 @@ contract_content,second_driver_name,second_driver_license
 
     final reservationId = row['reservation_id']?.toString();
     final orderId = row['order_id']?.toString();
+    final displayId = isNumericReservationId(reservationId)
+        ? reservationId!.trim()
+        : (orderId ?? '');
 
     DateTime? parseTs(Object? v) {
       if (v == null) return null;
@@ -213,9 +217,7 @@ contract_content,second_driver_name,second_driver_license
     }
 
     return Reservation(
-      id: (reservationId != null && reservationId.isNotEmpty)
-          ? reservationId
-          : (orderId ?? ''),
+      id: displayId,
       userId: userId,
       vehicleId: vehicleId,
       startAt: parseTs(row['start_time']),
@@ -226,6 +228,90 @@ contract_content,second_driver_name,second_driver_license
       cancelledAt: parseTs(row['updated_at']),
       vehicle: vehicle,
     );
+  }
+
+  Reservation _copyReservationWithId(Reservation r, String id) {
+    return Reservation(
+      id: id,
+      userId: r.userId,
+      vehicleId: r.vehicleId,
+      startAt: r.startAt,
+      endAt: r.endAt,
+      totalPrice: r.totalPrice,
+      status: r.status,
+      paymentKey: r.paymentKey,
+      paymentStatus: r.paymentStatus,
+      orderId: r.orderId,
+      rentalStartedAt: r.rentalStartedAt,
+      returnedAt: r.returnedAt,
+      actualEndAt: r.actualEndAt,
+      cancelledAt: r.cancelledAt,
+      pickupPhotos: r.pickupPhotos,
+      returnPhotos: r.returnPhotos,
+      mileageStart: r.mileageStart,
+      mileageEnd: r.mileageEnd,
+      fuelLevelStart: r.fuelLevelStart,
+      fuelLevelEnd: r.fuelLevelEnd,
+      isAccident: r.isAccident,
+      accidentNote: r.accidentNote,
+      doorUnlocked: r.doorUnlocked,
+      photosUploaded: r.photosUploaded,
+      licenseVerified: r.licenseVerified,
+      vehicle: r.vehicle,
+      contractContent: r.contractContent,
+      secondDriverName: r.secondDriverName,
+      secondDriverLicense: r.secondDriverLicense,
+      isNoShow: r.isNoShow,
+    );
+  }
+
+  Future<List<Reservation>> _resolveNumericIdsForCancelledOrders(
+    List<Reservation> items,
+  ) async {
+    final unresolved =
+        items.where((r) => !isNumericReservationId(r.id)).toList();
+    if (unresolved.isEmpty) return items;
+
+    final orderIds = unresolved
+        .map((r) => r.orderId?.trim())
+        .whereType<String>()
+        .where((id) => id.isNotEmpty)
+        .toSet()
+        .toList();
+    if (orderIds.isEmpty) return items;
+
+    final byOrder = <String, String>{};
+    try {
+      final rows = await supabase
+          .from('reservations')
+          .select('id, order_id')
+          .inFilter('order_id', orderIds);
+      for (final row in rows as List) {
+        final map = Map<String, dynamic>.from(row);
+        final oid = map['order_id']?.toString().trim();
+        final rid = map['id']?.toString().trim();
+        if (oid != null &&
+            oid.isNotEmpty &&
+            isNumericReservationId(rid)) {
+          byOrder[oid] = rid!;
+        }
+      }
+    } on PostgrestException catch (e) {
+      debugPrint(
+        '[rental] resolve cancelled order ids skipped: ${e.message}',
+      );
+      return items;
+    }
+
+    if (byOrder.isEmpty) return items;
+
+    return items.map((r) {
+      if (isNumericReservationId(r.id)) return r;
+      final oid = r.orderId?.trim();
+      final resolved = oid != null ? byOrder[oid] : null;
+      if (resolved == null) return r;
+      return _copyReservationWithId(r, resolved);
+    }).toList();
   }
 
   Future<List<Reservation>> fetchMyReservations({bool forceRefresh = false}) async {
@@ -441,9 +527,10 @@ contract_content,second_driver_name,second_driver_license
     if (historyOnly) {
       final user = supabase.auth.currentUser;
       if (user != null) {
-        final fromOrders = await _fetchCancelledReservationsFromPaymentOrders(
+        var fromOrders = await _fetchCancelledReservationsFromPaymentOrders(
           user.id,
         );
+        fromOrders = await _resolveNumericIdsForCancelledOrders(fromOrders);
         final existingIds = finished.map((r) => r.id).toSet();
         final existingOrderIds = finished
             .map((r) => r.orderId?.trim())
@@ -457,6 +544,8 @@ contract_content,second_driver_name,second_driver_license
             continue;
           }
           finished.add(r);
+          existingIds.add(r.id);
+          if (oid != null && oid.isNotEmpty) existingOrderIds.add(oid);
         }
         finished.sort(_compareByStartDesc);
       }

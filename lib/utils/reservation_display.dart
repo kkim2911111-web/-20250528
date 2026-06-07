@@ -2,6 +2,19 @@ import 'package:intl/intl.dart';
 
 /// 예약번호·대여 시각 UI 표시 공통 유틸
 
+final _numericReservationId = RegExp(r'^\d+$');
+final _danjiOrderId = RegExp(r'^danji_\d+_');
+
+bool isNumericReservationId(String? value) {
+  final s = value?.trim() ?? '';
+  return s.isNotEmpty && _numericReservationId.hasMatch(s);
+}
+
+bool isDanjiOrderId(String? value) {
+  final s = value?.trim() ?? '';
+  return s.isNotEmpty && _danjiOrderId.hasMatch(s);
+}
+
 String formatReservationDisplayId(
   String rawId, {
   String? paymentReservationId,
@@ -9,10 +22,11 @@ String formatReservationDisplayId(
 }) {
   for (final candidate in [rawId, paymentReservationId, orderId]) {
     final s = candidate?.trim() ?? '';
-    if (s.isEmpty) continue;
-    if (RegExp(r'^\d+$').hasMatch(s)) return '#$s';
+    if (s.isEmpty || isDanjiOrderId(s)) continue;
+    if (_numericReservationId.hasMatch(s)) return '#$s';
   }
-  return '#$rawId';
+  if (!isDanjiOrderId(rawId)) return '#$rawId';
+  return '—';
 }
 
 DateTime? parseReservationDate(Object? value) {
