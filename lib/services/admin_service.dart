@@ -194,14 +194,12 @@ class AdminService {
     final dayStart = DateTime(now.year, now.month, now.day).toUtc();
     final dayEnd = dayStart.add(const Duration(days: 1));
 
-    final monthStart = DateTime(now.year, now.month, 1).toUtc();
     const todayReservationStatuses = [
       'confirmed',
       'in_use',
       'completed',
       'returned',
     ];
-    const salesStatuses = ['confirmed', 'in_use', 'returned', 'completed'];
     final dayStartIso = dayStart.toIso8601String();
     final dayEndIso = dayEnd.toIso8601String();
     final todayDateFilter =
@@ -214,40 +212,26 @@ class AdminService {
         .inFilter('vehicle_id', vehicleIds)
         .inFilter('status', todayReservationStatuses)
         .or(todayDateFilter);
-    final monthStartIso = monthStart.toIso8601String();
-    final todaySalesFilter =
-        'and(start_time.gte."$dayStartIso",start_time.lt."$dayEndIso"),'
-        'and(start_at.gte."$dayStartIso",start_at.lt."$dayEndIso")';
-    final monthSalesFilter =
-        'and(start_time.gte."$monthStartIso"),and(start_at.gte."$monthStartIso")';
 
-    final todaySalesRows = await supabase
-        .from('reservations')
-        .select('total_price')
-        .inFilter('vehicle_id', vehicleIds)
-        .inFilter('status', salesStatuses)
-        .or(todaySalesFilter);
-
-    final monthSalesRows = await supabase
-        .from('reservations')
-        .select('total_price')
-        .inFilter('vehicle_id', vehicleIds)
-        .inFilter('status', salesStatuses)
-        .or(monthSalesFilter);
+    var todaySales = 0;
+    var monthSales = 0;
+    try {
+      final salesData = await supabase.rpc(
+        'get_admin_branch_sales_stats',
+        params: {'p_complex_id': complexId},
+      );
+      if (salesData is Map) {
+        final m = Map<String, dynamic>.from(salesData);
+        todaySales = (m['today_sales'] as num?)?.toInt() ?? 0;
+        monthSales = (m['month_sales'] as num?)?.toInt() ?? 0;
+      }
+    } on PostgrestException catch (e) {
+      if (!_isAdminBranchSalesStatsRpcMissing(e)) rethrow;
+    }
 
     var available = 0;
     for (final v in vehicles) {
       if (v['is_available'] == true) available++;
-    }
-
-    var todaySales = 0;
-    for (final r in todaySalesRows as List) {
-      todaySales += (r['total_price'] as num?)?.toInt() ?? 0;
-    }
-
-    var monthSales = 0;
-    for (final r in monthSalesRows as List) {
-      monthSales += (r['total_price'] as num?)?.toInt() ?? 0;
     }
 
     return BranchStats(
@@ -583,9 +567,11 @@ class AdminService {
 
     const baseSelect =
         'id, user_id, status, total_price, start_at, start_time, end_at, end_time, '
-        'returned_at, updated_at, return_type, second_driver_name, '
+        'rental_started_at, returned_at, actual_end_at, updated_at, return_type, '
+        'second_driver_name, '
         'second_driver_license, is_accident, accident_note, deductible_charged, '
         'deductible_amount, deductible_charged_at, deductible_waived, '
+        'deductible_unpaid, deductible_unpaid_at, '
         'pickup_photos, return_photos, vehicles(model_name, car_number)';
 
     final orderColumn = status == 'completed' ? 'updated_at' : 'returned_at';
@@ -989,63 +975,41 @@ class AdminService {
     int? year,
     int? month,
   }) async {
-    final vehicles = await supabase
-        .from('vehicles')
-        .select('id, model_name')
-        .eq('complex_id', complexId);
-    final vehicleList = vehicles as List;
-    final registeredVehicleCount = vehicleList.length;
-    if (vehicleList.isEmpty) {
-      return const SalesSummary(totalAmount: 0, reservationCount: 0, rows: []);
-    }
-
-    final ids = vehicleList.map((v) => v['id']).toList();
     final now = DateTime.now();
     final targetYear = year ?? now.year;
     final targetMonth = month ?? now.month;
-    final monthStart = DateTime(targetYear, targetMonth, 1).toUtc();
-    final monthEnd = DateTime(targetYear, targetMonth + 1, 1).toUtc();
-    final monthStartIso = monthStart.toIso8601String();
-    final monthEndIso = monthEnd.toIso8601String();
-    final monthRangeFilter =
-        'and(start_time.gte."$monthStartIso",start_time.lt."$monthEndIso"),'
-        'and(start_at.gte."$monthStartIso",start_at.lt."$monthEndIso")';
 
-    final rows = await supabase
-        .from('reservations')
-        .select('total_price, vehicle_id, vehicles(model_name)')
-        .inFilter('vehicle_id', ids)
-        .inFilter('status', ['confirmed', 'in_use', 'returned', 'completed'])
-        .or(monthRangeFilter);
-
-    final byVehicle = <String, SalesRow>{};
-    var total = 0;
-    var count = 0;
-
-    for (final row in rows as List) {
-      final map = Map<String, dynamic>.from(row);
-      final price = (map['total_price'] as num?)?.toInt() ?? 0;
-      final vehicleRaw = map['vehicles'];
-      final name = vehicleRaw is Map
-          ? vehicleRaw['model_name']?.toString() ?? '차량'
-          : '차량';
-      total += price;
-      count++;
-      final existing = byVehicle[name];
-      byVehicle[name] = SalesRow(
-        vehicleName: name,
-        amount: (existing?.amount ?? 0) + price,
-        count: (existing?.count ?? 0) + 1,
+    try {
+      final data = await supabase.rpc(
+        'get_admin_sales_summary',
+        params: {
+          'p_complex_id': complexId,
+          'p_year': targetYear,
+          'p_month': targetMonth,
+        },
       );
+      if (data is Map) {
+        return SalesSummary.fromRpc(Map<String, dynamic>.from(data));
+      }
+    } on PostgrestException catch (e) {
+      if (!_isAdminSalesSummaryRpcMissing(e)) rethrow;
     }
 
-    return SalesSummary(
-      totalAmount: total,
-      reservationCount: count,
-      vehicleCount: registeredVehicleCount,
-      rows: byVehicle.values.toList()
-        ..sort((a, b) => b.amount.compareTo(a.amount)),
-    );
+    return const SalesSummary(totalAmount: 0, reservationCount: 0, rows: []);
+  }
+
+  bool _isAdminSalesSummaryRpcMissing(PostgrestException e) {
+    final msg = e.message.toLowerCase();
+    return e.code == 'PGRST202' ||
+        msg.contains('get_admin_sales_summary') ||
+        msg.contains('could not find the function');
+  }
+
+  bool _isAdminBranchSalesStatsRpcMissing(PostgrestException e) {
+    final msg = e.message.toLowerCase();
+    return e.code == 'PGRST202' ||
+        msg.contains('get_admin_branch_sales_stats') ||
+        msg.contains('could not find the function');
   }
 
   Future<List<LicenseReviewItem>> fetchLicenseReviews() async {
@@ -1148,7 +1112,7 @@ class AdminService {
         return '사고 예약만 면책금을 청구할 수 있습니다.';
       }
       if (code == 'billing_charge_failed') {
-        return '결제에 실패했습니다. 카드 한도·잔액을 확인해주세요.';
+        return '결제에 실패했습니다. 1시간 간격으로 최대 3회 자동 재시도됩니다. 카드 한도·잔액을 확인해주세요.';
       }
       final err = data['error']?.toString();
       if (err != null && err.isNotEmpty) return err;

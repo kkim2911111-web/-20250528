@@ -14,6 +14,7 @@ class RentalContractScreen extends StatefulWidget {
   final String? initialContent;
   final String? secondDriverName;
   final String? secondDriverLicense;
+  final String? rentalPeriodOverride;
 
   const RentalContractScreen({
     super.key,
@@ -22,6 +23,7 @@ class RentalContractScreen extends StatefulWidget {
     this.initialContent,
     this.secondDriverName,
     this.secondDriverLicense,
+    this.rentalPeriodOverride,
   });
 
   @override
@@ -78,7 +80,7 @@ class _RentalContractScreenState extends State<RentalContractScreen> {
     );
     if (parsed.vehicleName == null &&
         widget.vehicleName?.trim().isNotEmpty == true) {
-      return RentalContractParsed(
+      parsed = RentalContractParsed(
         companyName: parsed.companyName,
         reservationId:
             parsed.reservationId.isNotEmpty ? parsed.reservationId : widget.reservationId,
@@ -98,9 +100,8 @@ class _RentalContractScreenState extends State<RentalContractScreen> {
         complianceItems: parsed.complianceItems,
         generatedAt: parsed.generatedAt,
       );
-    }
-    if (parsed.reservationId.isEmpty) {
-      return RentalContractParsed(
+    } else if (parsed.reservationId.isEmpty) {
+      parsed = RentalContractParsed(
         companyName: parsed.companyName,
         reservationId: widget.reservationId,
         vehicleName: parsed.vehicleName ?? widget.vehicleName,
@@ -120,7 +121,7 @@ class _RentalContractScreenState extends State<RentalContractScreen> {
         generatedAt: parsed.generatedAt,
       );
     }
-    return parsed;
+    return parsed.withRentalPeriodOverride(widget.rentalPeriodOverride);
   }
 
   Future<void> _downloadPdf() async {

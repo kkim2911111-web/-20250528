@@ -79,8 +79,8 @@ class _ReservationDetailScreenState extends State<ReservationDetailScreen> {
 
           final reservation = snap.data!;
           final vehicleName = reservation.vehicle?.name ?? '차량';
-          final start = reservation.startAt;
-          final end = reservation.endAt;
+          final start = reservation.displayRentalStartAt;
+          final end = reservation.displayRentalEndAt;
 
           return ListView(
             padding: const EdgeInsets.all(20),

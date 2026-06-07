@@ -108,10 +108,20 @@ class _SuperAdminCouponsScreenState extends State<SuperAdminCouponsScreen> {
       child: _CouponIssueSheet(service: widget.service, coupon: c),
     );
     if (result == null || !mounted) return;
-    DanjiSnackBar.show(
-      context,
-      '${result.issuedCount}명에게 쿠폰이 발급되었습니다.',
+    await showDialog<void>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('쿠폰 발급 완료'),
+        content: Text('${result.issuedCount}명에게 쿠폰이 발급되었습니다.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('확인'),
+          ),
+        ],
+      ),
     );
+    if (!mounted) return;
     await _reload();
   }
 

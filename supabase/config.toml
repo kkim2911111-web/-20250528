@@ -27,3 +27,15 @@ verify_jwt = true
 
 [functions.scheduled-push-reminders]
 verify_jwt = false
+
+[functions.process-billing-retries]
+verify_jwt = false
+
+[functions.enforce-user-blacklist]
+verify_jwt = true
+
+[functions.scheduled-vehicle-insurance]
+verify_jwt = false
+
+[functions.scheduled-auto-return]
+verify_jwt = false

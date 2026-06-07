@@ -1,0 +1,39 @@
+-- pg_cron — 결제 재시도·보험 만료 스케줄 (Supabase Dashboard → Database → Extensions → pg_cron)
+--
+-- Edge Function URL 예시:
+--   https://<project-ref>.supabase.co/functions/v1/process-billing-retries
+--   https://<project-ref>.supabase.co/functions/v1/scheduled-vehicle-insurance
+--
+-- Authorization: Bearer <SUPABASE_SERVICE_ROLE_KEY>
+--
+-- 매시간 결제 재시도 (1시간 간격 재시도 큐 처리)
+-- select cron.schedule(
+--   'process-billing-retries-hourly',
+--   '0 * * * *',
+--   $$
+--   select net.http_post(
+--     url := 'https://<project-ref>.supabase.co/functions/v1/process-billing-retries',
+--     headers := jsonb_build_object(
+--       'Content-Type', 'application/json',
+--       'Authorization', 'Bearer <SERVICE_ROLE_KEY>'
+--     ),
+--     body := '{}'::jsonb
+--   );
+--   $$
+-- );
+--
+-- 매일 00:05 KST (15:05 UTC) 보험 만료 경고·비활성화
+-- select cron.schedule(
+--   'scheduled-vehicle-insurance-daily',
+--   '5 15 * * *',
+--   $$
+--   select net.http_post(
+--     url := 'https://<project-ref>.supabase.co/functions/v1/scheduled-vehicle-insurance',
+--     headers := jsonb_build_object(
+--       'Content-Type', 'application/json',
+--       'Authorization', 'Bearer <SERVICE_ROLE_KEY>'
+--     ),
+--     body := '{}'::jsonb
+--   );
+--   $$
+-- );

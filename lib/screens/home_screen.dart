@@ -1515,12 +1515,12 @@ class _ReservationInfoCard extends StatelessWidget {
                     ),
                     const SizedBox(height: 7),
                     _HomeCardFittedLine(
-                      text: _rentalStartLine(reservation.startAt),
+                      text: _rentalStartLine(reservation.displayRentalStartAt),
                       style: _HomeCardTypography.schedule,
                     ),
                     const SizedBox(height: 3),
                     _HomeCardFittedLine(
-                      text: _rentalEndLine(reservation.endAt),
+                      text: _rentalEndLine(reservation.displayRentalEndAt),
                       style: _HomeCardTypography.schedule,
                     ),
                     if (remaining != null) ...[

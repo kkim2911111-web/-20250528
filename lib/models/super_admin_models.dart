@@ -233,6 +233,9 @@ class SuperAdminResidentRental {
   final String vehicleName;
   final DateTime? startAt;
   final DateTime? endAt;
+  final DateTime? rentalStartedAt;
+  final DateTime? returnedAt;
+  final DateTime? actualEndAt;
   final int totalPrice;
   final String status;
   final String? secondDriverName;
@@ -243,11 +246,19 @@ class SuperAdminResidentRental {
     required this.vehicleName,
     this.startAt,
     this.endAt,
+    this.rentalStartedAt,
+    this.returnedAt,
+    this.actualEndAt,
     this.totalPrice = 0,
     required this.status,
     this.secondDriverName,
     this.secondDriverLicense,
   });
+
+  DateTime? get displayRentalStartAt => rentalStartedAt ?? startAt;
+
+  DateTime? get displayRentalEndAt =>
+      returnedAt ?? actualEndAt ?? endAt;
 
   factory SuperAdminResidentRental.fromMap(Map<String, dynamic> m) {
     return SuperAdminResidentRental(
@@ -255,6 +266,9 @@ class SuperAdminResidentRental {
       vehicleName: m['vehicle_name']?.toString() ?? '차량',
       startAt: _dt(m['start_at']),
       endAt: _dt(m['end_at']),
+      rentalStartedAt: _dt(m['rental_started_at']),
+      returnedAt: _dt(m['returned_at']),
+      actualEndAt: _dt(m['actual_end_at']),
       totalPrice: (m['total_price'] as num?)?.toInt() ?? 0,
       status: m['status']?.toString() ?? '',
       secondDriverName: m['second_driver_name']?.toString(),
@@ -354,6 +368,9 @@ class SuperAdminReservation {
   final String status;
   final DateTime? startAt;
   final DateTime? endAt;
+  final DateTime? rentalStartedAt;
+  final DateTime? returnedAt;
+  final DateTime? actualEndAt;
   final int totalPrice;
   final DateTime? createdAt;
 
@@ -369,9 +386,17 @@ class SuperAdminReservation {
     required this.status,
     this.startAt,
     this.endAt,
+    this.rentalStartedAt,
+    this.returnedAt,
+    this.actualEndAt,
     this.totalPrice = 0,
     this.createdAt,
   });
+
+  DateTime? get displayRentalStartAt => rentalStartedAt ?? startAt;
+
+  DateTime? get displayRentalEndAt =>
+      returnedAt ?? actualEndAt ?? endAt;
 
   factory SuperAdminReservation.fromMap(Map<String, dynamic> m) {
     return SuperAdminReservation(
@@ -386,6 +411,9 @@ class SuperAdminReservation {
       status: m['status']?.toString() ?? '',
       startAt: _dt(m['start_at']),
       endAt: _dt(m['end_at']),
+      rentalStartedAt: _dt(m['rental_started_at']),
+      returnedAt: _dt(m['returned_at']),
+      actualEndAt: _dt(m['actual_end_at']),
       totalPrice: (m['total_price'] as num?)?.toInt() ?? 0,
       createdAt: _dt(m['created_at']),
     );
@@ -443,13 +471,26 @@ class SuperAdminSettlementReservation {
   final String renterName;
   final int totalPrice;
   final DateTime? startAt;
+  final DateTime? endAt;
+  final DateTime? rentalStartedAt;
+  final DateTime? returnedAt;
+  final DateTime? actualEndAt;
 
   const SuperAdminSettlementReservation({
     required this.reservationId,
     required this.renterName,
     this.totalPrice = 0,
     this.startAt,
+    this.endAt,
+    this.rentalStartedAt,
+    this.returnedAt,
+    this.actualEndAt,
   });
+
+  DateTime? get displayRentalStartAt => rentalStartedAt ?? startAt;
+
+  DateTime? get displayRentalEndAt =>
+      returnedAt ?? actualEndAt ?? endAt;
 
   factory SuperAdminSettlementReservation.fromMap(Map<String, dynamic> m) {
     return SuperAdminSettlementReservation(
@@ -457,6 +498,10 @@ class SuperAdminSettlementReservation {
       renterName: m['renter_name']?.toString() ?? '',
       totalPrice: (m['total_price'] as num?)?.toInt() ?? 0,
       startAt: _dt(m['start_at']),
+      endAt: _dt(m['end_at']),
+      rentalStartedAt: _dt(m['rental_started_at']),
+      returnedAt: _dt(m['returned_at']),
+      actualEndAt: _dt(m['actual_end_at']),
     );
   }
 }

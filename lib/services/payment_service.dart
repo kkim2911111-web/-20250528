@@ -81,6 +81,15 @@ class PaymentService {
       if (msg.contains('time_overlap')) {
         return '이미 예약된 시간입니다.';
       }
+      if (msg.contains('user_blacklisted')) {
+        return '서비스 이용이 제한된 계정입니다. 고객센터로 문의해주세요.';
+      }
+      if (msg.contains('insurance_expired')) {
+        return '보험이 만료된 차량은 예약할 수 없습니다.';
+      }
+      if (msg.contains('vehicle_unavailable')) {
+        return '현재 예약할 수 없는 차량입니다.';
+      }
       if (msg.contains('payment_orders') && msg.contains('does not exist')) {
         return 'payment_orders 테이블이 없습니다.\n'
             'Supabase에서 create_payment_orders_table.sql 을 실행해주세요.';
@@ -430,7 +439,7 @@ class PaymentService {
         return '고객에게 등록된 결제카드가 없습니다.';
       }
       if (code == 'billing_charge_failed') {
-        return '결제에 실패했습니다. 카드 한도·잔액을 확인해주세요.';
+        return '결제에 실패했습니다. 1시간 간격으로 최대 3회 자동 재시도됩니다. 카드 한도·잔액을 확인해주세요.';
       }
     }
     if (details is String && details.isNotEmpty) {
@@ -473,7 +482,7 @@ class PaymentService {
         return '등록된 결제카드가 없습니다. 마이페이지에서 결제카드를 등록해주세요.';
       }
       if (code == 'billing_charge_failed') {
-        return '결제에 실패했습니다. 카드 한도·잔액을 확인해주세요.';
+        return '결제에 실패했습니다. 1시간 간격으로 최대 3회 자동 재시도됩니다. 카드 한도·잔액을 확인해주세요.';
       }
       if (code == 'extension_apply_failed') {
         return '결제는 완료되었으나 연장 적용에 실패했습니다. 고객센터로 문의해주세요.';

@@ -84,17 +84,30 @@ class _SuperAdminRevenueScreenState extends State<SuperAdminRevenueScreen> {
         children: [
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
-            child: SuperAdminMonthFilter(
-              year: _year,
-              month: _month,
-              onYearChanged: (y) {
-                setState(() => _year = y);
-                _reload();
-              },
-              onMonthChanged: (m) {
-                setState(() => _month = m);
-                _reload();
-              },
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                SuperAdminMonthFilter(
+                  year: _year,
+                  month: _month,
+                  onYearChanged: (y) {
+                    setState(() => _year = y);
+                    _reload();
+                  },
+                  onMonthChanged: (m) {
+                    setState(() => _month = m);
+                    _reload();
+                  },
+                ),
+                const SizedBox(height: 4),
+                const Text(
+                  'completed · 반납 완료일 기준',
+                  style: TextStyle(
+                    color: DanjiColors.textMuted,
+                    fontSize: 12,
+                  ),
+                ),
+              ],
             ),
           ),
           Expanded(
@@ -262,9 +275,9 @@ class _SettlementDetailSheetState extends State<_SettlementDetailSheet> {
                   separatorBuilder: (_, __) => const Divider(height: 1),
                   itemBuilder: (_, i) {
                     final item = items[i];
-                    final startLabel = item.startAt != null
-                        ? superAdminDateTime.format(item.startAt!.toLocal())
-                        : '-';
+                    final period =
+                        '${item.displayRentalStartAt != null ? superAdminDateTime.format(item.displayRentalStartAt!.toLocal()) : '-'} ~ '
+                        '${item.displayRentalEndAt != null ? superAdminDateTime.format(item.displayRentalEndAt!.toLocal()) : '-'}';
                     return ListTile(
                       contentPadding: EdgeInsets.zero,
                       title: Text(
@@ -275,7 +288,7 @@ class _SettlementDetailSheetState extends State<_SettlementDetailSheet> {
                         ),
                       ),
                       subtitle: Text(
-                        '${item.renterName} · $startLabel',
+                        '${item.renterName} · $period',
                         style: const TextStyle(fontSize: 13),
                       ),
                       trailing: Text(

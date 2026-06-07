@@ -124,9 +124,13 @@ class _SuperAdminReservationsScreenState
               ),
             ],
           ),
-          if (r.startAt != null) ...[
+          if (r.displayRentalStartAt != null || r.displayRentalEndAt != null) ...[
             const SizedBox(height: 8),
-            Text(superAdminDateTime.format(r.startAt!)),
+            Text(
+              '${r.displayRentalStartAt != null ? superAdminDateTime.format(r.displayRentalStartAt!) : '-'} ~ '
+              '${r.displayRentalEndAt != null ? superAdminDateTime.format(r.displayRentalEndAt!) : '-'}',
+              style: const TextStyle(color: DanjiColors.textSecondary),
+            ),
           ],
           const SizedBox(height: 16),
           OutlinedButton(

@@ -1,5 +1,6 @@
 import 'package:intl/intl.dart';
 
+import '../utils/reservation_display.dart';
 import 'vehicle.dart';
 
 /// 예약 + 대여·반납 정보
@@ -33,6 +34,7 @@ class Reservation {
   final String? contractContent;
   final String? secondDriverName;
   final String? secondDriverLicense;
+  final bool isNoShow;
 
   const Reservation({
     required this.id,
@@ -64,6 +66,7 @@ class Reservation {
     this.contractContent,
     this.secondDriverName,
     this.secondDriverLicense,
+    this.isNoShow = false,
   });
 
   bool get hasSecondDriver {
@@ -108,6 +111,7 @@ class Reservation {
       contractContent: map['contract_content']?.toString(),
       secondDriverName: map['second_driver_name']?.toString(),
       secondDriverLicense: map['second_driver_license']?.toString(),
+      isNoShow: map['is_no_show'] == true,
     );
   }
 
@@ -237,6 +241,25 @@ class Reservation {
   DateTime? get _start => startAt;
   DateTime? get _end => endAt;
 
+  /// UI — 실제 대여/반납 시각 우선
+  DateTime? get displayRentalStartAt => resolveRentalStartDisplay(
+        rentalStartedAt: rentalStartedAt,
+        scheduledStartAt: startAt,
+      );
+
+  DateTime? get displayRentalEndAt => resolveRentalEndDisplay(
+        returnedAt: returnedAt,
+        actualEndAt: actualEndAt,
+        scheduledEndAt: endAt,
+      );
+
+  String reservationNumberLabel({String? paymentReservationId}) =>
+      formatReservationDisplayId(
+        id,
+        paymentReservationId: paymentReservationId,
+        orderId: orderId,
+      );
+
   /// 예약 이용 시간대 내 (start ~ end)
   bool get isWithinUsageWindow {
     final start = _start;
@@ -303,8 +326,8 @@ class Reservation {
 
   /// 홈 이용 시간대 — 05/30 22:00 - 05/31 10:00 / 금일 09:00 - 18:00
   String? get usagePeriodLabel {
-    final start = startAt;
-    final end = endAt;
+    final start = displayRentalStartAt;
+    final end = displayRentalEndAt;
     if (start == null || end == null) return null;
     return formatUsagePeriod(start, end);
   }
@@ -342,6 +365,7 @@ class Reservation {
   }
 
   String get displayStatusLabel {
+    if (isNoShow) return '노쇼완료';
     if (isCancelled) return '예약 취소';
     if (isEffectivelyFinished && !isFinished) return '이용 종료';
     if (isOperating) return '대여 중';
@@ -369,6 +393,25 @@ class Reservation {
         return status;
     }
   }
+}
+
+/// 대여 시작 전 필수 사진 안내
+abstract final class RentalPhotoMessages {
+  static const minRequired = 6;
+  static const maxAllowed = 10;
+
+  static const startGuide =
+      '앞·뒤·좌·우·실내·계기판을 포함하여 최소 6장 이상 등록해 주세요.';
+
+  static const dashboardRequiredNote =
+      '※ 주행 거리 및 주유(충전) 상태 확인을 위해 \'계기판 사진\'은 반드시 포함되어야 합니다.';
+
+  static const slotLabels = ['앞', '뒤', '좌', '우', '실내', '계기판'];
+
+  static const dashboardSlotIndex = 5;
+
+  static String get maxReachedMessage =>
+      '사진은 최대 $maxAllowed장까지 등록할 수 있습니다.';
 }
 
 /// 운행시작 안내

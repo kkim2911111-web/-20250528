@@ -640,29 +640,32 @@ class ReservationService {
 
     final bestByReservation = <String, Map<String, dynamic>>{};
     for (final row in rows) {
-      var rid = row['reservation_id']?.toString() ?? '';
-      if (rid.isEmpty) {
+      var resKey = '';
+      final numericResId = row['reservation_id']?.toString() ?? '';
+      if (numericResId.isNotEmpty && byReservationId.containsKey(numericResId)) {
+        resKey = numericResId;
+      } else {
         final oid = row['order_id']?.toString();
         if (oid != null) {
           for (final r in byReservationId.values) {
-            if (r.orderId == oid) {
-              rid = r.id;
+            if (r.id == oid || r.orderId == oid) {
+              resKey = r.id;
               break;
             }
           }
         }
       }
-      if (rid.isEmpty || !byReservationId.containsKey(rid)) continue;
+      if (resKey.isEmpty) continue;
 
-      final existing = bestByReservation[rid];
+      final existing = bestByReservation[resKey];
       if (existing == null || _pricingRowRank(row) > _pricingRowRank(existing)) {
-        bestByReservation[rid] = row;
+        bestByReservation[resKey] = row;
       }
     }
 
     final out = <String, ReservationPaymentPricing>{};
     for (final entry in bestByReservation.entries) {
-      final pricing = ReservationPaymentPricing.fromPaymentOrderRow(
+      final pricing = ReservationPaymentPricing.fromPaymentOrderRowOrId(
         entry.value,
         fallbackPrice: byReservationId[entry.key]!.totalPrice,
       );
@@ -1415,6 +1418,15 @@ String friendlyReservationError(Object error) {
     }
     if (msg.contains('time_overlap')) {
       return '이미 예약된 시간입니다';
+    }
+    if (msg.contains('user_blacklisted')) {
+      return '서비스 이용이 제한된 계정입니다. 고객센터로 문의해주세요.';
+    }
+    if (msg.contains('insurance_expired')) {
+      return '보험이 만료된 차량은 예약할 수 없습니다.';
+    }
+    if (msg.contains('vehicle_unavailable')) {
+      return '현재 예약할 수 없는 차량입니다.';
     }
     if (msg.contains('overlap') || msg.contains('exclusion')) {
       return '이미 예약된 시간입니다';

@@ -83,6 +83,7 @@ class MyPageService {
       residentComplexName: resident.complexName,
       residentBuilding: resident.building,
       residentUnit: resident.unit,
+      isBlacklisted: row['is_blacklisted'] == true,
     );
   }
 

@@ -4,6 +4,7 @@ import 'package:intl/intl.dart';
 import '../../models/staff_profile.dart';
 import '../../services/admin_service.dart';
 import '../../utils/admin_conflict.dart' as conflict;
+import '../../utils/reservation_display.dart';
 import '../../theme/danji_colors.dart';
 import '../../utils/danji_snackbar.dart';
 import '../../widgets/admin_scaffold.dart';
@@ -586,8 +587,8 @@ class _CompletedReservationCard extends StatelessWidget {
     final renterName = AdminReservationRow.resolveRenterDisplayName(
       directRenterName: _str(row, 'renter_name'),
     );
-    final start = _parseDate(row['start_at']);
-    final end = _parseDate(row['end_at']);
+    final start = displayRentalStartFromMap(row);
+    final end = displayRentalEndFromMap(row);
     final totalPrice = (row['total_price'] as num?)?.toInt() ?? 0;
     final reservationId = _reservationId(row);
     final secondDriverName = _str(row, 'second_driver_name');
@@ -691,6 +692,11 @@ class _CompletedReservationCard extends StatelessWidget {
               renterName: renterName,
               secondDriverName: secondDriverName,
               secondDriverLicense: secondDriverLicense,
+              rentalPeriodOverride: formatRentalPeriod(
+                formatter: dateTime,
+                start: displayRentalStartFromMap(row),
+                end: displayRentalEndFromMap(row),
+              ),
             ),
           ],
         ],
@@ -742,8 +748,8 @@ class _ReservationCardState extends State<_ReservationCard> {
     final vehicleName = _str(row, 'vehicle_name') ?? '차량';
     final carNumber = _str(row, 'car_number');
     final status = _status(row);
-    final start = _parseDate(row['start_at']);
-    final end = _parseDate(row['end_at']);
+    final start = displayRentalStartFromMap(row);
+    final end = displayRentalEndFromMap(row);
     final nextStart = _parseDate(row['next_start_at']);
     final secondDriverName = _str(row, 'second_driver_name');
     final secondDriverLicense = _str(row, 'second_driver_license');
@@ -1301,8 +1307,7 @@ bool _isScheduledTabRow(Map<String, dynamic> row) {
 }
 
 bool _isNoShowCompleted(Map<String, dynamic> row) {
-  if (row['is_no_show'] == true) return true;
-  return _str(row, 'return_type')?.toLowerCase() == 'auto';
+  return row['is_no_show'] == true;
 }
 
 String? _str(Map<String, dynamic> row, String key) {

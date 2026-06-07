@@ -4,12 +4,14 @@ class ReservationPaymentPricing {
   final int finalPrice;
   final bool hasCoupon;
   final bool hasPoints;
+  final String? paymentReservationId;
 
   const ReservationPaymentPricing({
     required this.originalPrice,
     required this.finalPrice,
     required this.hasCoupon,
     required this.hasPoints,
+    this.paymentReservationId,
   });
 
   bool get hasDiscount => hasCoupon || hasPoints;
@@ -44,11 +46,35 @@ class ReservationPaymentPricing {
     final total = (row['total_price'] as num?)?.toInt() ?? fallbackPrice;
     final original = (row['original_price'] as num?)?.toInt() ?? total;
 
+    final paymentReservationId = row['reservation_id']?.toString();
+
     return ReservationPaymentPricing(
       originalPrice: original > 0 ? original : total,
       finalPrice: total,
       hasCoupon: hasCoupon,
       hasPoints: hasPoints,
+      paymentReservationId: paymentReservationId,
+    );
+  }
+
+  static ReservationPaymentPricing? fromPaymentOrderRowOrId(
+    Map<String, dynamic> row, {
+    required int fallbackPrice,
+  }) {
+    final paymentReservationId = row['reservation_id']?.toString();
+    final priced = fromPaymentOrderRow(row, fallbackPrice: fallbackPrice);
+    if (priced != null) return priced;
+    if (paymentReservationId == null ||
+        paymentReservationId.trim().isEmpty ||
+        !RegExp(r'^\d+$').hasMatch(paymentReservationId.trim())) {
+      return null;
+    }
+    return ReservationPaymentPricing(
+      originalPrice: fallbackPrice,
+      finalPrice: fallbackPrice,
+      hasCoupon: false,
+      hasPoints: false,
+      paymentReservationId: paymentReservationId,
     );
   }
 }

@@ -3,6 +3,9 @@ import '../models/my_page_profile.dart';
 /// 예약·결제 진입 전 필수 조건 검사
 abstract final class BookingEligibility {
   static String? blockReason(MyPageProfile profile) {
+    if (profile.isBlacklisted) {
+      return '서비스 이용이 제한된 계정입니다. 고객센터로 문의해주세요.';
+    }
     if (!profile.hasResidentRegistration) {
       return '입주민 인증(초대코드·동/호)을 먼저 완료해주세요.';
     }

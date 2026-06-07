@@ -1,11 +1,17 @@
 import { handleCors, jsonResponse } from '../_shared/http.ts';
 import {
+  enqueueBillingRetry,
+  notifyBillingPaymentFailed,
+} from '../_shared/billing_retry.ts';
+import {
   getAdminClient,
   getUserClient,
   getUserFromRequest,
   makeOrderId,
 } from '../_shared/payment.ts';
 import { cancelTossPayment, chargeTossBilling } from '../_shared/toss.ts';
+
+const MAX_BILLING_RETRIES = 3;
 
 Deno.serve(async (req) => {
   const cors = handleCors(req);
@@ -169,6 +175,42 @@ Deno.serve(async (req) => {
           });
         } catch (_) {}
       }
+
+      let complexId: string | null = null;
+      try {
+        const { data: resRow } = await admin
+          .from('reservations')
+          .select('vehicles(complex_id)')
+          .eq('id', reservationId)
+          .maybeSingle();
+        const vehicles = resRow?.vehicles as { complex_id?: string } | null;
+        complexId = vehicles?.complex_id?.toString() ?? null;
+      } catch (_) {}
+
+      try {
+        await enqueueBillingRetry(admin, {
+          chargeType: 'extension',
+          reservationId,
+          userId: user.id,
+          amount: addedPrice,
+          complexId,
+          extensionHours,
+          lastError: err.message || '결제 실패',
+        });
+        await notifyBillingPaymentFailed(admin, {
+          chargeType: 'extension',
+          reservationId,
+          userId: user.id,
+          amount: addedPrice,
+          complexId,
+          retryCount: 0,
+          maxRetries: MAX_BILLING_RETRIES,
+          isFinal: false,
+        });
+      } catch (retryErr) {
+        console.error('[billing-extension-charge] retry enqueue', retryErr);
+      }
+
       return jsonResponse(
         {
           error: err.message || '결제에 실패했습니다.',

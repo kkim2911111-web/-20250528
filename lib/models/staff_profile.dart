@@ -1,3 +1,5 @@
+import '../utils/reservation_display.dart';
+
 class StaffProfile {
   final String userId;
   final String complexId;
@@ -301,6 +303,8 @@ class AdminReservationRow {
   final int totalPrice;
   final DateTime? startAt;
   final DateTime? endAt;
+  final DateTime? rentalStartedAt;
+  final DateTime? actualEndAt;
   final String vehicleName;
   final String? carNumber;
   final bool isAccident;
@@ -318,6 +322,8 @@ class AdminReservationRow {
   final int deductibleAmount;
   final DateTime? deductibleChargedAt;
   final bool deductibleWaived;
+  final bool deductibleUnpaid;
+  final DateTime? deductibleUnpaidAt;
 
   const AdminReservationRow({
     required this.id,
@@ -325,6 +331,8 @@ class AdminReservationRow {
     required this.totalPrice,
     this.startAt,
     this.endAt,
+    this.rentalStartedAt,
+    this.actualEndAt,
     required this.vehicleName,
     this.carNumber,
     this.isAccident = false,
@@ -342,6 +350,8 @@ class AdminReservationRow {
     this.deductibleAmount = 0,
     this.deductibleChargedAt,
     this.deductibleWaived = false,
+    this.deductibleUnpaid = false,
+    this.deductibleUnpaidAt,
   });
 
   static const int defaultDeductibleAmount = 500000;
@@ -355,7 +365,19 @@ class AdminReservationRow {
     return name != null && name.isNotEmpty;
   }
 
-  String get reservationNumberLabel => '#$id';
+  String get reservationNumberLabel =>
+      formatReservationDisplayId(id);
+
+  DateTime? get displayRentalStartAt => resolveRentalStartDisplay(
+        rentalStartedAt: rentalStartedAt,
+        scheduledStartAt: startAt,
+      );
+
+  DateTime? get displayRentalEndAt => resolveRentalEndDisplay(
+        returnedAt: returnedAt,
+        actualEndAt: actualEndAt,
+        scheduledEndAt: endAt,
+      );
 
   /// UI 표시용 — [renterName] 없으면 '이름 미등록'
   String get renterDisplayName {
@@ -445,6 +467,12 @@ class AdminReservationRow {
       endAt: DateTime.tryParse(
         (map['end_at'] ?? map['end_time'])?.toString() ?? '',
       )?.toLocal(),
+      rentalStartedAt: DateTime.tryParse(
+        map['rental_started_at']?.toString() ?? '',
+      )?.toLocal(),
+      actualEndAt: DateTime.tryParse(
+        map['actual_end_at']?.toString() ?? '',
+      )?.toLocal(),
       vehicleName: vehicle?['model_name']?.toString() ?? '차량',
       carNumber: vehicle?['car_number']?.toString(),
       isAccident: map['is_accident'] == true,
@@ -473,22 +501,59 @@ class AdminReservationRow {
         map['deductible_charged_at']?.toString() ?? '',
       )?.toLocal(),
       deductibleWaived: map['deductible_waived'] == true,
+      deductibleUnpaid: map['deductible_unpaid'] == true,
+      deductibleUnpaidAt: DateTime.tryParse(
+        map['deductible_unpaid_at']?.toString() ?? '',
+      )?.toLocal(),
     );
   }
 }
 
 class SalesSummary {
+  final int grossRevenue;
+  final int extensionRevenue;
   final int totalAmount;
   final int reservationCount;
   final int vehicleCount;
   final List<SalesRow> rows;
 
   const SalesSummary({
+    this.grossRevenue = 0,
+    this.extensionRevenue = 0,
     required this.totalAmount,
     required this.reservationCount,
     this.vehicleCount = 0,
     required this.rows,
   });
+
+  factory SalesSummary.fromRpc(Map<String, dynamic> m) {
+    final rowsRaw = m['rows'];
+    final rows = rowsRaw is List
+        ? rowsRaw
+            .map((e) {
+              final row = Map<String, dynamic>.from(e as Map);
+              return SalesRow(
+                vehicleName: row['vehicle_name']?.toString() ?? '차량',
+                amount: (row['amount'] as num?)?.toInt() ?? 0,
+                count: (row['count'] as num?)?.toInt() ?? 0,
+              );
+            })
+            .toList()
+        : <SalesRow>[];
+
+    final gross = (m['gross_revenue'] as num?)?.toInt() ?? 0;
+    final extension = (m['extension_revenue'] as num?)?.toInt() ?? 0;
+    final total = (m['total_revenue'] as num?)?.toInt() ?? (gross + extension);
+
+    return SalesSummary(
+      grossRevenue: gross,
+      extensionRevenue: extension,
+      totalAmount: total,
+      reservationCount: (m['reservation_count'] as num?)?.toInt() ?? 0,
+      vehicleCount: (m['vehicle_count'] as num?)?.toInt() ?? 0,
+      rows: rows,
+    );
+  }
 }
 
 class SalesRow {

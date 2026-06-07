@@ -167,6 +167,7 @@ Future<void> showAdminReservationContract({
   String? renterName,
   String? secondDriverName,
   String? secondDriverLicense,
+  String? rentalPeriodOverride,
 }) async {
   final id = reservationId.trim();
   if (id.isEmpty) {
@@ -216,6 +217,8 @@ Future<void> showAdminReservationContract({
           generatedAt: parsed.generatedAt,
         )
       : parsed;
+  final finalParsed =
+      displayParsed.withRentalPeriodOverride(rentalPeriodOverride);
 
   await showModalBottomSheet<void>(
     context: context,
@@ -224,7 +227,7 @@ Future<void> showAdminReservationContract({
     builder: (ctx) {
       return AdminReservationContractSheet(
         contractText: contractText,
-        displayParsed: displayParsed,
+        displayParsed: finalParsed,
         reservationId: id,
         vehicleName: vehicleName,
       );
@@ -241,6 +244,7 @@ class AdminReservationContractButton extends StatefulWidget {
   final String? renterName;
   final String? secondDriverName;
   final String? secondDriverLicense;
+  final String? rentalPeriodOverride;
 
   const AdminReservationContractButton({
     super.key,
@@ -251,6 +255,7 @@ class AdminReservationContractButton extends StatefulWidget {
     this.renterName,
     this.secondDriverName,
     this.secondDriverLicense,
+    this.rentalPeriodOverride,
   });
 
   @override
@@ -282,6 +287,7 @@ class _AdminReservationContractButtonState
         renterName: widget.renterName,
         secondDriverName: widget.secondDriverName,
         secondDriverLicense: widget.secondDriverLicense,
+        rentalPeriodOverride: widget.rentalPeriodOverride,
       );
     } catch (e) {
       if (!mounted) return;

@@ -21,6 +21,7 @@ class MyPageProfile {
   final String? residentComplexName;
   final String? residentBuilding;
   final String? residentUnit;
+  final bool isBlacklisted;
 
   const MyPageProfile({
     this.name,
@@ -44,6 +45,7 @@ class MyPageProfile {
     this.residentComplexName,
     this.residentBuilding,
     this.residentUnit,
+    this.isBlacklisted = false,
   });
 
   bool get hasName => _filled(name);

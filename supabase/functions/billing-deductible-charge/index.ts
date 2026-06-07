@@ -1,11 +1,18 @@
 import { handleCors, jsonResponse } from '../_shared/http.ts';
 import { sendPushToUser } from '../_shared/fcm.ts';
 import {
+  enqueueBillingRetry,
+  notifyBillingPaymentFailed,
+} from '../_shared/billing_retry.ts';
+import {
   getAdminClient,
   getUserFromRequest,
   makeOrderId,
 } from '../_shared/payment.ts';
 import { cancelTossPayment, chargeTossBilling } from '../_shared/toss.ts';
+
+const DEDUCTIBLE_RETRY_AMOUNT = 500_000;
+const MAX_BILLING_RETRIES = 3;
 
 const DEDUCTIBLE_AMOUNT = 500_000;
 
@@ -202,6 +209,8 @@ Deno.serve(async (req) => {
           deductible_charged: true,
           deductible_amount: DEDUCTIBLE_AMOUNT,
           deductible_charged_at: chargedAt,
+          deductible_unpaid: false,
+          deductible_unpaid_at: null,
           updated_at: chargedAt,
         })
         .eq('id', reservationId)
@@ -269,6 +278,31 @@ Deno.serve(async (req) => {
           });
         } catch (_) {}
       }
+
+      const complexId = reservation.vehicles?.complex_id?.toString() ?? null;
+      try {
+        await enqueueBillingRetry(admin, {
+          chargeType: 'deductible',
+          reservationId,
+          userId: renterUserId,
+          amount: DEDUCTIBLE_RETRY_AMOUNT,
+          complexId,
+          lastError: err.message || '결제 실패',
+        });
+        await notifyBillingPaymentFailed(admin, {
+          chargeType: 'deductible',
+          reservationId,
+          userId: renterUserId,
+          amount: DEDUCTIBLE_RETRY_AMOUNT,
+          complexId,
+          retryCount: 0,
+          maxRetries: MAX_BILLING_RETRIES,
+          isFinal: false,
+        });
+      } catch (retryErr) {
+        console.error('[billing-deductible-charge] retry enqueue', retryErr);
+      }
+
       return jsonResponse(
         {
           error: err.message || '결제에 실패했습니다.',

@@ -10,6 +10,12 @@ class SuperAdminException implements Exception {
   String toString() => message;
 }
 
+class BlacklistEnforceResult {
+  final int cancelledCount;
+
+  const BlacklistEnforceResult({this.cancelledCount = 0});
+}
+
 class SuperAdminService {
   Future<bool> isSuperAdmin() async {
     final user = supabase.auth.currentUser;
@@ -274,11 +280,50 @@ class SuperAdminService {
         parse: (_) {},
       );
 
-  Future<void> setBlacklist(String userId, bool blacklisted) => _rpc(
-        'set_super_admin_user_blacklist',
-        params: {'p_user_id': userId, 'p_blacklisted': blacklisted},
-        parse: (_) {},
-      );
+  Future<BlacklistEnforceResult> setBlacklist(
+    String userId,
+    bool blacklisted,
+  ) async {
+    if (blacklisted) {
+      try {
+        final res = await supabase.functions.invoke(
+          'enforce-user-blacklist',
+          body: {'userId': userId, 'blacklisted': true},
+        );
+        if (res.status != 200) {
+          final data = res.data;
+          final msg = data is Map
+              ? data['error']?.toString()
+              : res.status.toString();
+          throw SuperAdminException(
+            msg?.isNotEmpty == true ? msg! : '블랙리스트 등록에 실패했습니다.',
+          );
+        }
+        final data = res.data;
+        if (data is Map) {
+          return BlacklistEnforceResult(
+            cancelledCount: (data['cancelledCount'] as num?)?.toInt() ?? 0,
+          );
+        }
+        return const BlacklistEnforceResult();
+      } on FunctionException catch (e) {
+        final details = e.details;
+        if (details is Map && details['error'] != null) {
+          throw SuperAdminException(details['error'].toString());
+        }
+        throw SuperAdminException(
+          e.reasonPhrase ?? '블랙리스트 등록에 실패했습니다.',
+        );
+      }
+    }
+
+    await _rpc(
+      'set_super_admin_user_blacklist',
+      params: {'p_user_id': userId, 'p_blacklisted': false},
+      parse: (_) {},
+    );
+    return const BlacklistEnforceResult();
+  }
 
   Future<void> forceLicenseApproved(String userId) => _rpc(
         'force_super_admin_license_approved',

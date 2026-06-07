@@ -67,8 +67,8 @@ class ReservationCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final vehicle = reservation.vehicle;
-    final start = reservation.startAt;
-    final end = reservation.endAt;
+    final start = reservation.displayRentalStartAt;
+    final end = reservation.displayRentalEndAt;
 
     return Container(
       padding: const EdgeInsets.all(16),

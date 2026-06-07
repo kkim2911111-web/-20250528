@@ -11,6 +11,7 @@ import '../theme/danji_typography.dart';
 import '../widgets/danji_app_bar.dart';
 import '../widgets/reservation_price_display.dart';
 import '../utils/rental_navigation.dart';
+import '../utils/reservation_display.dart';
 import 'rental_contract_screen.dart';
 import '../models/reservation_payment_pricing.dart';
 class MyReservationsScreen extends StatefulWidget {
@@ -215,6 +216,12 @@ class _MyReservationsScreenState extends State<MyReservationsScreen> {
       return;
     }
 
+    final period = formatRentalPeriod(
+      formatter: DateFormat('yyyy-MM-dd HH:mm'),
+      start: reservation.displayRentalStartAt,
+      end: reservation.displayRentalEndAt,
+    );
+
     await Navigator.of(context).push(
       MaterialPageRoute(
         builder: (_) => RentalContractScreen(
@@ -223,6 +230,7 @@ class _MyReservationsScreenState extends State<MyReservationsScreen> {
           initialContent: content,
           secondDriverName: reservation.secondDriverName,
           secondDriverLicense: reservation.secondDriverLicense,
+          rentalPeriodOverride: period,
         ),
       ),
     );
@@ -874,8 +882,8 @@ class _ReservationCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final vehicle = reservation.vehicle;
-    final start = reservation.startAt;
-    final end = reservation.endAt;
+    final start = reservation.displayRentalStartAt;
+    final end = reservation.displayRentalEndAt;
 
     return Container(
       padding: const EdgeInsets.all(16),
@@ -946,7 +954,7 @@ class _ReservationCard extends StatelessWidget {
           if (showReservationId) ...[
             const SizedBox(height: 6),
             Text(
-              '예약번호 ${reservation.id}',
+              '예약번호 ${reservation.reservationNumberLabel(paymentReservationId: pricing?.paymentReservationId)}',
               style: DanjiTypography.caption.copyWith(
                 color: DanjiColors.textSecondary,
                 fontWeight: FontWeight.w600,

@@ -122,6 +122,7 @@ class _SuperAdminResidentDetailScreenState
         renterName: detail.fullName,
         secondDriverName: rental.secondDriverName,
         secondDriverLicense: rental.secondDriverLicense,
+        rentalPeriodOverride: _rentalPeriodLabel(rental),
       );
     } catch (e) {
       if (mounted) DanjiSnackBar.show(context, friendlySuperAdminError(e));
@@ -367,11 +368,33 @@ class _SuperAdminResidentDetailScreenState
         ],
         OutlinedButton(
           onPressed: () async {
-            await widget.service.setBlacklist(
+            final registering = !detail.isBlacklisted;
+            if (registering) {
+              final confirm = await superAdminConfirmDialog(
+                context,
+                title: '블랙리스트 등록',
+                message:
+                    '${detail.fullName ?? detail.email} 계정을 블랙리스트에 등록할까요?\n'
+                    '확정·대기 중인 예약은 자동 취소·환불됩니다.',
+                confirmLabel: '등록',
+                danger: true,
+              );
+              if (!confirm || !mounted) return;
+            }
+            final result = await widget.service.setBlacklist(
               detail.userId,
-              !detail.isBlacklisted,
+              registering,
             );
             if (!mounted) return;
+            if (registering && result.cancelledCount > 0) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: Text(
+                    '블랙리스트 등록 완료. 예약 ${result.cancelledCount}건이 취소·환불 처리되었습니다.',
+                  ),
+                ),
+              );
+            }
             _reload();
           },
           style: detail.isBlacklisted
@@ -407,8 +430,8 @@ class _SuperAdminResidentDetailScreenState
   }
 
   String _rentalPeriodLabel(SuperAdminResidentRental rental) {
-    final start = rental.startAt;
-    final end = rental.endAt;
+    final start = rental.displayRentalStartAt;
+    final end = rental.displayRentalEndAt;
     if (start == null && end == null) return '-';
     final fmt = DateFormat('yyyy-MM-dd HH:mm');
     final s = start != null ? fmt.format(start.toLocal()) : '-';
@@ -451,6 +474,7 @@ Future<void> showSuperAdminReservationContract({
   String? renterName,
   String? secondDriverName,
   String? secondDriverLicense,
+  String? rentalPeriodOverride,
 }) async {
   final id = reservationId.trim();
   if (id.isEmpty) {
@@ -491,6 +515,8 @@ Future<void> showSuperAdminReservationContract({
           generatedAt: parsed.generatedAt,
         )
       : parsed;
+  final finalParsed =
+      displayParsed.withRentalPeriodOverride(rentalPeriodOverride);
 
   await showModalBottomSheet<void>(
     context: context,
@@ -499,7 +525,7 @@ Future<void> showSuperAdminReservationContract({
     builder: (ctx) {
       return AdminReservationContractSheet(
         contractText: content,
-        displayParsed: displayParsed,
+        displayParsed: finalParsed,
         reservationId: id,
         vehicleName: vehicleName,
       );

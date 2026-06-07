@@ -40,6 +40,12 @@ try {
     & $sb functions deploy send-push-notification --project-ref $ProjectRef
     & $sb functions deploy dispatch-push-scenario --project-ref $ProjectRef
     & $sb functions deploy scheduled-push-reminders --project-ref $ProjectRef
+    & $sb functions deploy billing-deductible-charge --project-ref $ProjectRef
+    & $sb functions deploy billing-extension-charge --project-ref $ProjectRef
+    & $sb functions deploy process-billing-retries --project-ref $ProjectRef
+    & $sb functions deploy enforce-user-blacklist --project-ref $ProjectRef
+    & $sb functions deploy scheduled-vehicle-insurance --project-ref $ProjectRef
+    & $sb functions deploy scheduled-auto-return --project-ref $ProjectRef
 
     Write-Host ""
     Write-Host "완료. 등록된 시크릿 확인:"

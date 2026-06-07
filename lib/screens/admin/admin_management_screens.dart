@@ -11,6 +11,7 @@ import '../../widgets/month_filter_bar.dart';
 import '../../widgets/admin_reservation_card_extras.dart';
 import '../../widgets/return_inspection_photo_compare.dart';
 import '../../widgets/section_card.dart';
+import '../../utils/reservation_display.dart';
 import 'admin_vehicle_form_screen.dart';
 
 /// complexes.name 조인값 우선, 없으면 관리자 프로필 단지명
@@ -1039,6 +1040,65 @@ class _DeductibleSection extends StatelessWidget {
               ),
             ),
           ),
+        ] else if (row.deductibleUnpaid) ...[
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+            decoration: BoxDecoration(
+              color: DanjiColors.danger.withValues(alpha: 0.08),
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(
+                color: DanjiColors.danger.withValues(alpha: 0.45),
+              ),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  '미수금 ₩${_won.format(row.deductibleAmount > 0 ? row.deductibleAmount : amount)}',
+                  style: const TextStyle(
+                    color: DanjiColors.danger,
+                    fontWeight: FontWeight.w800,
+                    fontSize: 13,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                const Text(
+                  '자동 결제 재시도 실패 — 수동 결제 처리가 필요합니다.',
+                  style: TextStyle(
+                    color: DanjiColors.textSecondary,
+                    fontSize: 12,
+                    height: 1.35,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 8),
+          Row(
+            children: [
+              Expanded(
+                child: OutlinedButton(
+                  onPressed: processing ? null : onWaive,
+                  child: const Text('면제'),
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: FilledButton(
+                  onPressed: processing ? null : onCharge,
+                  style: DanjiTheme.dangerButton,
+                  child: processing
+                      ? const SizedBox(
+                          height: 18,
+                          width: 18,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Text('수동 청구'),
+                ),
+              ),
+            ],
+          ),
         ] else ...[
           Row(
             children: [
@@ -1261,8 +1321,8 @@ class _ReturnInspectionCardState extends State<_ReturnInspectionCard> {
           ),
           const SizedBox(height: 4),
           Text(
-            '${r.startAt != null ? widget.dateFormat.format(r.startAt!) : '-'} ~ '
-            '${r.endAt != null ? widget.dateFormat.format(r.endAt!) : '-'}',
+            '${r.displayRentalStartAt != null ? widget.dateFormat.format(r.displayRentalStartAt!) : '-'} ~ '
+            '${r.displayRentalEndAt != null ? widget.dateFormat.format(r.displayRentalEndAt!) : '-'}',
             style: const TextStyle(color: DanjiColors.textSecondary),
           ),
           if (widget.showInspectionDate) ...[
@@ -1301,6 +1361,11 @@ class _ReturnInspectionCardState extends State<_ReturnInspectionCard> {
             renterName: r.renterDisplayName,
             secondDriverName: r.secondDriverName,
             secondDriverLicense: r.secondDriverLicense,
+            rentalPeriodOverride: formatRentalPeriod(
+              formatter: widget.dateFormat,
+              start: r.displayRentalStartAt,
+              end: r.displayRentalEndAt,
+            ),
           ),
           if (r.isAccident) ...[
             const SizedBox(height: 12),
@@ -1514,8 +1579,16 @@ class _AdminSalesScreenState extends State<AdminSalesScreen> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      '$monthLabel 등록 차량 매출',
+                      '$monthLabel 반납 완료 매출',
                       style: const TextStyle(color: DanjiColors.textSecondary),
+                    ),
+                    const SizedBox(height: 2),
+                    const Text(
+                      'completed · 반납 완료일 기준',
+                      style: TextStyle(
+                        color: DanjiColors.textMuted,
+                        fontSize: 12,
+                      ),
                     ),
                     const SizedBox(height: 8),
                     Text(
@@ -1528,6 +1601,16 @@ class _AdminSalesScreenState extends State<AdminSalesScreen> {
                     ),
                     const SizedBox(height: 4),
                     Text('예약 ${summary.reservationCount}건'),
+                    if (summary.extensionRevenue > 0) ...[
+                      const SizedBox(height: 4),
+                      Text(
+                        '연장 매출 ₩${_won.format(summary.extensionRevenue)} 포함',
+                        style: const TextStyle(
+                          color: DanjiColors.textSecondary,
+                          fontSize: 13,
+                        ),
+                      ),
+                    ],
                   ],
                 ),
               ),

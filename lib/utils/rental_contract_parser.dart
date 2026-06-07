@@ -45,6 +45,30 @@ class RentalContractParsed {
     return name != null && name.isNotEmpty;
   }
 
+  RentalContractParsed withRentalPeriodOverride(String? period) {
+    final next = period?.trim();
+    if (next == null || next.isEmpty) return this;
+    return RentalContractParsed(
+      companyName: companyName,
+      reservationId: reservationId,
+      vehicleName: vehicleName,
+      rentalPeriod: next,
+      renterName: renterName,
+      renterPhone: renterPhone,
+      licenseNumber: licenseNumber,
+      secondDriverName: secondDriverName,
+      secondDriverLicense: secondDriverLicense,
+      originalPrice: originalPrice,
+      paidPrice: paidPrice,
+      extraFeeLines: extraFeeLines,
+      insuranceIntro: insuranceIntro,
+      insuranceCoverage: insuranceCoverage,
+      insuranceNotes: insuranceNotes,
+      complianceItems: complianceItems,
+      generatedAt: generatedAt,
+    );
+  }
+
   RentalContractParsed withSecondDriverFallback({
     String? secondDriverName,
     String? secondDriverLicense,

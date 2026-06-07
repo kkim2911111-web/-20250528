@@ -21,6 +21,9 @@ export type PushScenario =
   | 'customer_return_10min_next_booking'
   | 'customer_return_overdue'
   | 'customer_return_inspection_complete'
+  | 'customer_billing_payment_failed'
+  | 'customer_blacklist_registered'
+  | 'customer_no_show_auto_completed'
   // 관리자(단지 staff 전원)
   | 'staff_new_signup'
   | 'staff_license_review_request'
@@ -30,7 +33,13 @@ export type PushScenario =
   | 'staff_rental_started'
   | 'staff_return_completed'
   | 'staff_return_overdue'
-  | 'staff_conflict_risk';
+  | 'staff_conflict_risk'
+  | 'staff_billing_payment_failed'
+  | 'staff_deductible_payment_exhausted'
+  | 'staff_extension_payment_exhausted'
+  | 'staff_insurance_expiring_soon'
+  | 'staff_insurance_expired'
+  | 'staff_no_show_auto_completed';
 
 export type PushMessage = {
   title: string;
@@ -163,6 +172,24 @@ export function buildPushMessage(
         body: '정상 반납 처리됐습니다.',
         data: { ...data, type: 'reservation' },
       };
+    case 'customer_billing_payment_failed':
+      return {
+        title: '결제에 실패했습니다',
+        body: reason,
+        data: { ...data, type: 'billing_payment_failed' },
+      };
+    case 'customer_blacklist_registered':
+      return {
+        title: '서비스 이용이 제한되었습니다',
+        body: '확정된 예약이 취소되었으며, 신규 예약이 불가합니다. 고객센터에 문의해주세요.',
+        data: { ...data, type: 'home' },
+      };
+    case 'customer_no_show_auto_completed':
+      return {
+        title: '노쇼 처리 안내',
+        body: '예약 시간이 종료되어 노쇼 처리되었습니다.',
+        data: { ...data, type: 'reservation' },
+      };
     case 'staff_new_signup':
       return {
         title: '새 입주민이 가입했습니다',
@@ -221,6 +248,51 @@ export function buildPushMessage(
           : `[${vehicle}] 다음 예약과 시간이 겹칠 수 있습니다.`,
         data: { ...data, type: 'admin_reservation' },
       };
+    case 'staff_billing_payment_failed':
+      return {
+        title: '추가 결제 실패',
+        body: `[${vehicle}] ${reason}`,
+        data: { ...data, type: 'admin_billing' },
+      };
+    case 'staff_deductible_payment_exhausted': {
+      const num = payload.reservationNumber?.trim() || payload.reservationId?.trim() || '';
+      const suffix = num ? `예약 #${num} · ` : '';
+      return {
+        title: '면책금 수동 처리 필요',
+        body: `${suffix}${reason || '미수금 — 수동 결제 처리가 필요합니다.'}`,
+        data: { ...data, type: 'admin_billing' },
+      };
+    }
+    case 'staff_extension_payment_exhausted': {
+      const num = payload.reservationNumber?.trim() || payload.reservationId?.trim() || '';
+      return {
+        title: '연장 결제 실패 — 연장 취소',
+        body: num
+          ? `예약 #${num} 연장 결제가 실패하여 연장이 취소되었습니다.`
+          : '연장 결제가 실패하여 연장이 취소되었습니다.',
+        data: { ...data, type: 'admin_billing' },
+      };
+    }
+    case 'staff_insurance_expiring_soon':
+      return {
+        title: '차량 보험 만료 임박',
+        body: `[${vehicle}] 보험 만료일 ${payload.endAt ?? ''} (7일 전)`,
+        data: { ...data, type: 'admin_vehicle' },
+      };
+    case 'staff_insurance_expired':
+      return {
+        title: '차량 보험 만료 — 예약 비활성화',
+        body: `[${vehicle}] 보험이 만료되어 예약이 비활성화되었습니다.`,
+        data: { ...data, type: 'admin_vehicle' },
+      };
+    case 'staff_no_show_auto_completed': {
+      const num = payload.reservationNumber?.trim() || payload.reservationId?.trim() || '';
+      return {
+        title: '노쇼 자동 처리',
+        body: num ? `예약 #${num} 노쇼 자동 처리되었습니다.` : '노쇼 예약이 자동 처리되었습니다.',
+        data: { ...data, type: 'admin_reservation' },
+      };
+    }
     default:
       return {
         title: '단지카 알림',
@@ -313,6 +385,12 @@ const STAFF_SCENARIOS: Set<PushScenario> = new Set([
   'staff_return_completed',
   'staff_return_overdue',
   'staff_conflict_risk',
+  'staff_billing_payment_failed',
+  'staff_deductible_payment_exhausted',
+  'staff_extension_payment_exhausted',
+  'staff_insurance_expiring_soon',
+  'staff_insurance_expired',
+  'staff_no_show_auto_completed',
 ]);
 
 export async function dispatchPushScenario(params: {
