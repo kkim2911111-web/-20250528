@@ -8,6 +8,8 @@ import '../../models/super_admin_models.dart';
 import '../../services/super_admin_service.dart';
 import '../../theme/danji_colors.dart';
 import '../../utils/danji_snackbar.dart';
+import '../../widgets/admin_scaffold.dart';
+import '../../widgets/danji_app_bar.dart';
 import '../../widgets/section_card.dart';
 import 'super_admin_common.dart';
 
@@ -57,104 +59,133 @@ class _SuperAdminRevenueScreenState extends State<SuperAdminRevenueScreen> {
     }
   }
 
+  Future<void> _openDetail(SuperAdminRevenueRow r) async {
+    await showSuperAdminBottomSheet<void>(
+      context,
+      title: r.complexName,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          SuperAdminChip(
+            label: r.isSettled ? '정산완료' : '미정산',
+            color: r.isSettled ? SuperAdminUiColors.availableGreen : DanjiColors.danger,
+          ),
+          const SizedBox(height: 12),
+          Text('예약 ${r.reservationCount}건', style: const TextStyle(fontWeight: FontWeight.w600)),
+          Text('합계 ₩${superAdminWon.format(r.totalRevenue)}'),
+          Text(
+            '결제 ${r.paidOrderCount}건 · ₩${superAdminWon.format(r.paidOrderAmount)}',
+            style: const TextStyle(color: DanjiColors.textSecondary, fontSize: 13),
+          ),
+          if (!r.isSettled) ...[
+            const SizedBox(height: 16),
+            FilledButton(
+              onPressed: () async {
+                Navigator.pop(context);
+                try {
+                  await widget.service.markSettlement(
+                    complexId: r.complexId,
+                    year: _year,
+                    month: _month,
+                  );
+                  _reload();
+                } catch (e) {
+                  if (mounted) DanjiSnackBar.show(context, friendlySuperAdminError(e));
+                }
+              },
+              style: superAdminPrimaryFabStyle,
+              child: const Text('정산 완료 처리'),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
-    return Column(
-      children: [
-        Padding(
-          padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
-          child: SuperAdminPeriodFilter(
-            year: _year,
-            month: _month,
-            onYearChanged: (y) {
-              setState(() => _year = y);
-              _reload();
-            },
-            onMonthChanged: (m) {
-              setState(() => _month = m);
-              _reload();
-            },
+    return AdminScaffold(
+      appBar: const DanjiAppBar(title: '정산 관리'),
+      body: Column(
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+            child: SuperAdminMonthFilter(
+              year: _year,
+              month: _month,
+              onYearChanged: (y) {
+                setState(() => _year = y);
+                _reload();
+              },
+              onMonthChanged: (m) {
+                setState(() => _month = m);
+                _reload();
+              },
+            ),
           ),
-        ),
-        Expanded(
-          child: FutureBuilder<List<SuperAdminRevenueRow>>(
-            future: _future,
-            builder: (context, snap) {
-              if (snap.connectionState == ConnectionState.waiting) {
-                return const Center(child: CircularProgressIndicator());
-              }
-              if (snap.hasError) {
-                return Center(child: Text(friendlySuperAdminError(snap.error!)));
-              }
-              final rows = snap.data ?? [];
-              return RefreshIndicator(
-                onRefresh: () async => _reload(),
-                child: ListView(
-                  physics: const AlwaysScrollableScrollPhysics(),
-                  padding: const EdgeInsets.all(16),
-                  children: [
-                    Row(
-                      children: [
-                        FilledButton.icon(
-                          onPressed: rows.isEmpty ? null : () => _exportCsv(rows),
-                          icon: const Icon(Icons.download_outlined, size: 18),
-                          label: const Text('CSV 다운로드'),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 12),
-                    ...rows.map((r) {
-                      return SectionCard(
-                        padding: const EdgeInsets.all(14),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
+          Expanded(
+            child: FutureBuilder<List<SuperAdminRevenueRow>>(
+              future: _future,
+              builder: (context, snap) {
+                if (snap.connectionState == ConnectionState.waiting) {
+                  return const SuperAdminLoadingBody();
+                }
+                if (snap.hasError) {
+                  return Center(child: Text(friendlySuperAdminError(snap.error!)));
+                }
+                final rows = snap.data ?? [];
+                return RefreshIndicator(
+                  color: DanjiColors.buttonBlue,
+                  onRefresh: () async => _reload(),
+                  child: rows.isEmpty
+                      ? ListView(
+                          physics: const AlwaysScrollableScrollPhysics(),
+                          children: const [
+                            SizedBox(height: 120),
+                            SuperAdminEmptyState('정산 데이터가 없습니다.'),
+                          ],
+                        )
+                      : ListView(
+                          physics: const AlwaysScrollableScrollPhysics(),
+                          padding: const EdgeInsets.all(16),
                           children: [
-                            Row(
-                              children: [
-                                Expanded(
-                                  child: Text(r.complexName, style: const TextStyle(fontWeight: FontWeight.w800)),
-                                ),
-                                SuperAdminChip(
-                                  label: r.isSettled ? '정산완료' : '미정산',
-                                  color: r.isSettled ? const Color(0xFF22C55E) : DanjiColors.danger,
-                                ),
-                              ],
-                            ),
-                            const SizedBox(height: 6),
-                            Text('예약 ${r.reservationCount}건 · ₩${superAdminWon.format(r.totalRevenue)}',
-                                style: const TextStyle(fontSize: 13)),
-                            Text('결제 ${r.paidOrderCount}건 · ₩${superAdminWon.format(r.paidOrderAmount)}',
-                                style: const TextStyle(fontSize: 12, color: DanjiColors.textSecondary)),
-                            if (!r.isSettled)
-                              Align(
-                                alignment: Alignment.centerRight,
-                                child: TextButton(
-                                  onPressed: () async {
-                                    try {
-                                      await widget.service.markSettlement(
-                                        complexId: r.complexId,
-                                        year: _year,
-                                        month: _month,
-                                      );
-                                      _reload();
-                                    } catch (e) {
-                                      if (mounted) DanjiSnackBar.show(context, friendlySuperAdminError(e));
-                                    }
-                                  },
-                                  child: const Text('정산 완료 처리'),
-                                ),
+                            SectionCard(
+                              padding: const EdgeInsets.all(12),
+                              child: FilledButton.icon(
+                                onPressed: rows.isEmpty ? null : () => _exportCsv(rows),
+                                style: superAdminPrimaryFabStyle,
+                                icon: const Icon(Icons.download_outlined, size: 18),
+                                label: const Text('CSV 다운로드'),
                               ),
+                            ),
+                            const SizedBox(height: 12),
+                            ...rows.map((r) {
+                              return Padding(
+                                padding: const EdgeInsets.only(bottom: 10),
+                                child: SuperAdminListCard(
+                                  icon: Icons.payments_outlined,
+                                  title: r.complexName,
+                                  subtitle: '예약 ${r.reservationCount}건 · '
+                                      '₩${superAdminWon.format(r.totalRevenue)}',
+                                  trailing: SuperAdminChip(
+                                    label: r.isSettled ? '완료' : '미정산',
+                                    color: r.isSettled
+                                        ? SuperAdminUiColors.availableGreen
+                                        : DanjiColors.danger,
+                                  ),
+                                  onTap: () => _openDetail(r),
+                                ),
+                              );
+                            }),
                           ],
                         ),
-                      );
-                    }),
-                  ],
-                ),
-              );
-            },
+                );
+              },
+            ),
           ),
-        ),
-      ],
+        ],
+      ),
     );
   }
 }

@@ -192,6 +192,7 @@ class SuperAdminResident {
   final String? phone;
   final String? email;
   final bool licenseVerified;
+  final bool isBlacklisted;
   final DateTime? createdAt;
 
   const SuperAdminResident({
@@ -205,6 +206,7 @@ class SuperAdminResident {
     this.phone,
     this.email,
     this.licenseVerified = false,
+    this.isBlacklisted = false,
     this.createdAt,
   });
 
@@ -220,6 +222,7 @@ class SuperAdminResident {
       phone: m['phone']?.toString(),
       email: m['email']?.toString(),
       licenseVerified: m['license_verified'] == true,
+      isBlacklisted: m['is_blacklisted'] == true,
       createdAt: _dt(m['created_at']),
     );
   }
@@ -351,6 +354,41 @@ class SuperAdminCoupon {
       minPaymentAmount: (m['min_payment_amount'] as num?)?.toInt() ?? 0,
       issuedCount: (m['issued_count'] as num?)?.toInt() ?? 0,
       usedCount: (m['used_count'] as num?)?.toInt() ?? 0,
+      createdAt: _dt(m['created_at']),
+    );
+  }
+}
+
+class SuperAdminNotice {
+  final String id;
+  final String? complexId;
+  final String? complexName;
+  final String title;
+  final String content;
+  final bool isActive;
+  final bool isGlobal;
+  final DateTime? createdAt;
+
+  const SuperAdminNotice({
+    required this.id,
+    this.complexId,
+    this.complexName,
+    required this.title,
+    required this.content,
+    this.isActive = true,
+    this.isGlobal = false,
+    this.createdAt,
+  });
+
+  factory SuperAdminNotice.fromMap(Map<String, dynamic> m) {
+    return SuperAdminNotice(
+      id: m['notice_id']?.toString() ?? '',
+      complexId: m['complex_id']?.toString(),
+      complexName: m['complex_name']?.toString(),
+      title: m['title']?.toString() ?? '',
+      content: m['content']?.toString() ?? '',
+      isActive: m['is_active'] == true,
+      isGlobal: m['is_global'] == true,
       createdAt: _dt(m['created_at']),
     );
   }

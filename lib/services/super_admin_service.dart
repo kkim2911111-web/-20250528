@@ -98,6 +98,11 @@ class SuperAdminService {
         parse: (d) => _list(d, SuperAdminBanner.fromMap),
       );
 
+  Future<List<SuperAdminNotice>> fetchNotices() => _rpc(
+        'get_super_admin_notices',
+        parse: (d) => _list(d, SuperAdminNotice.fromMap),
+      );
+
   Future<Map<String, dynamic>> fetchSettings() => _rpc(
         'get_super_admin_settings',
         parse: (d) => d is Map ? Map<String, dynamic>.from(d) : {},
@@ -200,6 +205,15 @@ class SuperAdminService {
   Future<void> forceLicenseApproved(String userId) => _rpc(
         'force_super_admin_license_approved',
         params: {'p_user_id': userId},
+        parse: (_) {},
+      );
+
+  Future<void> forceLicenseRejected(String userId, {String? reason}) => _rpc(
+        'force_super_admin_license_rejected',
+        params: {
+          'p_user_id': userId,
+          if (reason != null) 'p_reason': reason,
+        },
         parse: (_) {},
       );
 

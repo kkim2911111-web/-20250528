@@ -1,14 +1,21 @@
 import 'package:flutter/material.dart';
 
 import '../../models/super_admin_models.dart';
+import '../../services/auth_service.dart';
 import '../../services/super_admin_service.dart';
 import '../../theme/danji_colors.dart';
+import '../../widgets/admin_scaffold.dart';
+import '../../widgets/section_card.dart';
 import 'super_admin_common.dart';
+import 'super_admin_coupons_screen.dart';
+import 'super_admin_entity_screens.dart';
+import 'super_admin_nav.dart';
+import 'super_admin_reservations_screen.dart';
+import 'super_admin_revenue_screen.dart';
+import 'super_admin_system_screen.dart';
 
 class SuperAdminDashboardScreen extends StatefulWidget {
-  final SuperAdminService service;
-
-  const SuperAdminDashboardScreen({super.key, required this.service});
+  const SuperAdminDashboardScreen({super.key});
 
   @override
   State<SuperAdminDashboardScreen> createState() =>
@@ -16,10 +23,12 @@ class SuperAdminDashboardScreen extends StatefulWidget {
 }
 
 class _SuperAdminDashboardScreenState extends State<SuperAdminDashboardScreen> {
-  late int _year = DateTime.now().year;
-  late int _month = DateTime.now().month;
-  Future<SuperAdminDashboard>? _dashFuture;
-  Future<List<SuperAdminRevenueRow>>? _revFuture;
+  final _service = SuperAdminService();
+  final _auth = AuthService.instance;
+
+  SuperAdminDashboard _dashboard = const SuperAdminDashboard();
+  Object? _loadError;
+  bool _loading = true;
 
   @override
   void initState() {
@@ -27,97 +36,276 @@ class _SuperAdminDashboardScreenState extends State<SuperAdminDashboardScreen> {
     _reload();
   }
 
-  void _reload() {
-    setState(() {
-      _dashFuture = widget.service.fetchDashboard();
-      _revFuture = widget.service.fetchRevenue(year: _year, month: _month);
+  Future<void> _reload() async {
+    try {
+      final data = await _service.fetchDashboard();
+      if (!mounted) return;
+      setState(() {
+        _dashboard = data;
+        _loadError = null;
+        _loading = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _loadError = e;
+        _loading = false;
+      });
+    }
+  }
+
+  void _open(Widget screen) {
+    Navigator.of(context)
+        .push(MaterialPageRoute(builder: (_) => screen))
+        .then((_) {
+      if (mounted) _reload();
     });
+  }
+
+  void _openVehicles({SuperAdminVehicleFilter filter = SuperAdminVehicleFilter.all}) {
+    _open(SuperAdminVehiclesScreen(service: _service, initialFilter: filter));
   }
 
   @override
   Widget build(BuildContext context) {
-    return RefreshIndicator(
-      color: DanjiColors.primaryBlue,
-      onRefresh: () async => _reload(),
-      child: ListView(
-        physics: const AlwaysScrollableScrollPhysics(),
-        padding: const EdgeInsets.all(16),
-        children: [
-          SuperAdminPeriodFilter(
-            year: _year,
-            month: _month,
-            onYearChanged: (y) {
-              setState(() => _year = y);
-              _reload();
-            },
-            onMonthChanged: (m) {
-              setState(() => _month = m);
-              _reload();
-            },
-          ),
-          const SizedBox(height: 16),
-          FutureBuilder<SuperAdminDashboard>(
-            future: _dashFuture,
-            builder: (context, snap) {
-              if (snap.connectionState == ConnectionState.waiting) {
-                return const Center(child: CircularProgressIndicator());
-              }
-              if (snap.hasError) {
-                return Text(friendlySuperAdminError(snap.error!));
-              }
-              final d = snap.data ?? const SuperAdminDashboard();
-              return SuperAdminStatGrid(
-                items: [
-                  (label: '단지', value: '${d.complexCount}', color: DanjiColors.primaryBlue),
-                  (label: '차량', value: '${d.vehicleCount}', color: const Color(0xFF6366F1)),
-                  (label: '가용차량', value: '${d.availableVehicleCount}', color: const Color(0xFF22C55E)),
-                  (label: '대여중', value: '${d.inUseVehicleCount}', color: const Color(0xFFF97316)),
-                  (label: '스태프', value: '${d.staffApprovedCount}/${d.staffCount}', color: const Color(0xFF8B5CF6)),
-                  (label: '입주민', value: '${d.residentApprovedCount}/${d.residentCount}', color: const Color(0xFF14B8A6)),
-                  (label: '오늘예약', value: '${d.reservationCountToday}', color: const Color(0xFFA855F7)),
-                  (label: '진행예약', value: '${d.reservationActiveCount}', color: DanjiColors.danger),
-                  (label: '오늘매출', value: '₩${superAdminWon.format(d.todayRevenue)}', color: DanjiColors.primaryBlue),
-                  (label: '이번달', value: '₩${superAdminWon.format(d.monthRevenue)}', color: const Color(0xFF0EA5E9)),
-                  (label: '누적매출', value: '₩${superAdminWon.format(d.totalRevenue)}', color: const Color(0xFF1E2A3A)),
-                ],
-              );
-            },
-          ),
-          const SizedBox(height: 20),
-          const Text(
-            '단지별 매출 (선택 월)',
-            style: TextStyle(fontWeight: FontWeight.w800, fontSize: 16),
-          ),
-          const SizedBox(height: 8),
-          FutureBuilder<List<SuperAdminRevenueRow>>(
-            future: _revFuture,
-            builder: (context, snap) {
-              final rows = snap.data ?? [];
-              if (snap.connectionState == ConnectionState.waiting) {
-                return const Padding(
-                  padding: EdgeInsets.all(24),
-                  child: Center(child: CircularProgressIndicator()),
-                );
-              }
-              if (rows.isEmpty) {
-                return const Text('데이터 없음', style: TextStyle(color: DanjiColors.textSecondary));
-              }
-              return Column(
-                children: rows.take(10).map((r) {
-                  return ListTile(
-                    contentPadding: EdgeInsets.zero,
-                    title: Text(r.complexName, style: const TextStyle(fontWeight: FontWeight.w700)),
-                    subtitle: Text('예약 ${r.reservationCount}건'),
-                    trailing: Text(
-                      '₩${superAdminWon.format(r.totalRevenue)}',
-                      style: const TextStyle(fontWeight: FontWeight.w800),
+    return AdminScaffold(
+      safeTop: true,
+      body: RefreshIndicator(
+        color: DanjiColors.buttonBlue,
+        onRefresh: _reload,
+        child: ListView(
+          physics: const AlwaysScrollableScrollPhysics(),
+          padding: const EdgeInsets.fromLTRB(16, 12, 16, 20),
+          children: [
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        '단지카 플랫폼',
+                        style: TextStyle(
+                          color: DanjiColors.textPrimary,
+                          fontWeight: FontWeight.w800,
+                          fontSize: 20,
+                          height: 1.2,
+                        ),
+                      ),
+                      SizedBox(height: 2),
+                      Text(
+                        '최고관리자',
+                        style: TextStyle(
+                          color: DanjiColors.textSecondary,
+                          fontSize: 12,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                TextButton.icon(
+                  onPressed: () => _auth.signOut(),
+                  icon: const Icon(Icons.logout, size: 16),
+                  label: const Text('로그아웃'),
+                  style: TextButton.styleFrom(
+                    foregroundColor: DanjiColors.textSecondary,
+                    padding: const EdgeInsets.symmetric(horizontal: 8),
+                    minimumSize: Size.zero,
+                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                    textStyle: const TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
                     ),
-                  );
-                }).toList(),
-              );
-            },
-          ),
-        ],
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 10),
+            SectionCard(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+              child: Text(
+                '${superAdminDateLine.format(DateTime.now())}  |  '
+                '오늘 ₩${superAdminWon.format(_dashboard.todayRevenue)}  |  '
+                '이번달 ₩${superAdminWon.format(_dashboard.monthRevenue)}',
+                style: const TextStyle(
+                  color: DanjiColors.textPrimary,
+                  fontWeight: FontWeight.w700,
+                  fontSize: 13,
+                  height: 1.35,
+                ),
+              ),
+            ),
+            const SizedBox(height: 10),
+            if (_loading)
+              const Padding(
+                padding: EdgeInsets.symmetric(vertical: 24),
+                child: Center(
+                  child: CircularProgressIndicator(color: DanjiColors.buttonBlue),
+                ),
+              )
+            else if (_loadError != null)
+              Text(friendlySuperAdminError(_loadError!))
+            else
+              Column(
+                children: [
+                  Row(
+                    children: [
+                      Expanded(
+                        child: SuperAdminCompactStatCard(
+                          label: '단지',
+                          value: '${_dashboard.complexCount}',
+                          icon: Icons.apartment_outlined,
+                          color: SuperAdminUiColors.totalBlue,
+                          onTap: () => _open(SuperAdminComplexesScreen(service: _service)),
+                        ),
+                      ),
+                      const SizedBox(width: 6),
+                      Expanded(
+                        child: SuperAdminCompactStatCard(
+                          label: '차량',
+                          value: '${_dashboard.vehicleCount}',
+                          icon: Icons.directions_car_outlined,
+                          color: SuperAdminUiColors.totalBlue,
+                          onTap: () => _openVehicles(),
+                        ),
+                      ),
+                      const SizedBox(width: 6),
+                      Expanded(
+                        child: SuperAdminCompactStatCard(
+                          label: '가용',
+                          value: '${_dashboard.availableVehicleCount}',
+                          icon: Icons.check_circle_outline,
+                          color: SuperAdminUiColors.availableGreen,
+                          onTap: () => _openVehicles(filter: SuperAdminVehicleFilter.available),
+                        ),
+                      ),
+                      const SizedBox(width: 6),
+                      Expanded(
+                        child: SuperAdminCompactStatCard(
+                          label: '대여중',
+                          value: '${_dashboard.inUseVehicleCount}',
+                          icon: Icons.navigation_outlined,
+                          color: SuperAdminUiColors.inUseOrange,
+                          onTap: () => _openVehicles(filter: SuperAdminVehicleFilter.inUse),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 6),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: SuperAdminCompactStatCard(
+                          label: '스태프',
+                          value: '${_dashboard.staffApprovedCount}/${_dashboard.staffCount}',
+                          icon: Icons.badge_outlined,
+                          color: SuperAdminUiColors.staffViolet,
+                          onTap: () => _open(SuperAdminStaffScreen(service: _service)),
+                        ),
+                      ),
+                      const SizedBox(width: 6),
+                      Expanded(
+                        child: SuperAdminCompactStatCard(
+                          label: '입주민',
+                          value: '${_dashboard.residentApprovedCount}/${_dashboard.residentCount}',
+                          icon: Icons.people_outline,
+                          color: SuperAdminUiColors.residentTeal,
+                          onTap: () => _open(SuperAdminResidentsScreen(service: _service)),
+                        ),
+                      ),
+                      const SizedBox(width: 6),
+                      Expanded(
+                        child: SuperAdminCompactStatCard(
+                          label: '오늘예약',
+                          value: '${_dashboard.reservationCountToday}',
+                          icon: Icons.calendar_today_outlined,
+                          color: SuperAdminUiColors.todayPurple,
+                          onTap: () => _open(SuperAdminReservationsScreen(service: _service)),
+                        ),
+                      ),
+                      const SizedBox(width: 6),
+                      Expanded(
+                        child: SuperAdminCompactStatCard(
+                          label: '진행',
+                          value: '${_dashboard.reservationActiveCount}',
+                          icon: Icons.play_circle_outline,
+                          color: DanjiColors.danger,
+                          onTap: () => _open(SuperAdminReservationsScreen(service: _service)),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 6),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: SuperAdminCompactStatCard(
+                          label: '누적매출',
+                          value: '₩${superAdminWon.format(_dashboard.totalRevenue)}',
+                          icon: Icons.payments_outlined,
+                          color: SuperAdminUiColors.revenueSky,
+                          onTap: () => _open(SuperAdminRevenueScreen(service: _service)),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            const SizedBox(height: 20),
+            const SuperAdminSectionTitle('관리 메뉴'),
+            const SizedBox(height: 8),
+            SuperAdminMenuTile(
+              icon: Icons.apartment_outlined,
+              title: '단지 관리',
+              subtitle: '단지 등록·수정, 초대코드 발급',
+              onTap: () => _open(SuperAdminComplexesScreen(service: _service)),
+            ),
+            SuperAdminMenuTile(
+              icon: Icons.directions_car_outlined,
+              title: '차량 관리',
+              subtitle: '차량 등록, 단지 배정, 가용 상태',
+              onTap: () => _openVehicles(),
+            ),
+            SuperAdminMenuTile(
+              icon: Icons.badge_outlined,
+              title: '스태프 관리',
+              subtitle: '승인·거절, 단지 변경',
+              onTap: () => _open(SuperAdminStaffScreen(service: _service)),
+            ),
+            SuperAdminMenuTile(
+              icon: Icons.people_outline,
+              title: '입주민 관리',
+              subtitle: '승인·블랙리스트, 면허 강제 처리',
+              onTap: () => _open(SuperAdminResidentsScreen(service: _service)),
+            ),
+            SuperAdminMenuTile(
+              icon: Icons.confirmation_number_outlined,
+              title: '쿠폰 관리',
+              subtitle: '쿠폰 발급·수정·삭제',
+              onTap: () => _open(SuperAdminCouponsScreen(service: _service)),
+            ),
+            SuperAdminMenuTile(
+              icon: Icons.event_note_outlined,
+              title: '전체 예약',
+              subtitle: '예약 목록, 강제취소·완료',
+              onTap: () => _open(SuperAdminReservationsScreen(service: _service)),
+            ),
+            SuperAdminMenuTile(
+              icon: Icons.bar_chart_outlined,
+              title: '정산 관리',
+              subtitle: '단지별 월매출, 정산완료 처리',
+              onTap: () => _open(SuperAdminRevenueScreen(service: _service)),
+            ),
+            SuperAdminMenuTile(
+              icon: Icons.settings_outlined,
+              title: '시스템',
+              subtitle: '공지·배너·푸시·점검모드',
+              onTap: () => _open(SuperAdminSystemScreen(service: _service)),
+            ),
+          ],
+        ),
       ),
     );
   }
