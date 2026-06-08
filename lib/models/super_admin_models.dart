@@ -1,3 +1,5 @@
+import '../utils/reservation_display.dart';
+
 class SuperAdminDashboard {
   final int complexCount;
   final int vehicleCount;
@@ -230,6 +232,7 @@ class SuperAdminResident {
 
 class SuperAdminResidentRental {
   final String reservationId;
+  final String? reservationNumber;
   final String vehicleName;
   final DateTime? startAt;
   final DateTime? endAt;
@@ -241,8 +244,14 @@ class SuperAdminResidentRental {
   final String? secondDriverName;
   final String? secondDriverLicense;
 
+  String get reservationNumberLabel => resolveReservationNumberLabel(
+        reservationNumber: reservationNumber,
+        rawId: reservationId,
+      );
+
   const SuperAdminResidentRental({
     required this.reservationId,
+    this.reservationNumber,
     required this.vehicleName,
     this.startAt,
     this.endAt,
@@ -263,6 +272,7 @@ class SuperAdminResidentRental {
   factory SuperAdminResidentRental.fromMap(Map<String, dynamic> m) {
     return SuperAdminResidentRental(
       reservationId: m['reservation_id']?.toString() ?? '',
+      reservationNumber: m['reservation_number']?.toString(),
       vehicleName: m['vehicle_name']?.toString() ?? '차량',
       startAt: _dt(m['start_at']),
       endAt: _dt(m['end_at']),
@@ -358,6 +368,7 @@ class SuperAdminResidentDetail {
 
 class SuperAdminReservation {
   final String id;
+  final String? reservationNumber;
   final String complexId;
   final String complexName;
   final String vehicleId;
@@ -376,6 +387,7 @@ class SuperAdminReservation {
 
   const SuperAdminReservation({
     required this.id,
+    this.reservationNumber,
     required this.complexId,
     required this.complexName,
     required this.vehicleId,
@@ -398,9 +410,17 @@ class SuperAdminReservation {
   DateTime? get displayRentalEndAt =>
       returnedAt ?? actualEndAt ?? endAt;
 
+  String get reservationNumberLabel {
+    final number = reservationNumber?.trim();
+    if (number != null && number.isNotEmpty) return number;
+    final raw = this.id.trim();
+    return raw.isEmpty ? '—' : '#$raw';
+  }
+
   factory SuperAdminReservation.fromMap(Map<String, dynamic> m) {
     return SuperAdminReservation(
       id: m['reservation_id']?.toString() ?? '',
+      reservationNumber: m['reservation_number']?.toString(),
       complexId: m['complex_id']?.toString() ?? '',
       complexName: m['complex_name']?.toString() ?? '',
       vehicleId: m['vehicle_id']?.toString() ?? '',
@@ -535,6 +555,7 @@ class SuperAdminSettlementSheet {
 
 class SuperAdminSettlementReservation {
   final String reservationId;
+  final String? reservationNumber;
   final String renterName;
   final int totalPrice;
   final DateTime? startAt;
@@ -543,8 +564,16 @@ class SuperAdminSettlementReservation {
   final DateTime? returnedAt;
   final DateTime? actualEndAt;
 
+  String get reservationNumberLabel {
+    final number = reservationNumber?.trim();
+    if (number != null && number.isNotEmpty) return number;
+    final raw = reservationId.trim();
+    return raw.isEmpty ? '—' : '#$raw';
+  }
+
   const SuperAdminSettlementReservation({
     required this.reservationId,
+    this.reservationNumber,
     required this.renterName,
     this.totalPrice = 0,
     this.startAt,
@@ -562,6 +591,7 @@ class SuperAdminSettlementReservation {
   factory SuperAdminSettlementReservation.fromMap(Map<String, dynamic> m) {
     return SuperAdminSettlementReservation(
       reservationId: m['reservation_id']?.toString() ?? '',
+      reservationNumber: m['reservation_number']?.toString(),
       renterName: m['renter_name']?.toString() ?? '',
       totalPrice: (m['total_price'] as num?)?.toInt() ?? 0,
       startAt: _dt(m['start_at']),

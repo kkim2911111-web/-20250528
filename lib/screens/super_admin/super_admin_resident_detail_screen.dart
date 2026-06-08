@@ -299,7 +299,7 @@ class _SuperAdminResidentDetailScreenState
                     return ListTile(
                       onTap: loading ? null : () => _openContract(detail, rental),
                       title: Text(
-                        '#${rental.reservationId} · ${rental.vehicleName}',
+                        '${rental.reservationNumberLabel} · ${rental.vehicleName}',
                         style: const TextStyle(
                           fontWeight: FontWeight.w700,
                           fontSize: 14,

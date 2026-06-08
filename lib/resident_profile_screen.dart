@@ -313,7 +313,7 @@ class _ResidentProfileScreenState extends State<ResidentProfileScreen> {
                 IconButton(
                   tooltip: '로그아웃',
                   onPressed: () async {
-                    await AuthService.instance.signOut(toSignUp: true);
+                    await AuthService.instance.signOut();
                   },
                   icon: const Icon(Icons.logout),
                 ),

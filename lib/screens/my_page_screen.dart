@@ -123,7 +123,7 @@ class _MyPageScreenState extends State<MyPageScreen> {
       ),
     );
     if (confirmed != true || !mounted) return;
-    await _auth.signOut(toSignUp: true);
+    await _auth.signOut();
   }
 
   void _showInfo(String message) {

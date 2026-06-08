@@ -968,7 +968,7 @@ class _ReservationCard extends StatelessWidget {
           if (showReservationId) ...[
             const SizedBox(height: 6),
             Text(
-              '예약번호 ${reservation.reservationNumberLabel(paymentReservationId: pricing?.paymentReservationId)}',
+              '예약번호 ${reservation.reservationNumberLabel}',
               style: DanjiTypography.caption.copyWith(
                 color: DanjiColors.textSecondary,
                 fontWeight: FontWeight.w600,

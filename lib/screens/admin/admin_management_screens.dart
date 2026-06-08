@@ -682,6 +682,26 @@ class _AdminReturnInspectionScreenState
   }
 }
 
+class _ReturnInspectionNoShowNotice extends StatelessWidget {
+  const _ReturnInspectionNoShowNotice();
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(20, 12, 20, 4),
+      child: Text(
+        '예약 후 대여하지 않은 건(노쇼)은 검수 대상이 아닙니다.',
+        textAlign: TextAlign.center,
+        style: const TextStyle(
+          color: Color(0xFFF44336),
+          fontSize: 12,
+          height: 1.4,
+        ),
+      ),
+    );
+  }
+}
+
 class _NoShowReturnBadge extends StatelessWidget {
   const _NoShowReturnBadge();
 
@@ -709,7 +729,7 @@ class _NoShowReturnBadge extends StatelessWidget {
             Icon(Icons.schedule_outlined, size: 14, color: _orangeDark),
             SizedBox(width: 4),
             Text(
-              '노쇼반납',
+              '노쇼',
               style: TextStyle(
                 color: _orangeDark,
                 fontSize: 12,
@@ -843,56 +863,64 @@ class _CompletedReturnInspectionTabState
         ? '날짜 선택'
         : DateFormat('yyyy-MM-dd').format(_filterDate!);
 
-    return FutureBuilder<List<AdminReservationRow>>(
-      future: widget.future,
-      builder: (context, snap) {
-        if (snap.connectionState == ConnectionState.waiting) {
-          return const Center(child: CircularProgressIndicator());
-        }
-        if (snap.hasError) {
-          return Center(child: Text(friendlyAdminError(snap.error!)));
-        }
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        const _ReturnInspectionNoShowNotice(),
+        Expanded(
+          child: FutureBuilder<List<AdminReservationRow>>(
+            future: widget.future,
+            builder: (context, snap) {
+              if (snap.connectionState == ConnectionState.waiting) {
+                return const Center(child: CircularProgressIndicator());
+              }
+              if (snap.hasError) {
+                return Center(child: Text(friendlyAdminError(snap.error!)));
+              }
 
-        final filtered = _applyFilter(snap.data ?? []);
+              final filtered = _applyFilter(snap.data ?? []);
 
-        if (filtered.isEmpty) {
-          return ListView(
-            physics: const AlwaysScrollableScrollPhysics(),
-            padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
-            children: [
-              _buildFilterHeader(dateLabel),
-              const SizedBox(height: 80),
-              const Center(
-                child: Text('검수 완료된 반납 차량이 없습니다.'),
-              ),
-            ],
-          );
-        }
+              if (filtered.isEmpty) {
+                return ListView(
+                  physics: const AlwaysScrollableScrollPhysics(),
+                  padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
+                  children: [
+                    _buildFilterHeader(dateLabel),
+                    const SizedBox(height: 80),
+                    const Center(
+                      child: Text('검수 완료된 반납 차량이 없습니다.'),
+                    ),
+                  ],
+                );
+              }
 
-        return ListView.separated(
-          physics: const AlwaysScrollableScrollPhysics(),
-          padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
-          itemCount: filtered.length + 1,
-          separatorBuilder: (context, index) {
-            if (index == 0) return const SizedBox(height: 12);
-            return const SizedBox(height: 10);
-          },
-          itemBuilder: (context, index) {
-            if (index == 0) {
-              return _buildFilterHeader(dateLabel);
-            }
-            final row = filtered[index - 1];
-            return _ReturnInspectionCard(
-              row: row,
-              dateFormat: widget.dateFormat,
-              admin: widget.admin,
-              showCompleteButton: false,
-              showInspectionDate: true,
-              onChanged: widget.onChanged,
-            );
-          },
-        );
-      },
+              return ListView.separated(
+                physics: const AlwaysScrollableScrollPhysics(),
+                padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
+                itemCount: filtered.length + 1,
+                separatorBuilder: (context, index) {
+                  if (index == 0) return const SizedBox(height: 12);
+                  return const SizedBox(height: 10);
+                },
+                itemBuilder: (context, index) {
+                  if (index == 0) {
+                    return _buildFilterHeader(dateLabel);
+                  }
+                  final row = filtered[index - 1];
+                  return _ReturnInspectionCard(
+                    row: row,
+                    dateFormat: widget.dateFormat,
+                    admin: widget.admin,
+                    showCompleteButton: false,
+                    showInspectionDate: true,
+                    onChanged: widget.onChanged,
+                  );
+                },
+              );
+            },
+          ),
+        ),
+      ],
     );
   }
 }
@@ -961,39 +989,47 @@ class _ReturnInspectionListTab extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return FutureBuilder<List<AdminReservationRow>>(
-      future: future,
-      builder: (context, snap) {
-        if (snap.connectionState == ConnectionState.waiting) {
-          return const Center(child: CircularProgressIndicator());
-        }
-        if (snap.hasError) {
-          return Center(child: Text(friendlyAdminError(snap.error!)));
-        }
-        final list = snap.data ?? [];
-        if (list.isEmpty) {
-          return Center(child: Text(emptyMessage));
-        }
-        return ListView.separated(
-          padding: const EdgeInsets.all(20),
-          itemCount: list.length,
-          separatorBuilder: (_, __) => const SizedBox(height: 10),
-          itemBuilder: (context, index) {
-            final row = list[index];
-            return _ReturnInspectionCard(
-              row: row,
-              dateFormat: dateFormat,
-              admin: admin,
-              showCompleteButton: showCompleteButton,
-              showInspectionDate: showInspectionDate,
-              onComplete: showCompleteButton && onComplete != null
-                  ? () => onComplete!(row)
-                  : null,
-              onChanged: onChanged,
-            );
-          },
-        );
-      },
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        const _ReturnInspectionNoShowNotice(),
+        Expanded(
+          child: FutureBuilder<List<AdminReservationRow>>(
+            future: future,
+            builder: (context, snap) {
+              if (snap.connectionState == ConnectionState.waiting) {
+                return const Center(child: CircularProgressIndicator());
+              }
+              if (snap.hasError) {
+                return Center(child: Text(friendlyAdminError(snap.error!)));
+              }
+              final list = snap.data ?? [];
+              if (list.isEmpty) {
+                return Center(child: Text(emptyMessage));
+              }
+              return ListView.separated(
+                padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
+                itemCount: list.length,
+                separatorBuilder: (_, __) => const SizedBox(height: 10),
+                itemBuilder: (context, index) {
+                  final row = list[index];
+                  return _ReturnInspectionCard(
+                    row: row,
+                    dateFormat: dateFormat,
+                    admin: admin,
+                    showCompleteButton: showCompleteButton,
+                    showInspectionDate: showInspectionDate,
+                    onComplete: showCompleteButton && onComplete != null
+                        ? () => onComplete!(row)
+                        : null,
+                    onChanged: onChanged,
+                  );
+                },
+              );
+            },
+          ),
+        ),
+      ],
     );
   }
 }
@@ -1333,7 +1369,8 @@ class _ReturnInspectionCardState extends State<_ReturnInspectionCard> {
                 ),
               ),
               if (r.hasSecondDriver) const AdminSecondDriverBadge(),
-              if (r.isNoShowReturn) const _NoShowReturnBadge(),
+              if (widget.showInspectionDate && r.isNoShowReturn)
+                const _NoShowReturnBadge(),
               if (r.isAccident) ...[
                 const SizedBox(width: 8),
                 Container(
@@ -1713,7 +1750,6 @@ class _AdminSalesScreenState extends State<AdminSalesScreen> {
                       paymentCount: summary.paymentCount,
                       cancelCount: summary.cancelCount,
                       rentalCount: summary.rentalCount,
-                      paymentSublabel: '연장결제+',
                     ),
                     if (summary.extensionRevenue > 0) ...[
                       const SizedBox(height: 8),
@@ -1912,7 +1948,6 @@ class _AdminSettlementDetailSheetState extends State<_AdminSettlementDetailSheet
                       paymentCount: sheet.paymentCount,
                       cancelCount: sheet.cancelCount,
                       rentalCount: sheet.rentalCount,
-                      paymentSublabel: '연장결제+',
                     ),
                     const SizedBox(height: 12),
                     SettlementAmountRow(

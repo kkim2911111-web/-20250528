@@ -35,6 +35,7 @@ class Reservation {
   final String? secondDriverName;
   final String? secondDriverLicense;
   final bool isNoShow;
+  final String? reservationNumber;
 
   const Reservation({
     required this.id,
@@ -67,6 +68,7 @@ class Reservation {
     this.secondDriverName,
     this.secondDriverLicense,
     this.isNoShow = false,
+    this.reservationNumber,
   });
 
   bool get hasSecondDriver {
@@ -112,6 +114,7 @@ class Reservation {
       secondDriverName: map['second_driver_name']?.toString(),
       secondDriverLicense: map['second_driver_license']?.toString(),
       isNoShow: map['is_no_show'] == true,
+      reservationNumber: map['reservation_number']?.toString(),
     );
   }
 
@@ -253,10 +256,9 @@ class Reservation {
         scheduledEndAt: endAt,
       );
 
-  String reservationNumberLabel({String? paymentReservationId}) =>
-      formatReservationDisplayId(
-        id,
-        paymentReservationId: paymentReservationId,
+  String get reservationNumberLabel => resolveReservationNumberLabel(
+        reservationNumber: reservationNumber,
+        rawId: id,
         orderId: orderId,
       );
 
@@ -359,7 +361,12 @@ class Reservation {
     final diff = start.difference(DateTime.now());
     if (diff.isNegative) return '이용 가능 시간';
     if (diff.inDays >= 1) return '${diff.inDays}일 후 시작';
-    if (diff.inHours >= 1) return '${diff.inHours}시간 후 시작';
+    if (diff.inHours >= 1) {
+      final hours = diff.inHours;
+      final minutes = diff.inMinutes % 60;
+      if (minutes == 0) return '${hours}시간 후 시작';
+      return '${hours}시간 ${minutes}분 후 시작';
+    }
     if (diff.inMinutes >= 1) return '${diff.inMinutes}분 후 시작';
     return '곧 시작';
   }

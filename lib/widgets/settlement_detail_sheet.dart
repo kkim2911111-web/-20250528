@@ -187,7 +187,7 @@ class SettlementReservationList extends StatelessWidget {
                     return ListTile(
                       contentPadding: EdgeInsets.zero,
                       title: Text(
-                        '#${item.reservationId}',
+                        item.reservationNumberLabel,
                         style: const TextStyle(
                           fontWeight: FontWeight.w700,
                           fontSize: 14,

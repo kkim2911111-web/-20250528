@@ -303,6 +303,7 @@ class AdminVehicleDetail {
 
 class AdminReservationRow {
   final String id;
+  final String? reservationNumber;
   final String status;
   final int totalPrice;
   final DateTime? startAt;
@@ -318,6 +319,7 @@ class AdminReservationRow {
   final String? renterName;
   final String? contractContent;
   final String? returnType;
+  final bool isNoShow;
   final DateTime? returnedAt;
   final DateTime? updatedAt;
   final String? secondDriverName;
@@ -331,6 +333,7 @@ class AdminReservationRow {
 
   const AdminReservationRow({
     required this.id,
+    this.reservationNumber,
     required this.status,
     required this.totalPrice,
     this.startAt,
@@ -346,6 +349,7 @@ class AdminReservationRow {
     this.renterName,
     this.contractContent,
     this.returnType,
+    this.isNoShow = false,
     this.returnedAt,
     this.updatedAt,
     this.secondDriverName,
@@ -360,17 +364,18 @@ class AdminReservationRow {
 
   static const int defaultDeductibleAmount = 500000;
 
-  /// 시간 초과 자동 반납(노쇼) — return_type = 'auto'
-  bool get isNoShowReturn =>
-      returnType?.trim().toLowerCase() == 'auto';
+  /// 예약 후 미대여 노쇼 처리 건 — is_no_show = true
+  bool get isNoShowReturn => isNoShow;
 
   bool get hasSecondDriver {
     final name = secondDriverName?.trim();
     return name != null && name.isNotEmpty;
   }
 
-  String get reservationNumberLabel =>
-      formatReservationDisplayId(id);
+  String get reservationNumberLabel => resolveReservationNumberLabel(
+        reservationNumber: reservationNumber,
+        rawId: id,
+      );
 
   DateTime? get displayRentalStartAt => resolveRentalStartDisplay(
         rentalStartedAt: rentalStartedAt,
@@ -463,6 +468,7 @@ class AdminReservationRow {
 
     return AdminReservationRow(
       id: _reservationIdFromMap(map),
+      reservationNumber: map['reservation_number']?.toString(),
       status: map['status']?.toString() ?? '',
       totalPrice: (map['total_price'] as num?)?.toInt() ?? 0,
       startAt: DateTime.tryParse(
@@ -493,6 +499,7 @@ class AdminReservationRow {
       contractContent:
           contract != null && contract.isNotEmpty ? contract : null,
       returnType: map['return_type']?.toString(),
+      isNoShow: map['is_no_show'] == true,
       returnedAt: DateTime.tryParse(map['returned_at']?.toString() ?? '')
           ?.toLocal(),
       updatedAt: DateTime.tryParse(map['updated_at']?.toString() ?? '')

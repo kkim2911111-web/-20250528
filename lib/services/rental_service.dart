@@ -26,7 +26,7 @@ class RentalService {
 
   /// PostgREST * 가 DB에 없는 updated_at 을 포함할 때 오류 방지
   static const _selectFull = '''
-id,user_id,vehicle_id,start_at,end_at,start_time,end_time,total_price,status,
+id,reservation_number,user_id,vehicle_id,start_at,end_at,start_time,end_time,total_price,status,
 payment_key,order_id,payment_status,rental_started_at,returned_at,actual_end_at,
 return_type,is_no_show,early_return_confirmed_at,
 pickup_photos,return_photos,mileage_start,mileage_end,
@@ -35,10 +35,10 @@ contract_content,second_driver_name,second_driver_license
 ''';
 
   static const _selectCore =
-      'id,user_id,vehicle_id,start_at,end_at,start_time,end_time,total_price,status,order_id';
+      'id,reservation_number,user_id,vehicle_id,start_at,end_at,start_time,end_time,total_price,status,order_id';
 
   static const _selectBare =
-      'id,user_id,vehicle_id,start_time,end_time,total_price,status,order_id';
+      'id,reservation_number,user_id,vehicle_id,start_time,end_time,total_price,status,order_id';
 
   final _paymentService = PaymentService();
 
@@ -67,7 +67,7 @@ contract_content,second_driver_name,second_driver_license
   }
 
   static const _selectMinimal =
-      'id,user_id,vehicle_id,start_at,end_at,start_time,end_time,total_price,status,payment_key,payment_status,order_id';
+      'id,reservation_number,user_id,vehicle_id,start_at,end_at,start_time,end_time,total_price,status,payment_key,payment_status,order_id';
 
   /// 성공한 select/order 조합 캐시 — 400 반복 요청 방지
   static String? _cachedSelect;
@@ -157,7 +157,7 @@ contract_content,second_driver_name,second_driver_license
   }
 
   static const _selectCancelled =
-      'id, user_id, vehicle_id, order_id, total_price, updated_at, '
+      'id, reservation_number, user_id, vehicle_id, order_id, total_price, updated_at, '
       'start_at, end_at, status';
 
   /// 취소 탭 — reservations.status = cancelled 직접 조회 (숫자 id 그대로 사용)
@@ -165,7 +165,7 @@ contract_content,second_driver_name,second_driver_license
     const attempts = <(String select, String? orderCol)>[
       (_selectCancelled, 'updated_at'),
       (
-        'id, user_id, vehicle_id, order_id, total_price, updated_at, '
+        'id, reservation_number, user_id, vehicle_id, order_id, total_price, updated_at, '
             'start_time, end_time, status',
         'updated_at',
       ),
@@ -180,7 +180,8 @@ contract_content,second_driver_name,second_driver_license
             .from('reservations')
             .select(select)
             .eq('user_id', userId)
-            .eq('status', 'cancelled');
+            .eq('status', 'cancelled')
+            .or('is_no_show.is.null,is_no_show.eq.false');
         final rows = orderCol == null
             ? await base
             : await base.order(orderCol, ascending: false);
@@ -280,6 +281,7 @@ contract_content,second_driver_name,second_driver_license
                     rentalStartedAt: r.rentalStartedAt,
                     returnedAt: r.returnedAt,
                     actualEndAt: r.actualEndAt,
+                    cancelledAt: r.cancelledAt,
                     pickupPhotos: r.pickupPhotos,
                     returnPhotos: r.returnPhotos,
                     mileageStart: r.mileageStart,
@@ -289,7 +291,13 @@ contract_content,second_driver_name,second_driver_license
                     isAccident: r.isAccident,
                     accidentNote: r.accidentNote,
                     doorUnlocked: r.doorUnlocked,
+                    photosUploaded: r.photosUploaded,
+                    licenseVerified: r.licenseVerified,
                     contractContent: r.contractContent,
+                    secondDriverName: r.secondDriverName,
+                    secondDriverLicense: r.secondDriverLicense,
+                    isNoShow: r.isNoShow,
+                    reservationNumber: r.reservationNumber,
                     vehicle: byId[r.vehicleId],
                   ),
           )

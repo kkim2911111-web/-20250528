@@ -53,6 +53,22 @@ String formatReservationDisplayId(
   return '#$token';
 }
 
+/// 신규 reservation_number 우선, 없으면 레거시 #id
+String resolveReservationNumberLabel({
+  String? reservationNumber,
+  required String rawId,
+  String? paymentReservationId,
+  String? orderId,
+}) {
+  final number = reservationNumber?.trim();
+  if (number != null && number.isNotEmpty) return number;
+  return formatReservationDisplayId(
+    rawId,
+    paymentReservationId: paymentReservationId,
+    orderId: orderId,
+  );
+}
+
 DateTime? parseReservationDate(Object? value) {
   if (value == null) return null;
   if (value is DateTime) return value.toLocal();

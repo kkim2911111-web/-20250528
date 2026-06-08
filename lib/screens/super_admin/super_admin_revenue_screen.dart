@@ -266,7 +266,6 @@ class _SettlementDetailSheetState extends State<_SettlementDetailSheet> {
                 paymentCount: sheet.paymentCount,
                 cancelCount: sheet.cancelCount,
                 rentalCount: sheet.rentalCount,
-                paymentSublabel: '연장결제+',
               ),
               const SizedBox(height: 12),
               SettlementAmountRow(

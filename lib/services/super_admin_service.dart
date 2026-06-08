@@ -489,17 +489,28 @@ class SuperAdminService {
     }
   }
 
-  Future<void> forceCancelReservation(String id) => _rpc(
-        'force_super_admin_cancel_reservation',
+  /// in_use 예약 → returned (반납 검수 화면)
+  Future<void> forceReturnReservation(String id) => _rpc(
+        'force_return_reservation_for_super_admin',
         params: {'p_reservation_id': id},
         parse: (_) {},
       );
 
-  Future<void> forceCompleteReservation(String id) => _rpc(
-        'force_super_admin_complete_reservation',
-        params: {'p_reservation_id': id},
-        parse: (_) {},
-      );
+  /// 결제취소 — Toss 환불 + 예약/결제 취소
+  Future<void> forcePaymentCancelReservation(String id) async {
+    final response = await supabase.functions.invoke(
+      'admin-force-payment-cancel',
+      body: {'reservationId': id},
+    );
+
+    if (response.status != 200) {
+      final data = response.data;
+      final message = data is Map
+          ? data['error']?.toString() ?? '결제취소에 실패했습니다.'
+          : '결제취소에 실패했습니다.';
+      throw SuperAdminException(message);
+    }
+  }
 
   Future<void> markSettlement({
     required String complexId,
@@ -621,6 +632,8 @@ class SuperAdminService {
       return '최고관리자 권한이 필요합니다.';
     }
     if (m.contains('not_authenticated')) return '로그인이 필요합니다.';
+    if (m.contains('reservation_not_found')) return '예약을 찾을 수 없습니다.';
+    if (m.contains('invalid_status')) return '처리할 수 없는 예약 상태입니다.';
     return e.message;
   }
 }

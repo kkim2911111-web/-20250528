@@ -567,8 +567,9 @@ class AdminService {
     if (ids.isEmpty) return [];
 
     const baseSelect =
-        'id, user_id, status, total_price, start_at, start_time, end_at, end_time, '
+        'id, reservation_number, user_id, status, total_price, start_at, start_time, end_at, end_time, '
         'rental_started_at, returned_at, actual_end_at, updated_at, return_type, '
+        'is_no_show, '
         'second_driver_name, '
         'second_driver_license, is_accident, accident_note, deductible_charged, '
         'deductible_amount, deductible_charged_at, deductible_waived, '
@@ -946,6 +947,33 @@ class AdminService {
     }
   }
 
+  /// in_use 예약 → returned (반납 검수 화면)
+  Future<void> forceReturnReservation(String reservationId) async {
+    try {
+      await supabase.rpc('force_return_reservation_for_staff', params: {
+        'p_reservation_id': reservationId,
+      });
+    } on PostgrestException catch (e) {
+      throw AdminException(mapAdminPostgrestError(e));
+    }
+  }
+
+  /// CS 강제결제취소 — Toss 환불 + 예약/결제 취소
+  Future<void> forcePaymentCancelReservation(String reservationId) async {
+    final response = await supabase.functions.invoke(
+      'admin-force-payment-cancel',
+      body: {'reservationId': reservationId},
+    );
+
+    if (response.status != 200) {
+      final data = response.data;
+      final message = data is Map
+          ? data['error']?.toString() ?? '강제결제취소에 실패했습니다.'
+          : '강제결제취소에 실패했습니다.';
+      throw AdminException(message);
+    }
+  }
+
   Future<List<AdminReservationRow>> fetchOperatingReservations(
     String complexId,
   ) async {
@@ -1312,6 +1340,9 @@ String mapAdminPostgrestError(PostgrestException error) {
   }
   if (msg.contains('not_no_show_suspect')) {
     return '노쇼의심 예약만 강제 반납할 수 있습니다.';
+  }
+  if (msg.contains('forbidden')) {
+    return '관리자 권한이 필요합니다.';
   }
   if (msg.contains('deductible_already_charged')) {
     return '이미 면책금이 청구되었습니다.';

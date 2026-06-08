@@ -101,7 +101,40 @@ class _SuperAdminReservationsScreenState
     }).toList();
   }
 
+  Future<bool> _confirmAction({
+    required String title,
+    required String message,
+    required String confirmLabel,
+    Color? confirmColor,
+  }) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(title),
+        content: Text(message),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('닫기'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            style: confirmColor != null
+                ? FilledButton.styleFrom(backgroundColor: confirmColor)
+                : null,
+            child: Text(confirmLabel),
+          ),
+        ],
+      ),
+    );
+    return confirmed == true;
+  }
+
   Future<void> _openDetail(SuperAdminReservation r) async {
+    final status = r.status.trim().toLowerCase();
+    final canForceReturn = status == 'in_use';
+    final canPaymentCancel = status == 'confirmed' || status == 'in_use';
+
     await showSuperAdminBottomSheet<void>(
       context,
       title: r.vehicleName,
@@ -109,7 +142,10 @@ class _SuperAdminReservationsScreenState
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Text('#${r.id}', style: const TextStyle(color: DanjiColors.textMuted, fontSize: 12)),
+          Text(
+            r.reservationNumberLabel,
+            style: const TextStyle(color: DanjiColors.textMuted, fontSize: 12),
+          ),
           const SizedBox(height: 6),
           Text('${r.complexName} · ${r.renterName}',
               style: const TextStyle(color: DanjiColors.textSecondary)),
@@ -134,32 +170,71 @@ class _SuperAdminReservationsScreenState
           ],
           const SizedBox(height: 16),
           OutlinedButton(
-            onPressed: () async {
-              Navigator.pop(context);
-              try {
-                await widget.service.forceCancelReservation(r.id);
-                if (!mounted) return;
-                await _reload();
-              } catch (e) {
-                if (mounted) DanjiSnackBar.show(context, friendlySuperAdminError(e));
-              }
-            },
+            onPressed: canForceReturn
+                ? () async {
+                    Navigator.pop(context);
+                    final confirmed = await _confirmAction(
+                      title: '강제 반납',
+                      message:
+                          '대여 중인 예약을 반납 처리하여 반납 검수 화면으로 이동합니다.\n'
+                          '계속하시겠습니까?',
+                      confirmLabel: '강제 반납',
+                    );
+                    if (!confirmed || !mounted) return;
+                    try {
+                      await widget.service.forceReturnReservation(r.id);
+                      if (!mounted) return;
+                      DanjiSnackBar.show(context, '반납 검수 대기로 이동했습니다');
+                      await _reload();
+                    } catch (e) {
+                      if (mounted) {
+                        DanjiSnackBar.show(context, friendlySuperAdminError(e));
+                      }
+                    }
+                  }
+                : null,
+            style: OutlinedButton.styleFrom(
+              foregroundColor: const Color(0xFFE65100),
+              side: const BorderSide(color: Color(0xFFE65100)),
+              disabledForegroundColor: DanjiColors.textMuted,
+              disabledBackgroundColor: DanjiColors.surface,
+            ),
             child: const Text('강제 반납'),
           ),
           const SizedBox(height: 8),
-          FilledButton(
-            onPressed: () async {
-              Navigator.pop(context);
-              try {
-                await widget.service.forceCompleteReservation(r.id);
-                if (!mounted) return;
-                await _reload();
-              } catch (e) {
-                if (mounted) DanjiSnackBar.show(context, friendlySuperAdminError(e));
-              }
-            },
-            style: superAdminPrimaryFabStyle,
-            child: const Text('강제 완료'),
+          OutlinedButton(
+            onPressed: canPaymentCancel
+                ? () async {
+                    Navigator.pop(context);
+                    final confirmed = await _confirmAction(
+                      title: '결제취소',
+                      message:
+                          '결제를 환불하고 예약을 취소 상태로 변경합니다.\n'
+                          '차량은 즉시 이용 가능으로 전환됩니다.\n'
+                          '계속하시겠습니까?',
+                      confirmLabel: '결제취소',
+                      confirmColor: DanjiColors.accentRed,
+                    );
+                    if (!confirmed || !mounted) return;
+                    try {
+                      await widget.service.forcePaymentCancelReservation(r.id);
+                      if (!mounted) return;
+                      DanjiSnackBar.show(context, '결제 취소 및 환불 처리되었습니다');
+                      await _reload();
+                    } catch (e) {
+                      if (mounted) {
+                        DanjiSnackBar.show(context, friendlySuperAdminError(e));
+                      }
+                    }
+                  }
+                : null,
+            style: OutlinedButton.styleFrom(
+              foregroundColor: DanjiColors.accentRed,
+              side: const BorderSide(color: DanjiColors.accentRed),
+              disabledForegroundColor: DanjiColors.textMuted,
+              disabledBackgroundColor: DanjiColors.surface,
+            ),
+            child: const Text('결제취소'),
           ),
         ],
       ),

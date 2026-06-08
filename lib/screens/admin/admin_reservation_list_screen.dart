@@ -256,7 +256,7 @@ class _AdminReservationListScreenState
     );
   }
 
-  Future<void> _confirmForceCancel(Map<String, dynamic> row) async {
+  Future<void> _confirmForceReturn(Map<String, dynamic> row) async {
     final id = _reservationId(row);
     if (id == null) return;
 
@@ -265,7 +265,8 @@ class _AdminReservationListScreenState
       builder: (ctx) => AlertDialog(
         title: const Text('강제 반납'),
         content: const Text(
-          '시작 시간이 지났으나 대여하지 않은 예약을 강제 반납 처리하시겠습니까?',
+          '대여 중인 예약을 반납 처리하여 반납 검수 화면으로 이동합니다.\n'
+          '계속하시겠습니까?',
         ),
         actions: [
           TextButton(
@@ -282,9 +283,9 @@ class _AdminReservationListScreenState
     if (confirmed != true || !mounted) return;
 
     try {
-      await _admin.forceCancelReservation(id);
+      await _admin.forceReturnReservation(id);
       if (!mounted) return;
-      DanjiSnackBar.show(context, '예약이 강제 반납되었습니다');
+      DanjiSnackBar.show(context, '반납 검수 대기로 이동했습니다');
       _reload();
     } catch (e) {
       if (!mounted) return;
@@ -292,23 +293,30 @@ class _AdminReservationListScreenState
     }
   }
 
-  Future<void> _confirmForceComplete(Map<String, dynamic> row) async {
+  Future<void> _confirmForcePaymentCancel(Map<String, dynamic> row) async {
     final id = _reservationId(row);
     if (id == null) return;
 
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('강제 완료'),
-        content: const Text('이 예약을 강제 완료 처리하시겠습니까?'),
+        title: const Text('강제결제취소'),
+        content: const Text(
+          '결제를 환불하고 예약을 취소 상태로 변경합니다.\n'
+          '차량은 즉시 이용 가능으로 전환됩니다.\n'
+          '계속하시겠습니까?',
+        ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('취소'),
+            child: const Text('닫기'),
           ),
           FilledButton(
             onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('확인'),
+            style: FilledButton.styleFrom(
+              backgroundColor: DanjiColors.accentRed,
+            ),
+            child: const Text('강제결제취소'),
           ),
         ],
       ),
@@ -316,9 +324,9 @@ class _AdminReservationListScreenState
     if (confirmed != true || !mounted) return;
 
     try {
-      await _admin.forceCompleteReservation(id);
+      await _admin.forcePaymentCancelReservation(id);
       if (!mounted) return;
-      DanjiSnackBar.show(context, '강제 완료 처리되었습니다');
+      DanjiSnackBar.show(context, '결제 취소 및 환불 처리되었습니다');
       _reload();
     } catch (e) {
       if (!mounted) return;
@@ -466,6 +474,7 @@ class _AdminReservationListScreenState
         }
         final isNoShowSuspect = _isNoShowSuspect(row);
         final isBackToBack = conflict.isBackToBackConflictRow(row);
+        final status = _status(row);
 
         return _ReservationCard(
           row: row,
@@ -476,10 +485,11 @@ class _AdminReservationListScreenState
               _filter == _ReservationFilter.conflict && isBackToBack,
           showConflictHighlight: isBackToBack,
           showNoShowSuspect: isNoShowSuspect,
-          showForceCancel: isNoShowSuspect,
-          onForceCancel: () => _confirmForceCancel(row),
-          showForceComplete: _isStuckReservation(row),
-          onForceComplete: () => _confirmForceComplete(row),
+          onForceReturn: () => _confirmForceReturn(row),
+          onForcePaymentCancel:
+              status == 'confirmed' || status == 'in_use'
+                  ? () => _confirmForcePaymentCancel(row)
+                  : null,
         );
       },
     );
@@ -676,7 +686,7 @@ class _CompletedReservationCard extends StatelessWidget {
           if (reservationId != null) ...[
             const SizedBox(height: 8),
             Text(
-              '예약 #$reservationId',
+              '예약 ${_reservationNumberLabel(row)}',
               style: const TextStyle(
                 color: DanjiColors.textPrimary,
                 fontWeight: FontWeight.w600,
@@ -713,10 +723,8 @@ class _ReservationCard extends StatefulWidget {
   final bool enableConflictSwipe;
   final bool showConflictHighlight;
   final bool showNoShowSuspect;
-  final bool showForceCancel;
-  final VoidCallback? onForceCancel;
-  final bool showForceComplete;
-  final VoidCallback? onForceComplete;
+  final VoidCallback onForceReturn;
+  final VoidCallback? onForcePaymentCancel;
 
   const _ReservationCard({
     required this.row,
@@ -726,10 +734,8 @@ class _ReservationCard extends StatefulWidget {
     this.enableConflictSwipe = false,
     this.showConflictHighlight = false,
     this.showNoShowSuspect = false,
-    this.showForceCancel = false,
-    this.onForceCancel,
-    this.showForceComplete = false,
-    this.onForceComplete,
+    required this.onForceReturn,
+    this.onForcePaymentCancel,
   });
 
   @override
@@ -778,10 +784,8 @@ class _ReservationCardState extends State<_ReservationCard> {
               timeOnly: widget.timeOnly,
               conflict: conflict,
               showNoShowSuspect: widget.showNoShowSuspect,
-              showForceCancel: widget.showForceCancel,
-              onForceCancel: widget.onForceCancel,
-              showForceComplete: widget.showForceComplete,
-              onForceComplete: widget.onForceComplete,
+              onForceReturn: widget.onForceReturn,
+              onForcePaymentCancel: widget.onForcePaymentCancel,
               secondDriverName: secondDriverName,
               secondDriverLicense: secondDriverLicense,
               hasSecondDriver: hasSecondDriver,
@@ -909,10 +913,8 @@ class _CurrentReservationPanel extends StatelessWidget {
   final DateFormat timeOnly;
   final bool conflict;
   final bool showNoShowSuspect;
-  final bool showForceCancel;
-  final VoidCallback? onForceCancel;
-  final bool showForceComplete;
-  final VoidCallback? onForceComplete;
+  final VoidCallback onForceReturn;
+  final VoidCallback? onForcePaymentCancel;
   final String? secondDriverName;
   final String? secondDriverLicense;
   final bool hasSecondDriver;
@@ -931,10 +933,8 @@ class _CurrentReservationPanel extends StatelessWidget {
     required this.timeOnly,
     required this.conflict,
     this.showNoShowSuspect = false,
-    this.showForceCancel = false,
-    this.onForceCancel,
-    required this.showForceComplete,
-    this.onForceComplete,
+    required this.onForceReturn,
+    this.onForcePaymentCancel,
     this.secondDriverName,
     this.secondDriverLicense,
     this.hasSecondDriver = false,
@@ -1011,7 +1011,7 @@ class _CurrentReservationPanel extends StatelessWidget {
         if (_reservationId(row) != null) ...[
           const SizedBox(height: 8),
           Text(
-            '예약 #${_reservationId(row)}',
+            '예약 ${_reservationNumberLabel(row)}',
             style: const TextStyle(
               color: DanjiColors.textPrimary,
               fontWeight: FontWeight.w600,
@@ -1046,34 +1046,36 @@ class _CurrentReservationPanel extends StatelessWidget {
             ),
           ),
         ],
-        if (showForceCancel && onForceCancel != null) ...[
-          const SizedBox(height: 12),
-          Align(
-            alignment: Alignment.centerRight,
-            child: OutlinedButton(
-              onPressed: onForceCancel,
-              style: OutlinedButton.styleFrom(
-                foregroundColor: const Color(0xFFE65100),
-                side: const BorderSide(color: Color(0xFFE65100)),
+        const SizedBox(height: 12),
+        Align(
+          alignment: Alignment.centerRight,
+          child: Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            alignment: WrapAlignment.end,
+            children: [
+              OutlinedButton(
+                onPressed: status == 'in_use' ? onForceReturn : null,
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: const Color(0xFFE65100),
+                  side: const BorderSide(color: Color(0xFFE65100)),
+                  disabledForegroundColor: DanjiColors.textMuted,
+                  disabledBackgroundColor: DanjiColors.surface,
+                ),
+                child: const Text('강제 반납'),
               ),
-              child: const Text('강제 반납'),
-            ),
+              if (onForcePaymentCancel != null)
+                OutlinedButton(
+                  onPressed: onForcePaymentCancel,
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: DanjiColors.accentRed,
+                    side: const BorderSide(color: DanjiColors.accentRed),
+                  ),
+                  child: const Text('강제결제취소'),
+                ),
+            ],
           ),
-        ],
-        if (showForceComplete && onForceComplete != null) ...[
-          const SizedBox(height: 12),
-          Align(
-            alignment: Alignment.centerRight,
-            child: OutlinedButton(
-              onPressed: onForceComplete,
-              style: OutlinedButton.styleFrom(
-                foregroundColor: DanjiColors.accentRed,
-                side: const BorderSide(color: DanjiColors.accentRed),
-              ),
-              child: const Text('강제 완료'),
-            ),
-          ),
-        ],
+        ),
       ],
     );
   }
@@ -1320,22 +1322,17 @@ String? _str(Map<String, dynamic> row, String key) {
 String? _reservationId(Map<String, dynamic> row) =>
     _str(row, 'reservation_id') ?? _str(row, 'id');
 
+String _reservationNumberLabel(Map<String, dynamic> row) {
+  final id = _reservationId(row);
+  if (id == null) return '—';
+  return resolveReservationNumberLabel(
+    reservationNumber: _str(row, 'reservation_number'),
+    rawId: id,
+  );
+}
+
 String _status(Map<String, dynamic> row) =>
     _str(row, 'status')?.toLowerCase() ?? '';
-
-bool _isStuckReservation(Map<String, dynamic> row) {
-  final status = _status(row);
-  if (status != 'in_use' && status != 'returning') {
-    return false;
-  }
-
-  final anchor = _parseDate(row['end_at']) ??
-      _parseDate(row['rental_started_at']) ??
-      _parseDate(row['updated_at']);
-  if (anchor == null) return false;
-
-  return DateTime.now().isAfter(anchor.add(const Duration(hours: 24)));
-}
 
 DateTime? _parseDate(Object? value) {
   if (value == null) return null;
