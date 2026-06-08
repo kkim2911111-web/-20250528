@@ -1,5 +1,7 @@
 -- 단지 관리자 홈 매출 카드 — get_admin_sales_summary(total_revenue)와 동일 집계 기준
 
+drop function if exists public.get_admin_branch_sales_stats(uuid);
+
 create or replace function public.get_admin_branch_sales_stats(p_complex_id uuid)
 returns jsonb
 language plpgsql

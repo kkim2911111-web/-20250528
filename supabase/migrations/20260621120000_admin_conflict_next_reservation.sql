@@ -1,5 +1,7 @@
 -- 충돌위험 RPC: 종료 예약 제외 + 다음 예약자 정보
 
+drop function if exists public.get_admin_reservations_with_conflict();
+
 create or replace function public.get_admin_reservations_with_conflict()
 returns table (
   reservation_id text,

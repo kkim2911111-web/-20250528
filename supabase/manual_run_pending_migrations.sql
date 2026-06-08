@@ -1855,3 +1855,1041 @@ comment on function public.get_super_admin_dashboard() is
 comment on function public.get_super_admin_settlement_reservations(uuid, integer, integer) is
   '최고관리자 정산 상세 — sales_completed_reservations_v와 동일 집계 기준';
 
+-- ── 20260628330000_settlement_sheet_breakdown ─────────────────
+drop function if exists public.get_super_admin_settlement_reservations(uuid, integer, integer);
+
+create function public.get_super_admin_settlement_reservations(
+  p_complex_id uuid,
+  p_year integer default null,
+  p_month integer default null
+)
+returns jsonb
+language plpgsql
+stable
+security definer
+set search_path = public
+as $$
+declare
+  v_year integer;
+  v_month integer;
+  v_period_start timestamptz;
+  v_period_end timestamptz;
+  v_total_paid bigint := 0;
+  v_cancel_refund bigint := 0;
+  v_items jsonb := '[]'::jsonb;
+  v_has_refund_col boolean := false;
+  v_has_cancelled_at_col boolean := false;
+begin
+  perform public.assert_is_super_admin();
+
+  if p_complex_id is null then
+    raise exception 'complex_id_required';
+  end if;
+
+  v_year := coalesce(p_year, extract(year from now() at time zone 'Asia/Seoul')::integer);
+  v_month := coalesce(p_month, extract(month from now() at time zone 'Asia/Seoul')::integer);
+  select b.period_start, b.period_end
+  into v_period_start, v_period_end
+  from public.sales_month_bounds(v_year, v_month) as b;
+
+  v_total_paid := public.sales_total_revenue(
+    p_complex_id, v_period_start, v_period_end
+  );
+
+  select exists (
+    select 1
+    from information_schema.columns
+    where table_schema = 'public'
+      and table_name = 'reservations'
+      and column_name = 'refund_amount'
+  )
+  into v_has_refund_col;
+
+  select exists (
+    select 1
+    from information_schema.columns
+    where table_schema = 'public'
+      and table_name = 'reservations'
+      and column_name = 'cancelled_at'
+  )
+  into v_has_cancelled_at_col;
+
+  if v_has_refund_col then
+    if v_has_cancelled_at_col then
+      execute $sql$
+        select coalesce(sum(coalesce(r.refund_amount, r.total_price, 0)), 0)::bigint
+        from public.reservations r
+        join public.vehicles v on v.id = r.vehicle_id
+        where v.complex_id = $1
+          and r.status = 'cancelled'
+          and coalesce(r.cancelled_at, r.updated_at) >= $2
+          and coalesce(r.cancelled_at, r.updated_at) < $3
+      $sql$
+      into v_cancel_refund
+      using p_complex_id, v_period_start, v_period_end;
+    else
+      execute $sql$
+        select coalesce(sum(coalesce(r.refund_amount, r.total_price, 0)), 0)::bigint
+        from public.reservations r
+        join public.vehicles v on v.id = r.vehicle_id
+        where v.complex_id = $1
+          and r.status = 'cancelled'
+          and r.updated_at >= $2
+          and r.updated_at < $3
+      $sql$
+      into v_cancel_refund
+      using p_complex_id, v_period_start, v_period_end;
+    end if;
+  else
+    if v_has_cancelled_at_col then
+      select coalesce(sum(coalesce(r.total_price, 0)), 0)::bigint
+      into v_cancel_refund
+      from public.reservations r
+      join public.vehicles v on v.id = r.vehicle_id
+      where v.complex_id = p_complex_id
+        and r.status = 'cancelled'
+        and coalesce(r.cancelled_at, r.updated_at) >= v_period_start
+        and coalesce(r.cancelled_at, r.updated_at) < v_period_end;
+    else
+      select coalesce(sum(coalesce(r.total_price, 0)), 0)::bigint
+      into v_cancel_refund
+      from public.reservations r
+      join public.vehicles v on v.id = r.vehicle_id
+      where v.complex_id = p_complex_id
+        and r.status = 'cancelled'
+        and r.updated_at >= v_period_start
+        and r.updated_at < v_period_end;
+    end if;
+  end if;
+
+  select coalesce(
+    jsonb_agg(
+      jsonb_build_object(
+        'reservation_id', s.reservation_id_text,
+        'renter_name', coalesce(
+          nullif(trim(up.full_name), ''),
+          nullif(split_part(nullif(trim(up.email), ''), '@', 1), ''),
+          '이름 미등록'
+        ),
+        'total_price', coalesce(s.gross_amount, 0),
+        'start_at', s.start_at,
+        'end_at', s.end_at,
+        'rental_started_at', s.rental_started_at,
+        'returned_at', s.returned_at,
+        'actual_end_at', s.actual_end_at
+      )
+      order by s.return_completed_at desc nulls last
+    ),
+    '[]'::jsonb
+  )
+  into v_items
+  from public.sales_completed_reservations_v s
+  left join public.user_profiles up on up.user_id = s.user_id
+  where s.complex_id = p_complex_id
+    and s.return_completed_at >= v_period_start
+    and s.return_completed_at < v_period_end;
+
+  return jsonb_build_object(
+    'total_paid', coalesce(v_total_paid, 0),
+    'cancel_refund', coalesce(v_cancel_refund, 0),
+    'net_revenue', coalesce(v_total_paid, 0) - coalesce(v_cancel_refund, 0),
+    'items', coalesce(v_items, '[]'::jsonb)
+  );
+end;
+$$;
+
+revoke all on function public.get_super_admin_settlement_reservations(uuid, integer, integer) from public;
+grant execute on function public.get_super_admin_settlement_reservations(uuid, integer, integer) to authenticated;
+
+comment on function public.get_super_admin_settlement_reservations(uuid, integer, integer) is
+  '정산 상세 — total_paid(sales_total_revenue), cancel_refund(cancelled·refund_amount), items(sales_completed_reservations_v)';
+
+-- ── 20260628340000_admin_notifications_rls.sql ─────────────────
+alter table public.notifications
+  add column if not exists complex_id uuid references public.complexes(id) on delete set null;
+
+create index if not exists notifications_complex_created_idx
+  on public.notifications (complex_id, created_at desc)
+  where complex_id is not null;
+
+comment on column public.notifications.complex_id is
+  '관리자 알림 단지 (staff/super_admin 시나리오 insert 시 기록)';
+
+create or replace function public.is_admin_notification_type(p_type text)
+returns boolean
+language sql
+immutable
+as $$
+  select coalesce(p_type, '') like 'admin%'
+      or coalesce(p_type, '') like 'staff_%';
+$$;
+
+revoke all on function public.is_admin_notification_type(text) from public;
+grant execute on function public.is_admin_notification_type(text) to authenticated;
+
+drop policy if exists "notifications_select_super_admin" on public.notifications;
+create policy "notifications_select_super_admin"
+on public.notifications
+for select
+to authenticated
+using (
+  exists (
+    select 1
+    from public.user_profiles up
+    where up.user_id = auth.uid()
+      and up.is_super_admin = true
+  )
+  and (
+    user_id = auth.uid()
+    or (
+      public.is_admin_notification_type(type)
+      and complex_id is not null
+    )
+  )
+);
+
+drop policy if exists "notifications_select_staff_complex" on public.notifications;
+create policy "notifications_select_staff_complex"
+on public.notifications
+for select
+to authenticated
+using (
+  exists (
+    select 1
+    from public.staff_users s
+    where s.user_id = auth.uid()
+      and s.approved = true
+      and (
+        notifications.user_id = auth.uid()
+        or (
+          notifications.complex_id = s.complex_id
+          and public.is_admin_notification_type(notifications.type)
+        )
+      )
+  )
+);
+
+drop policy if exists "notifications_update_super_admin" on public.notifications;
+create policy "notifications_update_super_admin"
+on public.notifications
+for update
+to authenticated
+using (
+  exists (
+    select 1
+    from public.user_profiles up
+    where up.user_id = auth.uid()
+      and up.is_super_admin = true
+  )
+  and user_id = auth.uid()
+)
+with check (user_id = auth.uid());
+
+drop policy if exists "notifications_update_staff_complex" on public.notifications;
+create policy "notifications_update_staff_complex"
+on public.notifications
+for update
+to authenticated
+using (
+  user_id = auth.uid()
+  and exists (
+    select 1
+    from public.staff_users s
+    where s.user_id = auth.uid()
+      and s.approved = true
+      and (
+        notifications.complex_id is null
+        or notifications.complex_id = s.complex_id
+      )
+  )
+)
+with check (user_id = auth.uid());
+
+-- ── 20260628350000_bulk_issue_coupon_issued_user_ids.sql ───────
+create or replace function public.bulk_issue_coupon(
+  p_coupon_id text,
+  p_complex_id uuid default null,
+  p_user_ids uuid[] default null
+)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_coupon_id uuid;
+  v_user_id uuid;
+  v_issued integer := 0;
+  v_skipped integer := 0;
+  v_has_user_ids boolean;
+  v_issued_user_ids uuid[] := '{}';
+begin
+  perform public.assert_is_super_admin();
+
+  if p_coupon_id is null or trim(p_coupon_id) = '' then
+    raise exception 'coupon_id_required';
+  end if;
+
+  v_coupon_id := trim(p_coupon_id)::uuid;
+
+  if not exists (
+    select 1 from public.coupons c where c.id = v_coupon_id
+  ) then
+    raise exception 'coupon_not_found';
+  end if;
+
+  v_has_user_ids := p_user_ids is not null and cardinality(p_user_ids) > 0;
+
+  for v_user_id in
+    select distinct r.user_id
+    from public.residents r
+    where case
+      when v_has_user_ids then r.user_id = any(p_user_ids)
+      when p_complex_id is not null then r.complex_id = p_complex_id
+      else true
+    end
+  loop
+    if exists (
+      select 1
+      from public.user_coupons uc
+      where uc.user_id = v_user_id
+        and uc.coupon_id = v_coupon_id
+    ) then
+      v_skipped := v_skipped + 1;
+      continue;
+    end if;
+
+    insert into public.user_coupons (user_id, coupon_id, is_used)
+    values (v_user_id, v_coupon_id, false);
+
+    v_issued := v_issued + 1;
+    v_issued_user_ids := array_append(v_issued_user_ids, v_user_id);
+  end loop;
+
+  return jsonb_build_object(
+    'ok', true,
+    'issued_count', v_issued,
+    'skipped_count', v_skipped,
+    'issued_user_ids', to_jsonb(v_issued_user_ids)
+  );
+end;
+$$;
+
+revoke all on function public.bulk_issue_coupon(text, uuid, uuid[]) from public;
+grant execute on function public.bulk_issue_coupon(text, uuid, uuid[]) to authenticated;
+
+-- ── 20260628360000_settlement_return_completed_end_at_order_dedup.sql ──
+drop view if exists public.sales_extension_lines_v;
+drop view if exists public.sales_completed_reservations_v;
+
+drop function if exists public.sales_return_completed_at(timestamptz, timestamptz);
+drop function if exists public.sales_return_completed_at(timestamptz, timestamptz, timestamptz);
+
+create function public.sales_return_completed_at(
+  p_returned_at timestamptz,
+  p_actual_end_at timestamptz,
+  p_end_at timestamptz default null
+)
+returns timestamptz
+language sql
+immutable
+parallel safe
+as $$
+  select coalesce(p_returned_at, p_actual_end_at, p_end_at);
+$$;
+
+comment on function public.sales_return_completed_at(timestamptz, timestamptz, timestamptz) is
+  '매출 집계 반납 완료일 — coalesce(returned_at, actual_end_at, end_at). 기준 변경 시 이 함수만 수정.';
+
+create view public.sales_completed_reservations_v as
+select
+  r.id,
+  r.id::text as reservation_id_text,
+  r.user_id,
+  r.vehicle_id,
+  v.complex_id,
+  coalesce(v.model_name, '차량') as vehicle_name,
+  coalesce(r.total_price, 0)::bigint as gross_amount,
+  r.status,
+  r.returned_at,
+  r.actual_end_at,
+  public.sales_return_completed_at(
+    r.returned_at,
+    r.actual_end_at,
+    coalesce(r.end_at, r.end_time)
+  ) as return_completed_at,
+  coalesce(r.start_at, r.start_time) as start_at,
+  coalesce(r.end_at, r.end_time) as end_at,
+  r.rental_started_at,
+  coalesce(r.is_no_show, false) as is_no_show
+from public.reservations r
+inner join public.vehicles v on v.id = r.vehicle_id
+where r.status = 'completed'
+  and public.sales_return_completed_at(
+    r.returned_at,
+    r.actual_end_at,
+    coalesce(r.end_at, r.end_time)
+  ) is not null;
+
+comment on view public.sales_completed_reservations_v is
+  '매출 집계 대상 예약 — status=completed, 반납 완료일(coalesce returned/actual_end/end) 기준.';
+
+create view public.sales_extension_lines_v as
+select
+  scr.reservation_id_text,
+  scr.complex_id,
+  scr.return_completed_at,
+  coalesce(re.added_price, 0)::bigint as extension_amount
+from public.reservation_extensions re
+inner join public.sales_completed_reservations_v scr
+  on scr.reservation_id_text = re.reservation_id::text;
+
+comment on view public.sales_extension_lines_v is
+  '매출 집계 대상 연장 요금 — sales_completed_reservations_v와 동일 예약만.';
+
+drop function if exists public.get_super_admin_settlement_reservations(uuid, integer, integer);
+
+create function public.get_super_admin_settlement_reservations(
+  p_complex_id uuid,
+  p_year integer default null,
+  p_month integer default null
+)
+returns jsonb
+language plpgsql
+stable
+security definer
+set search_path = public
+as $$
+declare
+  v_year integer;
+  v_month integer;
+  v_period_start timestamptz;
+  v_period_end timestamptz;
+  v_month_start date;
+  v_total_paid bigint := 0;
+  v_cancel_refund bigint := 0;
+  v_reservation_refund bigint := 0;
+  v_payment_refund bigint := 0;
+  v_items jsonb := '[]'::jsonb;
+  v_has_refund_col boolean := false;
+  v_has_cancelled_at_col boolean := false;
+begin
+  perform public.assert_is_super_admin();
+
+  if p_complex_id is null then
+    raise exception 'complex_id_required';
+  end if;
+
+  v_year := coalesce(p_year, extract(year from now() at time zone 'Asia/Seoul')::integer);
+  v_month := coalesce(p_month, extract(month from now() at time zone 'Asia/Seoul')::integer);
+  v_month_start := make_date(v_year, v_month, 1);
+
+  select b.period_start, b.period_end
+  into v_period_start, v_period_end
+  from public.sales_month_bounds(v_year, v_month) as b;
+
+  v_total_paid := public.sales_total_revenue(
+    p_complex_id, v_period_start, v_period_end
+  );
+
+  select exists (
+    select 1
+    from information_schema.columns
+    where table_schema = 'public'
+      and table_name = 'reservations'
+      and column_name = 'refund_amount'
+  )
+  into v_has_refund_col;
+
+  select exists (
+    select 1
+    from information_schema.columns
+    where table_schema = 'public'
+      and table_name = 'reservations'
+      and column_name = 'cancelled_at'
+  )
+  into v_has_cancelled_at_col;
+
+  if v_has_refund_col then
+    if v_has_cancelled_at_col then
+      execute $sql$
+        select coalesce(sum(coalesce(r.refund_amount, r.total_price, 0)), 0)::bigint
+        from public.reservations r
+        join public.vehicles v on v.id = r.vehicle_id
+        where v.complex_id = $1
+          and r.status = 'cancelled'
+          and date_trunc(
+            'month',
+            coalesce(r.cancelled_at, r.updated_at) at time zone 'Asia/Seoul'
+          )::date = $2
+      $sql$
+      into v_reservation_refund
+      using p_complex_id, v_month_start;
+    else
+      execute $sql$
+        select coalesce(sum(coalesce(r.refund_amount, r.total_price, 0)), 0)::bigint
+        from public.reservations r
+        join public.vehicles v on v.id = r.vehicle_id
+        where v.complex_id = $1
+          and r.status = 'cancelled'
+          and date_trunc('month', r.updated_at at time zone 'Asia/Seoul')::date = $2
+      $sql$
+      into v_reservation_refund
+      using p_complex_id, v_month_start;
+    end if;
+  else
+    if v_has_cancelled_at_col then
+      select coalesce(sum(coalesce(r.total_price, 0)), 0)::bigint
+      into v_reservation_refund
+      from public.reservations r
+      join public.vehicles v on v.id = r.vehicle_id
+      where v.complex_id = p_complex_id
+        and r.status = 'cancelled'
+        and date_trunc(
+          'month',
+          coalesce(r.cancelled_at, r.updated_at) at time zone 'Asia/Seoul'
+        )::date = v_month_start;
+    else
+      select coalesce(sum(coalesce(r.total_price, 0)), 0)::bigint
+      into v_reservation_refund
+      from public.reservations r
+      join public.vehicles v on v.id = r.vehicle_id
+      where v.complex_id = p_complex_id
+        and r.status = 'cancelled'
+        and date_trunc('month', r.updated_at at time zone 'Asia/Seoul')::date = v_month_start;
+    end if;
+  end if;
+
+  select coalesce(sum(coalesce(po.total_price, 0)), 0)::bigint
+  into v_payment_refund
+  from public.payment_orders po
+  join public.vehicles veh on veh.id::text = po.vehicle_id::text
+  where veh.complex_id = p_complex_id
+    and po.status = 'cancelled'
+    and date_trunc('month', po.updated_at at time zone 'Asia/Seoul')::date = v_month_start
+    and not exists (
+      select 1
+      from public.reservations r2
+      where r2.order_id = po.order_id
+        and r2.status = 'cancelled'
+    );
+
+  v_cancel_refund := coalesce(v_reservation_refund, 0) + coalesce(v_payment_refund, 0);
+
+  select coalesce(
+    jsonb_agg(
+      jsonb_build_object(
+        'reservation_id', s.reservation_id_text,
+        'renter_name', coalesce(
+          nullif(trim(up.full_name), ''),
+          nullif(split_part(nullif(trim(up.email), ''), '@', 1), ''),
+          '이름 미등록'
+        ),
+        'total_price', coalesce(s.gross_amount, 0),
+        'start_at', s.start_at,
+        'end_at', s.end_at,
+        'rental_started_at', s.rental_started_at,
+        'returned_at', s.returned_at,
+        'actual_end_at', s.actual_end_at
+      )
+      order by s.return_completed_at desc nulls last
+    ),
+    '[]'::jsonb
+  )
+  into v_items
+  from public.sales_completed_reservations_v s
+  left join public.user_profiles up on up.user_id = s.user_id
+  where s.complex_id = p_complex_id
+    and s.return_completed_at >= v_period_start
+    and s.return_completed_at < v_period_end;
+
+  return jsonb_build_object(
+    'total_paid', coalesce(v_total_paid, 0),
+    'cancel_refund', coalesce(v_cancel_refund, 0),
+    'net_revenue', coalesce(v_total_paid, 0) - coalesce(v_cancel_refund, 0),
+    'items', coalesce(v_items, '[]'::jsonb)
+  );
+end;
+$$;
+
+revoke all on function public.get_super_admin_settlement_reservations(uuid, integer, integer) from public;
+grant execute on function public.get_super_admin_settlement_reservations(uuid, integer, integer) to authenticated;
+
+comment on function public.get_super_admin_settlement_reservations(uuid, integer, integer) is
+  '정산 상세 — total_paid, cancel_refund(reservations·payment_orders 취소, KST 월, order_id 중복 제거), items';
+
+-- ── 20260628370000_fix_settlement_total_paid_sales_view.sql ──────
+drop function if exists public.sales_total_revenue(uuid, timestamptz, timestamptz);
+drop function if exists public.sales_sum_extension(uuid, timestamptz, timestamptz);
+drop function if exists public.sales_sum_gross(uuid, timestamptz, timestamptz);
+
+create function public.sales_sum_gross(
+  p_complex_id uuid default null,
+  p_period_start timestamptz default null,
+  p_period_end timestamptz default null
+)
+returns bigint
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select coalesce(sum(s.gross_amount), 0)::bigint
+  from public.sales_completed_reservations_v s
+  where (p_complex_id is null or s.complex_id = p_complex_id)
+    and (p_period_start is null or s.return_completed_at >= p_period_start)
+    and (p_period_end is null or s.return_completed_at < p_period_end);
+$$;
+
+create function public.sales_sum_extension(
+  p_complex_id uuid default null,
+  p_period_start timestamptz default null,
+  p_period_end timestamptz default null
+)
+returns bigint
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select coalesce(sum(e.extension_amount), 0)::bigint
+  from public.sales_extension_lines_v e
+  where (p_complex_id is null or e.complex_id = p_complex_id)
+    and (p_period_start is null or e.return_completed_at >= p_period_start)
+    and (p_period_end is null or e.return_completed_at < p_period_end);
+$$;
+
+create function public.sales_total_revenue(
+  p_complex_id uuid default null,
+  p_period_start timestamptz default null,
+  p_period_end timestamptz default null
+)
+returns bigint
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select
+    public.sales_sum_gross(p_complex_id, p_period_start, p_period_end)
+    + public.sales_sum_extension(p_complex_id, p_period_start, p_period_end);
+$$;
+
+revoke all on function public.sales_sum_gross(uuid, timestamptz, timestamptz) from public;
+revoke all on function public.sales_sum_extension(uuid, timestamptz, timestamptz) from public;
+revoke all on function public.sales_total_revenue(uuid, timestamptz, timestamptz) from public;
+
+comment on function public.sales_sum_gross(uuid, timestamptz, timestamptz) is
+  '매출 gross 합계 — sales_completed_reservations_v.gross_amount, 반납완료일 기간 필터.';
+comment on function public.sales_sum_extension(uuid, timestamptz, timestamptz) is
+  '연장 매출 합계 — sales_extension_lines_v, 반납완료일 기간 필터.';
+comment on function public.sales_total_revenue(uuid, timestamptz, timestamptz) is
+  '매출 총합 — sales_sum_gross + sales_sum_extension (payment_orders 미사용).';
+
+drop function if exists public.get_super_admin_settlement_reservations(uuid, integer, integer);
+
+create function public.get_super_admin_settlement_reservations(
+  p_complex_id uuid,
+  p_year integer default null,
+  p_month integer default null
+)
+returns jsonb
+language plpgsql
+stable
+security definer
+set search_path = public
+as $$
+declare
+  v_year integer;
+  v_month integer;
+  v_period_start timestamptz;
+  v_period_end timestamptz;
+  v_month_start date;
+  v_total_paid bigint := 0;
+  v_cancel_refund bigint := 0;
+  v_reservation_refund bigint := 0;
+  v_payment_refund bigint := 0;
+  v_items jsonb := '[]'::jsonb;
+  v_has_refund_col boolean := false;
+  v_has_cancelled_at_col boolean := false;
+begin
+  perform public.assert_is_super_admin();
+
+  if p_complex_id is null then
+    raise exception 'complex_id_required';
+  end if;
+
+  v_year := coalesce(p_year, extract(year from now() at time zone 'Asia/Seoul')::integer);
+  v_month := coalesce(p_month, extract(month from now() at time zone 'Asia/Seoul')::integer);
+  v_month_start := make_date(v_year, v_month, 1);
+
+  select b.period_start, b.period_end
+  into v_period_start, v_period_end
+  from public.sales_month_bounds(v_year, v_month) as b;
+
+  v_total_paid := public.sales_sum_gross(
+    p_complex_id, v_period_start, v_period_end
+  );
+
+  select exists (
+    select 1
+    from information_schema.columns
+    where table_schema = 'public'
+      and table_name = 'reservations'
+      and column_name = 'refund_amount'
+  )
+  into v_has_refund_col;
+
+  select exists (
+    select 1
+    from information_schema.columns
+    where table_schema = 'public'
+      and table_name = 'reservations'
+      and column_name = 'cancelled_at'
+  )
+  into v_has_cancelled_at_col;
+
+  if v_has_refund_col then
+    if v_has_cancelled_at_col then
+      execute $sql$
+        select coalesce(sum(coalesce(r.refund_amount, r.total_price, 0)), 0)::bigint
+        from public.reservations r
+        join public.vehicles v on v.id = r.vehicle_id
+        where v.complex_id = $1
+          and r.status = 'cancelled'
+          and date_trunc(
+            'month',
+            coalesce(r.cancelled_at, r.updated_at) at time zone 'Asia/Seoul'
+          )::date = $2
+      $sql$
+      into v_reservation_refund
+      using p_complex_id, v_month_start;
+    else
+      execute $sql$
+        select coalesce(sum(coalesce(r.refund_amount, r.total_price, 0)), 0)::bigint
+        from public.reservations r
+        join public.vehicles v on v.id = r.vehicle_id
+        where v.complex_id = $1
+          and r.status = 'cancelled'
+          and date_trunc('month', r.updated_at at time zone 'Asia/Seoul')::date = $2
+      $sql$
+      into v_reservation_refund
+      using p_complex_id, v_month_start;
+    end if;
+  else
+    if v_has_cancelled_at_col then
+      select coalesce(sum(coalesce(r.total_price, 0)), 0)::bigint
+      into v_reservation_refund
+      from public.reservations r
+      join public.vehicles v on v.id = r.vehicle_id
+      where v.complex_id = p_complex_id
+        and r.status = 'cancelled'
+        and date_trunc(
+          'month',
+          coalesce(r.cancelled_at, r.updated_at) at time zone 'Asia/Seoul'
+        )::date = v_month_start;
+    else
+      select coalesce(sum(coalesce(r.total_price, 0)), 0)::bigint
+      into v_reservation_refund
+      from public.reservations r
+      join public.vehicles v on v.id = r.vehicle_id
+      where v.complex_id = p_complex_id
+        and r.status = 'cancelled'
+        and date_trunc('month', r.updated_at at time zone 'Asia/Seoul')::date = v_month_start;
+    end if;
+  end if;
+
+  select coalesce(sum(coalesce(po.total_price, 0)), 0)::bigint
+  into v_payment_refund
+  from public.payment_orders po
+  join public.vehicles veh on veh.id::text = po.vehicle_id::text
+  where veh.complex_id = p_complex_id
+    and po.status = 'cancelled'
+    and date_trunc('month', po.updated_at at time zone 'Asia/Seoul')::date = v_month_start
+    and not exists (
+      select 1
+      from public.reservations r2
+      where r2.order_id = po.order_id
+        and r2.status = 'cancelled'
+    );
+
+  v_cancel_refund := coalesce(v_reservation_refund, 0) + coalesce(v_payment_refund, 0);
+
+  select coalesce(
+    jsonb_agg(
+      jsonb_build_object(
+        'reservation_id', s.reservation_id_text,
+        'renter_name', coalesce(
+          nullif(trim(up.full_name), ''),
+          nullif(split_part(nullif(trim(up.email), ''), '@', 1), ''),
+          '이름 미등록'
+        ),
+        'total_price', coalesce(s.gross_amount, 0),
+        'start_at', s.start_at,
+        'end_at', s.end_at,
+        'rental_started_at', s.rental_started_at,
+        'returned_at', s.returned_at,
+        'actual_end_at', s.actual_end_at
+      )
+      order by s.return_completed_at desc nulls last
+    ),
+    '[]'::jsonb
+  )
+  into v_items
+  from public.sales_completed_reservations_v s
+  left join public.user_profiles up on up.user_id = s.user_id
+  where s.complex_id = p_complex_id
+    and s.return_completed_at >= v_period_start
+    and s.return_completed_at < v_period_end;
+
+  return jsonb_build_object(
+    'total_paid', coalesce(v_total_paid, 0),
+    'cancel_refund', coalesce(v_cancel_refund, 0),
+    'net_revenue', coalesce(v_total_paid, 0) - coalesce(v_cancel_refund, 0),
+    'items', coalesce(v_items, '[]'::jsonb)
+  );
+end;
+$$;
+
+revoke all on function public.get_super_admin_settlement_reservations(uuid, integer, integer) from public;
+grant execute on function public.get_super_admin_settlement_reservations(uuid, integer, integer) to authenticated;
+
+comment on function public.get_super_admin_settlement_reservations(uuid, integer, integer) is
+  '정산 상세 — total_paid(sales_sum_gross·뷰 gross_amount), cancel_refund, items(동일 뷰)';
+
+-- ── 20260628380000_cancel_reservation_soft_cancel.sql ────────────
+drop function if exists public.cancel_reservation_for_me(uuid, uuid);
+
+create or replace function public.cancel_reservation_for_me(
+  p_reservation_id text,
+  p_user_id uuid default auth.uid()
+)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_user uuid := coalesce(p_user_id, auth.uid());
+  v_row public.reservations%rowtype;
+  v_start timestamptz;
+  v_id text := nullif(trim(p_reservation_id), '');
+begin
+  if v_user is null then
+    raise exception 'not_authenticated';
+  end if;
+
+  if v_id is null then
+    raise exception 'invalid_reservation_id';
+  end if;
+
+  select *
+  into v_row
+  from public.reservations r
+  where r.id::text = v_id
+    and r.user_id = v_user
+  for update;
+
+  if not found then
+    raise exception 'reservation_not_found';
+  end if;
+
+  if v_row.status not in ('confirmed', 'pending') then
+    raise exception 'invalid_status';
+  end if;
+
+  v_start := coalesce(v_row.start_at, v_row.start_time);
+  if v_start is null then
+    raise exception 'invalid_start_time';
+  end if;
+
+  if v_start <= now() + interval '1 hour' then
+    raise exception 'cancel_too_late';
+  end if;
+
+  update public.reservations
+  set status = 'cancelled', updated_at = now()
+  where id::text = v_id
+    and user_id = v_user;
+
+  if v_row.order_id is not null then
+    update public.payment_orders
+    set status = 'cancelled', updated_at = now()
+    where order_id = v_row.order_id
+      and user_id = v_user;
+  end if;
+
+  return jsonb_build_object(
+    'reservationId', v_id,
+    'cancelled', true,
+    'orderId', v_row.order_id,
+    'paymentKey', v_row.payment_key,
+    'totalPrice', v_row.total_price
+  );
+end;
+$$;
+
+revoke all on function public.cancel_reservation_for_me(text, uuid) from public;
+grant execute on function public.cancel_reservation_for_me(text, uuid) to authenticated;
+grant execute on function public.cancel_reservation_for_me(text, uuid) to service_role;
+
+comment on function public.cancel_reservation_for_me(text, uuid) is
+  '예약 취소 — status=cancelled 유지(행 삭제 없음), payment_orders 동기 취소';
+
+-- ── 20260628390000_settlement_cancel_refund_reservations_only.sql ─
+drop function if exists public.get_super_admin_settlement_reservations(uuid, integer, integer);
+
+create function public.get_super_admin_settlement_reservations(
+  p_complex_id uuid,
+  p_year integer default null,
+  p_month integer default null
+)
+returns jsonb
+language plpgsql
+stable
+security definer
+set search_path = public
+as $$
+declare
+  v_year integer;
+  v_month integer;
+  v_period_start timestamptz;
+  v_period_end timestamptz;
+  v_month_start date;
+  v_total_paid bigint := 0;
+  v_cancel_refund bigint := 0;
+  v_reservation_refund bigint := 0;
+  v_items jsonb := '[]'::jsonb;
+  v_has_refund_col boolean := false;
+  v_has_cancelled_at_col boolean := false;
+begin
+  perform public.assert_is_super_admin();
+
+  if p_complex_id is null then
+    raise exception 'complex_id_required';
+  end if;
+
+  v_year := coalesce(p_year, extract(year from now() at time zone 'Asia/Seoul')::integer);
+  v_month := coalesce(p_month, extract(month from now() at time zone 'Asia/Seoul')::integer);
+  v_month_start := make_date(v_year, v_month, 1);
+
+  select b.period_start, b.period_end
+  into v_period_start, v_period_end
+  from public.sales_month_bounds(v_year, v_month) as b;
+
+  v_total_paid := public.sales_sum_gross(
+    p_complex_id, v_period_start, v_period_end
+  );
+
+  select exists (
+    select 1
+    from information_schema.columns
+    where table_schema = 'public'
+      and table_name = 'reservations'
+      and column_name = 'refund_amount'
+  )
+  into v_has_refund_col;
+
+  select exists (
+    select 1
+    from information_schema.columns
+    where table_schema = 'public'
+      and table_name = 'reservations'
+      and column_name = 'cancelled_at'
+  )
+  into v_has_cancelled_at_col;
+
+  if v_has_refund_col then
+    if v_has_cancelled_at_col then
+      execute $sql$
+        select coalesce(sum(coalesce(r.refund_amount, r.total_price, 0)), 0)::bigint
+        from public.reservations r
+        join public.vehicles v on v.id = r.vehicle_id
+        where v.complex_id = $1
+          and r.status = 'cancelled'
+          and date_trunc(
+            'month',
+            coalesce(r.cancelled_at, r.updated_at) at time zone 'Asia/Seoul'
+          )::date = $2
+      $sql$
+      into v_reservation_refund
+      using p_complex_id, v_month_start;
+    else
+      execute $sql$
+        select coalesce(sum(coalesce(r.refund_amount, r.total_price, 0)), 0)::bigint
+        from public.reservations r
+        join public.vehicles v on v.id = r.vehicle_id
+        where v.complex_id = $1
+          and r.status = 'cancelled'
+          and date_trunc('month', r.updated_at at time zone 'Asia/Seoul')::date = $2
+      $sql$
+      into v_reservation_refund
+      using p_complex_id, v_month_start;
+    end if;
+  else
+    if v_has_cancelled_at_col then
+      select coalesce(sum(coalesce(r.total_price, 0)), 0)::bigint
+      into v_reservation_refund
+      from public.reservations r
+      join public.vehicles v on v.id = r.vehicle_id
+      where v.complex_id = p_complex_id
+        and r.status = 'cancelled'
+        and date_trunc(
+          'month',
+          coalesce(r.cancelled_at, r.updated_at) at time zone 'Asia/Seoul'
+        )::date = v_month_start;
+    else
+      select coalesce(sum(coalesce(r.total_price, 0)), 0)::bigint
+      into v_reservation_refund
+      from public.reservations r
+      join public.vehicles v on v.id = r.vehicle_id
+      where v.complex_id = p_complex_id
+        and r.status = 'cancelled'
+        and date_trunc('month', r.updated_at at time zone 'Asia/Seoul')::date = v_month_start;
+    end if;
+  end if;
+
+  v_cancel_refund := coalesce(v_reservation_refund, 0);
+
+  select coalesce(
+    jsonb_agg(
+      jsonb_build_object(
+        'reservation_id', s.reservation_id_text,
+        'renter_name', coalesce(
+          nullif(trim(up.full_name), ''),
+          nullif(split_part(nullif(trim(up.email), ''), '@', 1), ''),
+          '이름 미등록'
+        ),
+        'total_price', coalesce(s.gross_amount, 0),
+        'start_at', s.start_at,
+        'end_at', s.end_at,
+        'rental_started_at', s.rental_started_at,
+        'returned_at', s.returned_at,
+        'actual_end_at', s.actual_end_at
+      )
+      order by s.return_completed_at desc nulls last
+    ),
+    '[]'::jsonb
+  )
+  into v_items
+  from public.sales_completed_reservations_v s
+  left join public.user_profiles up on up.user_id = s.user_id
+  where s.complex_id = p_complex_id
+    and s.return_completed_at >= v_period_start
+    and s.return_completed_at < v_period_end;
+
+  return jsonb_build_object(
+    'total_paid', coalesce(v_total_paid, 0),
+    'cancel_refund', coalesce(v_cancel_refund, 0),
+    'net_revenue', coalesce(v_total_paid, 0) - coalesce(v_cancel_refund, 0),
+    'items', coalesce(v_items, '[]'::jsonb)
+  );
+end;
+$$;
+
+revoke all on function public.get_super_admin_settlement_reservations(uuid, integer, integer) from public;
+grant execute on function public.get_super_admin_settlement_reservations(uuid, integer, integer) to authenticated;
+
+comment on function public.get_super_admin_settlement_reservations(uuid, integer, integer) is
+  '정산 상세 — total_paid(sales_sum_gross), cancel_refund(reservations 취소만, KST 월), items';
+

@@ -4,13 +4,17 @@ import '../../models/super_admin_models.dart';
 import '../../services/auth_service.dart';
 import '../../services/super_admin_service.dart';
 import '../../theme/danji_colors.dart';
+import '../../services/admin_notification_navigation.dart';
 import '../../widgets/admin_scaffold.dart';
+import '../../widgets/notification_bell_button.dart';
 import '../../widgets/section_card.dart';
+import '../notification_list_screen.dart';
 import 'super_admin_common.dart';
 import 'super_admin_coupons_screen.dart';
 import 'super_admin_entity_screens.dart';
 import 'super_admin_nav.dart';
 import 'super_admin_reservations_screen.dart';
+import 'super_admin_platform_fee_screen.dart';
 import 'super_admin_revenue_screen.dart';
 import 'super_admin_system_screen.dart';
 
@@ -74,10 +78,78 @@ class _SuperAdminDashboardScreenState extends State<SuperAdminDashboardScreen> {
     _open(SuperAdminVehiclesScreen(service: _service, initialFilter: filter));
   }
 
+  void _openNotifications() {
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => NotificationListScreen(
+          onlyOwnRows: true,
+          onNotificationTap: (ctx, item) async {
+            AdminNotificationNavigation.openFromInbox(
+              ctx,
+              item: item,
+              isSuperAdmin: true,
+              superAdminService: _service,
+            );
+          },
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return AdminScaffold(
-      safeTop: true,
+      appBar: AppBar(
+        backgroundColor: DanjiColors.background,
+        foregroundColor: DanjiColors.textPrimary,
+        elevation: 0,
+        scrolledUnderElevation: 0,
+        automaticallyImplyLeading: false,
+        title: const Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              '단지카 플랫폼',
+              style: TextStyle(
+                color: DanjiColors.textPrimary,
+                fontWeight: FontWeight.w800,
+                fontSize: 18,
+                height: 1.2,
+              ),
+            ),
+            Text(
+              '최고관리자',
+              style: TextStyle(
+                color: DanjiColors.textSecondary,
+                fontSize: 12,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          NotificationBellButton(
+            onlyOwnRows: true,
+            onPressed: _openNotifications,
+          ),
+          TextButton.icon(
+            onPressed: () => _auth.signOut(),
+            icon: const Icon(Icons.logout, size: 16),
+            label: const Text('로그아웃'),
+            style: TextButton.styleFrom(
+              foregroundColor: DanjiColors.textSecondary,
+              padding: const EdgeInsets.symmetric(horizontal: 8),
+              minimumSize: Size.zero,
+              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+              textStyle: const TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
+          const SizedBox(width: 4),
+        ],
+      ),
       body: RefreshIndicator(
         color: DanjiColors.buttonBlue,
         onRefresh: _reload,
@@ -85,52 +157,6 @@ class _SuperAdminDashboardScreenState extends State<SuperAdminDashboardScreen> {
           physics: const AlwaysScrollableScrollPhysics(),
           padding: const EdgeInsets.fromLTRB(16, 12, 16, 20),
           children: [
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        '단지카 플랫폼',
-                        style: TextStyle(
-                          color: DanjiColors.textPrimary,
-                          fontWeight: FontWeight.w800,
-                          fontSize: 20,
-                          height: 1.2,
-                        ),
-                      ),
-                      SizedBox(height: 2),
-                      Text(
-                        '최고관리자',
-                        style: TextStyle(
-                          color: DanjiColors.textSecondary,
-                          fontSize: 12,
-                          fontWeight: FontWeight.w500,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                TextButton.icon(
-                  onPressed: () => _auth.signOut(),
-                  icon: const Icon(Icons.logout, size: 16),
-                  label: const Text('로그아웃'),
-                  style: TextButton.styleFrom(
-                    foregroundColor: DanjiColors.textSecondary,
-                    padding: const EdgeInsets.symmetric(horizontal: 8),
-                    minimumSize: Size.zero,
-                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                    textStyle: const TextStyle(
-                      fontSize: 12,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 10),
             SectionCard(
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
               child: Text(
@@ -250,6 +276,13 @@ class _SuperAdminDashboardScreenState extends State<SuperAdminDashboardScreen> {
                     vehicleCountByComplexId: _vehicleCountByComplexId,
                     onOpenRevenue: () =>
                         _open(SuperAdminRevenueScreen(service: _service)),
+                    onOpenPlatformFee: (year, month) => _open(
+                      SuperAdminPlatformFeeScreen(
+                        service: _service,
+                        initialYear: year,
+                        initialMonth: month,
+                      ),
+                    ),
                   ),
                 ],
               ),

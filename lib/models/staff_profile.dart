@@ -1,4 +1,5 @@
 import '../utils/reservation_display.dart';
+import '../utils/vehicle_insurance_status.dart';
 
 class StaffProfile {
   final String userId;
@@ -265,10 +266,13 @@ class AdminVehicleDetail {
     return DateTime.tryParse(value.toString())?.toLocal();
   }
 
-  bool get isInsuranceExpired {
-    if (insuranceExpiresAt == null) return false;
-    return insuranceExpiresAt!.isBefore(DateTime.now());
-  }
+  bool get isInsuranceExpired =>
+      VehicleInsuranceStatus.badgeKind(insuranceExpiresAt) ==
+      VehicleInsuranceBadgeKind.expired;
+
+  bool get isInsuranceExpiringSoon =>
+      VehicleInsuranceStatus.badgeKind(insuranceExpiresAt) ==
+      VehicleInsuranceBadgeKind.expiringSoon;
 
   bool get hasInsurance =>
       (insuranceCompany?.trim().isNotEmpty ?? false) &&
@@ -515,6 +519,11 @@ class SalesSummary {
   final int totalAmount;
   final int reservationCount;
   final int vehicleCount;
+  final int paymentCount;
+  final int cancelCount;
+  final int rentalCount;
+  final bool isSettled;
+  final bool isRequested;
   final List<SalesRow> rows;
 
   const SalesSummary({
@@ -523,8 +532,19 @@ class SalesSummary {
     required this.totalAmount,
     required this.reservationCount,
     this.vehicleCount = 0,
+    this.paymentCount = 0,
+    this.cancelCount = 0,
+    this.rentalCount = 0,
+    this.isSettled = false,
+    this.isRequested = false,
     required this.rows,
   });
+
+  String get settlementBadgeLabel {
+    if (isSettled) return '정산완료';
+    if (isRequested) return '정산요청';
+    return '미정산';
+  }
 
   factory SalesSummary.fromRpc(Map<String, dynamic> m) {
     final rowsRaw = m['rows'];
@@ -551,6 +571,13 @@ class SalesSummary {
       totalAmount: total,
       reservationCount: (m['reservation_count'] as num?)?.toInt() ?? 0,
       vehicleCount: (m['vehicle_count'] as num?)?.toInt() ?? 0,
+      paymentCount: (m['payment_count'] as num?)?.toInt() ?? 0,
+      cancelCount: (m['cancel_count'] as num?)?.toInt() ?? 0,
+      rentalCount: (m['rental_count'] as num?)?.toInt() ??
+          (m['reservation_count'] as num?)?.toInt() ??
+          0,
+      isSettled: m['is_settled'] == true,
+      isRequested: m['is_requested'] == true,
       rows: rows,
     );
   }

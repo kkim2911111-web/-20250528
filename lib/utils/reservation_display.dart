@@ -3,7 +3,7 @@ import 'package:intl/intl.dart';
 /// 예약번호·대여 시각 UI 표시 공통 유틸
 
 final _numericReservationId = RegExp(r'^\d+$');
-final _danjiOrderId = RegExp(r'^danji_\d+_');
+final _danjiOrderId = RegExp(r'^danji_\d+(_|$)');
 
 bool isNumericReservationId(String? value) {
   final s = value?.trim() ?? '';
@@ -15,7 +15,8 @@ bool isDanjiOrderId(String? value) {
   return s.isNotEmpty && _danjiOrderId.hasMatch(s);
 }
 
-String formatReservationDisplayId(
+/// 이용내역·관리자 카드 공통 — #숫자(또는 UUID 앞 8자리)
+String? resolveReservationDisplayToken(
   String rawId, {
   String? paymentReservationId,
   String? orderId,
@@ -23,10 +24,33 @@ String formatReservationDisplayId(
   for (final candidate in [rawId, paymentReservationId, orderId]) {
     final s = candidate?.trim() ?? '';
     if (s.isEmpty || isDanjiOrderId(s)) continue;
-    if (_numericReservationId.hasMatch(s)) return '#$s';
+    if (_numericReservationId.hasMatch(s)) return s;
   }
-  if (!isDanjiOrderId(rawId)) return '#$rawId';
-  return '—';
+
+  for (final candidate in [rawId, paymentReservationId, orderId]) {
+    final s = candidate?.trim() ?? '';
+    if (s.isEmpty || isDanjiOrderId(s)) continue;
+    final compact = s.replaceAll('-', '').toLowerCase();
+    if (RegExp(r'^[0-9a-f]{8,}$').hasMatch(compact)) {
+      return compact.substring(0, 8);
+    }
+  }
+
+  return null;
+}
+
+String formatReservationDisplayId(
+  String rawId, {
+  String? paymentReservationId,
+  String? orderId,
+}) {
+  final token = resolveReservationDisplayToken(
+    rawId,
+    paymentReservationId: paymentReservationId,
+    orderId: orderId,
+  );
+  if (token == null || token.isEmpty) return '—';
+  return '#$token';
 }
 
 DateTime? parseReservationDate(Object? value) {

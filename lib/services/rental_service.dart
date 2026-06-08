@@ -8,7 +8,6 @@ import '../constants/payment_order_status.dart';
 import '../models/reservation.dart';
 import '../models/vehicle.dart';
 import '../supabase_client.dart';
-import '../utils/reservation_display.dart';
 import 'payment_service.dart';
 import 'reservation_refresh_bus.dart';
 import 'push_notification_service.dart';
@@ -36,10 +35,10 @@ contract_content,second_driver_name,second_driver_license
 ''';
 
   static const _selectCore =
-      'id,user_id,vehicle_id,start_at,end_at,start_time,end_time,total_price,status';
+      'id,user_id,vehicle_id,start_at,end_at,start_time,end_time,total_price,status,order_id';
 
   static const _selectBare =
-      'id,user_id,vehicle_id,start_time,end_time,total_price,status';
+      'id,user_id,vehicle_id,start_time,end_time,total_price,status,order_id';
 
   final _paymentService = PaymentService();
 
@@ -157,161 +156,52 @@ contract_content,second_driver_name,second_driver_license
     return parsed ?? id;
   }
 
-  Future<List<Reservation>> _fetchCancelledReservationsFromPaymentOrders(
-    String userId,
-  ) async {
-    try {
-      final rows = await supabase
-          .from('payment_orders')
-          .select(PaymentOrderColumns.selectDetail)
-          .eq('user_id', userId)
-          .eq('status', PaymentOrderStatus.cancelled)
-          .order('updated_at', ascending: false);
+  static const _selectCancelled =
+      'id, user_id, vehicle_id, order_id, total_price, updated_at, '
+      'start_at, end_at, status';
 
-      return (rows as List)
-          .map((row) {
-            if (row is! Map) return null;
-            return _reservationFromCancelledPaymentOrder(
-              Map<String, dynamic>.from(row),
-              userId,
-            );
-          })
-          .whereType<Reservation>()
-          .toList();
-    } on PostgrestException catch (e) {
-      debugPrint(
-        '[rental] cancelled payment_orders fetch skipped: ${e.message}',
-      );
-      return [];
-    }
-  }
+  /// 취소 탭 — reservations.status = cancelled 직접 조회 (숫자 id 그대로 사용)
+  Future<List<Reservation>> _fetchCancelledReservations(String userId) async {
+    const attempts = <(String select, String? orderCol)>[
+      (_selectCancelled, 'updated_at'),
+      (
+        'id, user_id, vehicle_id, order_id, total_price, updated_at, '
+            'start_time, end_time, status',
+        'updated_at',
+      ),
+      (_selectMinimal, 'start_time'),
+      (_selectBare, null),
+    ];
 
-  Reservation _reservationFromCancelledPaymentOrder(
-    Map<String, dynamic> row,
-    String userId,
-  ) {
-    final vehicleId = row['vehicle_id']?.toString() ?? '';
-    final vehicleName = row['vehicle_name']?.toString();
-    Vehicle? vehicle;
-    if (vehicleName != null && vehicleName.trim().isNotEmpty) {
-      vehicle = Vehicle(
-        id: vehicleId.isNotEmpty ? vehicleId : '0',
-        complexId: '',
-        name: vehicleName.trim(),
-        vehicleType: '기타',
-        pricePerHour: 0,
-        isAvailable: false,
-      );
-    }
+    PostgrestException? lastError;
+    for (final (select, orderCol) in attempts) {
+      try {
+        final base = supabase
+            .from('reservations')
+            .select(select)
+            .eq('user_id', userId)
+            .eq('status', 'cancelled');
+        final rows = orderCol == null
+            ? await base
+            : await base.order(orderCol, ascending: false);
 
-    final reservationId = row['reservation_id']?.toString();
-    final orderId = row['order_id']?.toString();
-    final displayId = isNumericReservationId(reservationId)
-        ? reservationId!.trim()
-        : (orderId ?? '');
+        final list = (rows as List)
+            .whereType<Map>()
+            .map((row) => Reservation.fromMap(Map<String, dynamic>.from(row)))
+            .toList();
 
-    DateTime? parseTs(Object? v) {
-      if (v == null) return null;
-      if (v is DateTime) return v.toLocal();
-      return DateTime.tryParse(v.toString())?.toLocal();
-    }
-
-    return Reservation(
-      id: displayId,
-      userId: userId,
-      vehicleId: vehicleId,
-      startAt: parseTs(row['start_time']),
-      endAt: parseTs(row['end_time']),
-      totalPrice: (row['total_price'] as num?)?.toInt() ?? 0,
-      status: 'cancelled',
-      orderId: orderId,
-      cancelledAt: parseTs(row['updated_at']),
-      vehicle: vehicle,
-    );
-  }
-
-  Reservation _copyReservationWithId(Reservation r, String id) {
-    return Reservation(
-      id: id,
-      userId: r.userId,
-      vehicleId: r.vehicleId,
-      startAt: r.startAt,
-      endAt: r.endAt,
-      totalPrice: r.totalPrice,
-      status: r.status,
-      paymentKey: r.paymentKey,
-      paymentStatus: r.paymentStatus,
-      orderId: r.orderId,
-      rentalStartedAt: r.rentalStartedAt,
-      returnedAt: r.returnedAt,
-      actualEndAt: r.actualEndAt,
-      cancelledAt: r.cancelledAt,
-      pickupPhotos: r.pickupPhotos,
-      returnPhotos: r.returnPhotos,
-      mileageStart: r.mileageStart,
-      mileageEnd: r.mileageEnd,
-      fuelLevelStart: r.fuelLevelStart,
-      fuelLevelEnd: r.fuelLevelEnd,
-      isAccident: r.isAccident,
-      accidentNote: r.accidentNote,
-      doorUnlocked: r.doorUnlocked,
-      photosUploaded: r.photosUploaded,
-      licenseVerified: r.licenseVerified,
-      vehicle: r.vehicle,
-      contractContent: r.contractContent,
-      secondDriverName: r.secondDriverName,
-      secondDriverLicense: r.secondDriverLicense,
-      isNoShow: r.isNoShow,
-    );
-  }
-
-  Future<List<Reservation>> _resolveNumericIdsForCancelledOrders(
-    List<Reservation> items,
-  ) async {
-    final unresolved =
-        items.where((r) => !isNumericReservationId(r.id)).toList();
-    if (unresolved.isEmpty) return items;
-
-    final orderIds = unresolved
-        .map((r) => r.orderId?.trim())
-        .whereType<String>()
-        .where((id) => id.isNotEmpty)
-        .toSet()
-        .toList();
-    if (orderIds.isEmpty) return items;
-
-    final byOrder = <String, String>{};
-    try {
-      final rows = await supabase
-          .from('reservations')
-          .select('id, order_id')
-          .inFilter('order_id', orderIds);
-      for (final row in rows as List) {
-        final map = Map<String, dynamic>.from(row);
-        final oid = map['order_id']?.toString().trim();
-        final rid = map['id']?.toString().trim();
-        if (oid != null &&
-            oid.isNotEmpty &&
-            isNumericReservationId(rid)) {
-          byOrder[oid] = rid!;
-        }
+        debugPrint('[rental] cancelled reservations direct fetch count=${list.length}');
+        return await _attachVehicles(list);
+      } on PostgrestException catch (e) {
+        lastError = e;
+        if (!_isRetryableFetchError(e)) rethrow;
       }
-    } on PostgrestException catch (e) {
-      debugPrint(
-        '[rental] resolve cancelled order ids skipped: ${e.message}',
-      );
-      return items;
     }
 
-    if (byOrder.isEmpty) return items;
-
-    return items.map((r) {
-      if (isNumericReservationId(r.id)) return r;
-      final oid = r.orderId?.trim();
-      final resolved = oid != null ? byOrder[oid] : null;
-      if (resolved == null) return r;
-      return _copyReservationWithId(r, resolved);
-    }).toList();
+    debugPrint(
+      '[rental] cancelled reservations fetch skipped: ${lastError?.message}',
+    );
+    return [];
   }
 
   Future<List<Reservation>> fetchMyReservations({bool forceRefresh = false}) async {
@@ -490,7 +380,7 @@ contract_content,second_driver_name,second_driver_license
     final all = await fetchMyReservations(forceRefresh: forceRefresh);
     final operating = <Reservation>[];
     final waiting = <Reservation>[];
-    final finished = <Reservation>[];
+    var finished = <Reservation>[];
 
     for (final r in all) {
       if (historyOnly) {
@@ -527,25 +417,14 @@ contract_content,second_driver_name,second_driver_license
     if (historyOnly) {
       final user = supabase.auth.currentUser;
       if (user != null) {
-        var fromOrders = await _fetchCancelledReservationsFromPaymentOrders(
-          user.id,
-        );
-        fromOrders = await _resolveNumericIdsForCancelledOrders(fromOrders);
+        finished = finished.where((r) => !r.isCancelled).toList();
+
+        final cancelled = await _fetchCancelledReservations(user.id);
         final existingIds = finished.map((r) => r.id).toSet();
-        final existingOrderIds = finished
-            .map((r) => r.orderId?.trim())
-            .whereType<String>()
-            .where((id) => id.isNotEmpty)
-            .toSet();
-        for (final r in fromOrders) {
-          if (existingIds.contains(r.id)) continue;
-          final oid = r.orderId?.trim();
-          if (oid != null && oid.isNotEmpty && existingOrderIds.contains(oid)) {
-            continue;
-          }
+        for (final r in cancelled) {
+          if (r.id.isEmpty || existingIds.contains(r.id)) continue;
           finished.add(r);
           existingIds.add(r.id);
-          if (oid != null && oid.isNotEmpty) existingOrderIds.add(oid);
         }
         finished.sort(_compareByStartDesc);
       }

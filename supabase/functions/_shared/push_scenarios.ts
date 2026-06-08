@@ -322,6 +322,24 @@ async function fetchComplexStaffUserIds(
     .filter((id) => id && id.length > 0);
 }
 
+async function fetchSuperAdminUserIds(
+  admin: SupabaseClient,
+): Promise<string[]> {
+  const { data, error } = await admin
+    .from('user_profiles')
+    .select('user_id')
+    .eq('is_super_admin', true);
+
+  if (error) {
+    console.error('super admin fetch failed:', error.message);
+    return [];
+  }
+
+  return (data ?? [])
+    .map((row) => row.user_id as string)
+    .filter((id) => id && id.length > 0);
+}
+
 async function saveInAppNotification(params: {
   admin: SupabaseClient;
   userId: string;
@@ -329,6 +347,7 @@ async function saveInAppNotification(params: {
   body: string;
   type: string;
   reservationId?: string | null;
+  complexId?: string | null;
 }): Promise<void> {
   const { error } = await params.admin.from('notifications').insert({
     user_id: params.userId,
@@ -336,6 +355,7 @@ async function saveInAppNotification(params: {
     body: params.body,
     type: params.type,
     reservation_id: params.reservationId ?? null,
+    complex_id: params.complexId ?? null,
     is_read: false,
   });
 
@@ -426,15 +446,23 @@ export async function dispatchPushScenario(params: {
       params.admin,
       complexId,
     );
+    const superAdminUserIds = await fetchSuperAdminUserIds(params.admin);
+    const staffSet = new Set(staffUserIds);
+    const inAppRecipients = [
+      ...staffUserIds,
+      ...superAdminUserIds.filter((id) => !staffSet.has(id)),
+    ];
+
     await Promise.all(
-      staffUserIds.map((staffUserId) =>
+      inAppRecipients.map((recipientId) =>
         saveInAppNotification({
           admin: params.admin,
-          userId: staffUserId,
+          userId: recipientId,
           title: message.title,
           body: message.body,
           type: notificationType,
           reservationId,
+          complexId,
         })
       ),
     );

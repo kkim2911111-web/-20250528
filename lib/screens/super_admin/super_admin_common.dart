@@ -504,16 +504,20 @@ class SuperAdminPeriodFilter extends SuperAdminMonthFilter {
 }
 
 /// 최고관리자 대시보드 — 월별 스와이프 매출·단지별 수수료
+typedef SuperAdminMonthCallback = void Function(int year, int month);
+
 class SuperAdminMonthlyRevenuePanel extends StatefulWidget {
   final SuperAdminService service;
   final Map<String, int> vehicleCountByComplexId;
   final VoidCallback? onOpenRevenue;
+  final SuperAdminMonthCallback? onOpenPlatformFee;
 
   const SuperAdminMonthlyRevenuePanel({
     super.key,
     required this.service,
     required this.vehicleCountByComplexId,
     this.onOpenRevenue,
+    this.onOpenPlatformFee,
   });
 
   @override
@@ -607,7 +611,10 @@ class _SuperAdminMonthlyRevenuePanelState
                 return _SuperAdminMonthRevenuePage(
                   future: _revenueFor(pageMonth.year, pageMonth.month),
                   vehicleCountByComplexId: widget.vehicleCountByComplexId,
+                  year: pageMonth.year,
+                  month: pageMonth.month,
                   onOpenRevenue: widget.onOpenRevenue,
+                  onOpenPlatformFee: widget.onOpenPlatformFee,
                 );
               },
             ),
@@ -621,12 +628,18 @@ class _SuperAdminMonthlyRevenuePanelState
 class _SuperAdminMonthRevenuePage extends StatelessWidget {
   final Future<List<SuperAdminRevenueRow>> future;
   final Map<String, int> vehicleCountByComplexId;
+  final int year;
+  final int month;
   final VoidCallback? onOpenRevenue;
+  final SuperAdminMonthCallback? onOpenPlatformFee;
 
   const _SuperAdminMonthRevenuePage({
     required this.future,
     required this.vehicleCountByComplexId,
+    required this.year,
+    required this.month,
     this.onOpenRevenue,
+    this.onOpenPlatformFee,
   });
 
   @override
@@ -665,33 +678,34 @@ class _SuperAdminMonthRevenuePage extends StatelessWidget {
         final visible = [...rows]
           ..sort((a, b) => b.totalRevenue.compareTo(a.totalRevenue));
 
-        return InkWell(
-          borderRadius: BorderRadius.circular(12),
-          onTap: onOpenRevenue,
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 4),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                Row(
-                  children: [
-                    Expanded(
-                      child: _RevenueSummaryChip(
-                        label: '월 매출',
-                        value: '₩${superAdminWon.format(totalRevenue)}',
-                        color: SuperAdminUiColors.revenueSky,
-                      ),
+        return Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 4),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Row(
+                children: [
+                  Expanded(
+                    child: _RevenueSummaryChip(
+                      label: '월 매출',
+                      value: '₩${superAdminWon.format(totalRevenue)}',
+                      color: SuperAdminUiColors.revenueSky,
+                      onTap: onOpenRevenue,
                     ),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: _RevenueSummaryChip(
-                        label: '월 수수료',
-                        value: '₩${superAdminWon.format(totalFee)}',
-                        color: SuperAdminUiColors.staffViolet,
-                      ),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: _RevenueSummaryChip(
+                      label: '월 수수료',
+                      value: '₩${superAdminWon.format(totalFee)}',
+                      color: SuperAdminUiColors.staffViolet,
+                      onTap: onOpenPlatformFee == null
+                          ? null
+                          : () => onOpenPlatformFee!(year, month),
                     ),
-                  ],
-                ),
+                  ),
+                ],
+              ),
                 const SizedBox(height: 10),
                 Expanded(
                   child: visible.isEmpty
@@ -757,7 +771,6 @@ class _SuperAdminMonthRevenuePage extends StatelessWidget {
                 ),
               ],
             ),
-          ),
         );
       },
     );
@@ -768,16 +781,18 @@ class _RevenueSummaryChip extends StatelessWidget {
   final String label;
   final String value;
   final Color color;
+  final VoidCallback? onTap;
 
   const _RevenueSummaryChip({
     required this.label,
     required this.value,
     required this.color,
+    this.onTap,
   });
 
   @override
   Widget build(BuildContext context) {
-    return Container(
+    final child = Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
       decoration: BoxDecoration(
         color: color.withValues(alpha: 0.08),
@@ -805,6 +820,17 @@ class _RevenueSummaryChip extends StatelessWidget {
             ),
           ),
         ],
+      ),
+    );
+
+    if (onTap == null) return child;
+
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(10),
+        child: child,
       ),
     );
   }

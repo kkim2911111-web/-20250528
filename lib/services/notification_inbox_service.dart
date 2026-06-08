@@ -5,7 +5,10 @@ import '../supabase_client.dart';
 import '../utils/network_retry.dart';
 
 class NotificationInboxService {
-  Future<List<InboxNotification>> fetchNotifications({int limit = 50}) async {
+  Future<List<InboxNotification>> fetchNotifications({
+    int limit = 50,
+    bool onlyOwnRows = false,
+  }) async {
     if (!isSupabaseInitialized) return [];
 
     final user = supabase.auth.currentUser;
@@ -13,13 +16,19 @@ class NotificationInboxService {
 
     try {
       final rows = await withNetworkRetry(
-        () => supabase
-            .from('notifications')
-            .select(
-              'id, title, body, type, reservation_id, is_read, created_at',
-            )
-            .order('created_at', ascending: false)
-            .limit(limit),
+        () {
+          var query = supabase
+              .from('notifications')
+              .select(
+                'id, title, body, type, reservation_id, is_read, created_at',
+              );
+          if (onlyOwnRows) {
+            query = query.eq('user_id', user.id);
+          }
+          return query
+              .order('created_at', ascending: false)
+              .limit(limit);
+        },
       );
 
       return (rows as List)
@@ -31,7 +40,7 @@ class NotificationInboxService {
     }
   }
 
-  Future<int> fetchUnreadCount() async {
+  Future<int> fetchUnreadCount({bool onlyOwnRows = false}) async {
     if (!isSupabaseInitialized) return 0;
 
     final user = supabase.auth.currentUser;
@@ -39,10 +48,16 @@ class NotificationInboxService {
 
     try {
       final count = await withNetworkRetry(
-        () => supabase
-            .from('notifications')
-            .count(CountOption.exact)
-            .eq('is_read', false),
+        () {
+          var query = supabase
+              .from('notifications')
+              .count(CountOption.exact)
+              .eq('is_read', false);
+          if (onlyOwnRows) {
+            query = query.eq('user_id', user.id);
+          }
+          return query;
+        },
       );
       return count;
     } on PostgrestException catch (e) {
@@ -63,15 +78,21 @@ class NotificationInboxService {
     );
   }
 
-  Future<void> markAllRead() async {
+  Future<void> markAllRead({bool onlyOwnRows = false}) async {
     final user = supabase.auth.currentUser;
     if (user == null) return;
 
     await withNetworkRetry(
-      () => supabase
-          .from('notifications')
-          .update({'is_read': true})
-          .eq('is_read', false),
+      () {
+        var query = supabase
+            .from('notifications')
+            .update({'is_read': true})
+            .eq('is_read', false);
+        if (onlyOwnRows) {
+          query = query.eq('user_id', user.id);
+        }
+        return query;
+      },
     );
   }
 }

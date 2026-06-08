@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../models/super_admin_models.dart';
@@ -157,7 +158,7 @@ class SuperAdminService {
         parse: (d) => _list(d, SuperAdminRevenueRow.fromMap),
       );
 
-  Future<List<SuperAdminSettlementReservation>> fetchSettlementReservations({
+  Future<SuperAdminSettlementSheet> fetchSettlementSheet({
     required String complexId,
     required int year,
     required int month,
@@ -169,7 +170,7 @@ class SuperAdminService {
           'p_year': year,
           'p_month': month,
         },
-        parse: (d) => _list(d, SuperAdminSettlementReservation.fromMap),
+        parse: (d) => SuperAdminSettlementSheet.fromRpc(d),
       );
 
   Future<List<SuperAdminCoupon>> fetchCoupons() => _rpc(
@@ -368,38 +369,125 @@ class SuperAdminService {
   Future<void> issueCoupon({
     required String userId,
     required String couponId,
+    required String couponTitle,
     DateTime? expiresAt,
-  }) =>
-      _rpc(
-        'issue_super_admin_coupon',
-        params: {
-          'p_user_id': userId,
-          'p_coupon_id': couponId,
-          if (expiresAt != null) 'p_expires_at': expiresAt.toUtc().toIso8601String(),
-        },
-        parse: (_) {},
-      );
+  }) async {
+    await _rpc(
+      'issue_super_admin_coupon',
+      params: {
+        'p_user_id': userId,
+        'p_coupon_id': couponId,
+        if (expiresAt != null) 'p_expires_at': expiresAt.toUtc().toIso8601String(),
+      },
+      parse: (_) {},
+    );
+    await _sendCouponIssuedPushes(
+      userIds: [userId],
+      couponTitle: couponTitle,
+    );
+  }
 
   /// 일괄 발급 — p_complexId null·userIds null이면 전체 입주민
+  /// 개별 / 단지별 / 전체 발급 후 발급 대상에게 푸시 발송
   Future<BulkIssueCouponResult> bulkIssueCoupon({
     required String couponId,
+    required String couponTitle,
     String? complexId,
     List<String>? userIds,
-  }) =>
-      _rpc(
-        'bulk_issue_coupon',
-        params: {
-          'p_coupon_id': couponId,
-          if (complexId != null) 'p_complex_id': complexId,
-          if (userIds != null && userIds.isNotEmpty) 'p_user_ids': userIds,
-        },
-        parse: (d) {
-          if (d is Map) {
-            return BulkIssueCouponResult.fromMap(Map<String, dynamic>.from(d));
-          }
-          return const BulkIssueCouponResult();
-        },
+  }) async {
+    final result = await _rpc(
+      'bulk_issue_coupon',
+      params: {
+        'p_coupon_id': couponId,
+        if (complexId != null) 'p_complex_id': complexId,
+        if (userIds != null && userIds.isNotEmpty) 'p_user_ids': userIds,
+      },
+      parse: (d) {
+        if (d is Map) {
+          return BulkIssueCouponResult.fromMap(Map<String, dynamic>.from(d));
+        }
+        return const BulkIssueCouponResult();
+      },
+    );
+
+    final pushTargets = result.issuedUserIds.isNotEmpty
+        ? result.issuedUserIds
+        : (userIds ?? const <String>[]);
+
+    if (result.issuedCount > 0 && pushTargets.isEmpty) {
+      debugPrint(
+        '[coupon-push] issued_count=${result.issuedCount} but issued_user_ids '
+        'empty — apply migration 20260528120000_bulk_issue_coupon_issued_user_ids',
       );
+    }
+
+    if (pushTargets.isNotEmpty) {
+      await _sendCouponIssuedPushes(
+        userIds: pushTargets,
+        couponTitle: couponTitle,
+      );
+    } else {
+      debugPrint('[coupon-push] skip — no push targets after bulk issue');
+    }
+
+    return result;
+  }
+
+  /// send-push-notification Edge Function — 유저별 FCM 토큰 조회·발송
+  Future<void> _sendCouponIssuedPushes({
+    required List<String> userIds,
+    required String couponTitle,
+  }) async {
+    const title = '쿠폰이 도착했어요 🎫';
+    final name = couponTitle.trim().isEmpty ? '쿠폰' : couponTitle.trim();
+    final body = '[$name] 쿠폰이 발급되었습니다. 지금 확인해보세요.';
+
+    debugPrint(
+      '[coupon-push] start count=${userIds.length} title=$title type=coupon',
+    );
+
+    for (final userId in userIds) {
+      final uid = userId.trim();
+      if (uid.isEmpty) continue;
+
+      final payload = {
+        'userId': uid,
+        'title': title,
+        'body': body,
+        'type': 'coupon',
+      };
+
+      try {
+        final response = await supabase.functions.invoke(
+          'send-push-notification',
+          body: payload,
+        );
+
+        if (response.status != 200) {
+          final err = response.data is Map
+              ? response.data['error']?.toString()
+              : response.data?.toString();
+          debugPrint(
+            '[coupon-push] failed userId=$uid status=${response.status} '
+            'error=${err ?? 'unknown'} payload=$payload',
+          );
+          continue;
+        }
+
+        final data = response.data;
+        final sent = data is Map ? data['sent'] : null;
+        final tokens = data is Map ? data['tokens'] : null;
+        debugPrint(
+          '[coupon-push] ok userId=$uid sent=$sent tokens=$tokens',
+        );
+      } catch (e, st) {
+        debugPrint(
+          '[coupon-push] exception userId=$uid error=$e payload=$payload',
+        );
+        debugPrint('[coupon-push] stack: $st');
+      }
+    }
+  }
 
   Future<void> forceCancelReservation(String id) => _rpc(
         'force_super_admin_cancel_reservation',

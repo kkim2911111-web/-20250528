@@ -1,5 +1,7 @@
 -- 관리자 반납 검수 — ride_photos 조회 (reservations 배열 비어 있을 때 폴백)
 
+drop function if exists public.get_ride_photos_for_staff(text, text);
+
 create or replace function public.get_ride_photos_for_staff(
   p_reservation_id text,
   p_phase text

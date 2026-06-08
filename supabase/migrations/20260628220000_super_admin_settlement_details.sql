@@ -1,5 +1,7 @@
 -- 최고관리자 정산 — 단지·월별 예약 상세 내역
 
+drop function if exists public.get_super_admin_settlement_reservations(uuid, integer, integer);
+
 create or replace function public.get_super_admin_settlement_reservations(
   p_complex_id uuid,
   p_year integer default null,

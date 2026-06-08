@@ -404,6 +404,7 @@ class _CouponIssueSheetState extends State<_CouponIssueSheet> {
     try {
       final result = await widget.service.bulkIssueCoupon(
         couponId: widget.coupon.id,
+        couponTitle: widget.coupon.title,
         complexId: _mode == _CouponIssueMode.complex
             ? _selectedComplexId
             : null,

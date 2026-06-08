@@ -1,5 +1,13 @@
 -- 단지 관리자 매출 = 최고관리자 정산 기준 통일 + 실제 대여 시각 RPC 필드
 
+drop function if exists public.get_admin_sales_summary(uuid, integer, integer);
+drop function if exists public.get_admin_completed_reservations();
+drop function if exists public.get_admin_completed_reservations(integer, integer);
+drop function if exists public.get_admin_reservations_with_conflict();
+drop function if exists public.get_admin_reservations_with_conflict(integer, integer);
+drop function if exists public.get_super_admin_settlement_reservations(uuid, integer, integer);
+drop function if exists public.get_super_admin_resident_detail(uuid);
+
 create or replace function public.get_admin_sales_summary(
   p_complex_id uuid,
   p_year integer default null,

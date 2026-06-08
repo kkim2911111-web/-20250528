@@ -641,14 +641,27 @@ class ReservationService {
     final bestByReservation = <String, Map<String, dynamic>>{};
     for (final row in rows) {
       var resKey = '';
-      final numericResId = row['reservation_id']?.toString() ?? '';
-      if (numericResId.isNotEmpty && byReservationId.containsKey(numericResId)) {
+      final numericResId = row['reservation_id']?.toString().trim() ?? '';
+      if (numericResId.isNotEmpty &&
+          byReservationId.containsKey(numericResId)) {
         resKey = numericResId;
       } else {
-        final oid = row['order_id']?.toString();
-        if (oid != null) {
+        final oid = row['order_id']?.toString().trim();
+        if (oid != null && oid.isNotEmpty) {
           for (final r in byReservationId.values) {
             if (r.id == oid || r.orderId == oid) {
+              resKey = r.id;
+              break;
+            }
+          }
+        }
+        if (resKey.isEmpty && numericResId.isNotEmpty) {
+          for (final r in byReservationId.values) {
+            final rOid = r.orderId?.trim();
+            final rowOid = row['order_id']?.toString().trim();
+            if (rowOid != null &&
+                rowOid.isNotEmpty &&
+                (rOid == rowOid || r.id == rowOid)) {
               resKey = r.id;
               break;
             }

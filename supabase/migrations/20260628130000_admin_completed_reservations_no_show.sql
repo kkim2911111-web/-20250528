@@ -77,6 +77,9 @@ begin
 end;
 $$;
 
+drop function if exists public.get_admin_completed_reservations();
+drop function if exists public.get_admin_completed_reservations(integer, integer);
+
 create or replace function public.get_admin_completed_reservations()
 returns table (
   reservation_id text,

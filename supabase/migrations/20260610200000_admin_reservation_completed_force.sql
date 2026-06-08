@@ -51,7 +51,7 @@ as $$
       r.updated_at,
       coalesce(v.model_name, '차량') as vehicle_name,
       v.car_number,
-      coalesce(nullif(trim(up.name), ''), '임차인') as renter_name
+      coalesce(nullif(trim(up.full_name), ''), '임차인') as renter_name
     from public.reservations r
     join public.vehicles v on v.id = r.vehicle_id
     join staff_complex sc on sc.complex_id = v.complex_id
@@ -128,7 +128,7 @@ as $$
     r.id::text as reservation_id,
     coalesce(v.model_name, '차량') as vehicle_name,
     v.car_number,
-    coalesce(nullif(trim(up.name), ''), '임차인') as renter_name,
+    coalesce(nullif(trim(up.full_name), ''), '임차인') as renter_name,
     r.status,
     coalesce(r.start_at, r.start_time) as start_at,
     coalesce(r.end_at, r.end_time) as end_at,

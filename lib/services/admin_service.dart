@@ -7,6 +7,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../models/license_review_item.dart';
 import '../models/notice.dart';
 import '../models/staff_profile.dart';
+import '../models/super_admin_models.dart';
 import '../utils/admin_conflict.dart';
 import '../repositories/staff_repository.dart';
 import '../supabase_client.dart';
@@ -996,6 +997,42 @@ class AdminService {
     }
 
     return const SalesSummary(totalAmount: 0, reservationCount: 0, rows: []);
+  }
+
+  Future<SuperAdminSettlementSheet> fetchSettlementSheet({
+    int? year,
+    int? month,
+  }) async {
+    final data = await supabase.rpc(
+      'get_admin_settlement_sheet',
+      params: {
+        if (year != null) 'p_year': year,
+        if (month != null) 'p_month': month,
+      },
+    );
+    if (data is Map) {
+      return SuperAdminSettlementSheet.fromRpc(data);
+    }
+    return const SuperAdminSettlementSheet();
+  }
+
+  /// 단지관리자 정산 요청 — Edge Function (푸시·앱내 알림 포함)
+  Future<void> requestSettlement({
+    required int year,
+    required int month,
+  }) async {
+    final response = await supabase.functions.invoke(
+      'settlement-request',
+      body: {'year': year, 'month': month},
+    );
+
+    if (response.status != 200) {
+      final data = response.data;
+      final message = data is Map
+          ? data['error']?.toString() ?? '정산 요청에 실패했습니다.'
+          : '정산 요청에 실패했습니다.';
+      throw AdminException(message);
+    }
   }
 
   bool _isAdminSalesSummaryRpcMissing(PostgrestException e) {

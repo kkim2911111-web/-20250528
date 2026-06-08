@@ -41,6 +41,8 @@ alter table public.complex_settlements enable row level security;
 -- RLS: 일반 사용자 접근 없음 (RPC security definer만 사용)
 
 -- ── 조회 보조 RPC ───────────────────────────────────────────
+drop function if exists public.get_super_admin_coupons();
+
 create or replace function public.get_super_admin_coupons()
 returns table (
   coupon_id text,
@@ -80,6 +82,8 @@ begin
   order by c.created_at desc nulls last;
 end;
 $$;
+
+drop function if exists public.get_super_admin_banners();
 
 create or replace function public.get_super_admin_banners()
 returns table (

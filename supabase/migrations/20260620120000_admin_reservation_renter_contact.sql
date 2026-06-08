@@ -1,5 +1,7 @@
 -- 관리자 예약 목록: 임차인 이름·전화번호·결제금액 (renter_phone 추가, conflict RPC 필드 복원)
 
+drop function if exists public.get_admin_reservations_with_conflict();
+
 create or replace function public.get_admin_reservations_with_conflict()
 returns table (
   reservation_id text,
@@ -95,6 +97,8 @@ as $$
   from scoped s
   order by s.start_at desc nulls last;
 $$;
+
+drop function if exists public.get_admin_completed_reservations();
 
 create or replace function public.get_admin_completed_reservations()
 returns table (

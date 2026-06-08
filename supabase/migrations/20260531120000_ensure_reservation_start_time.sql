@@ -95,6 +95,9 @@ comment on column public.reservations.end_time is
   '예약 종료 시각 (timestamptz). end_at과 동일 값 유지 권장.';
 
 -- 5) 운행시작 RPC — 예약 시작 30분 전부터 허용 (idempotent)
+drop function if exists public.start_rental_for_me(uuid, text[], integer, text);
+drop function if exists public.start_rental_for_me(text, text[], integer, text);
+
 create or replace function public.start_rental_for_me(
   p_reservation_id text,
   p_pickup_photos text[],

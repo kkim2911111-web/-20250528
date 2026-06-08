@@ -87,6 +87,8 @@ revoke all on function public.assert_is_super_admin() from public;
 grant execute on function public.assert_is_super_admin() to authenticated;
 
 -- ── 4) get_super_admin_dashboard() — 전체 통계 ───────────────
+drop function if exists public.get_super_admin_dashboard();
+
 create or replace function public.get_super_admin_dashboard()
 returns table (
   complex_count bigint,
@@ -194,6 +196,8 @@ end;
 $$;
 
 -- ── 5) get_super_admin_complexes() — 단지 목록 ───────────────
+drop function if exists public.get_super_admin_complexes();
+
 create or replace function public.get_super_admin_complexes()
 returns table (
   complex_id uuid,
@@ -269,6 +273,8 @@ end;
 $$;
 
 -- ── 6) get_super_admin_vehicles() — 차량 목록 ────────────────
+drop function if exists public.get_super_admin_vehicles();
+
 create or replace function public.get_super_admin_vehicles()
 returns table (
   vehicle_id text,
@@ -328,6 +334,8 @@ end;
 $$;
 
 -- ── 7) get_super_admin_staff() — 스태프 목록 ─────────────────
+drop function if exists public.get_super_admin_staff();
+
 create or replace function public.get_super_admin_staff()
 returns table (
   user_id uuid,
@@ -368,6 +376,8 @@ end;
 $$;
 
 -- ── 8) get_super_admin_residents() — 입주민 목록 ─────────────
+drop function if exists public.get_super_admin_residents();
+
 create or replace function public.get_super_admin_residents()
 returns table (
   user_id uuid,
@@ -412,6 +422,8 @@ end;
 $$;
 
 -- ── 9) get_super_admin_reservations() — 전체 예약 ────────────
+drop function if exists public.get_super_admin_reservations();
+
 create or replace function public.get_super_admin_reservations()
 returns table (
   reservation_id text,
@@ -468,6 +480,8 @@ end;
 $$;
 
 -- ── 10) get_super_admin_revenue() — 정산/매출 ────────────────
+drop function if exists public.get_super_admin_revenue(integer, integer);
+
 create or replace function public.get_super_admin_revenue(
   p_year integer default null,
   p_month integer default null

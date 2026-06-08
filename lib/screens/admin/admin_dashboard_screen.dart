@@ -5,8 +5,11 @@ import '../../models/staff_profile.dart';
 import '../../services/admin_service.dart';
 import '../../services/auth_service.dart';
 import '../../theme/danji_colors.dart';
+import '../../services/admin_notification_navigation.dart';
 import '../../widgets/admin_scaffold.dart';
+import '../../widgets/notification_bell_button.dart';
 import '../../widgets/section_card.dart';
+import '../notification_list_screen.dart';
 import 'admin_complex_info_screen.dart';
 import 'admin_license_review_screen.dart';
 import 'admin_management_screens.dart';
@@ -56,6 +59,24 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
     await _auth.signOut();
   }
 
+  void _openNotifications() {
+    final profile = widget.profile;
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => NotificationListScreen(
+          onlyOwnRows: true,
+          onNotificationTap: (ctx, item) async {
+            AdminNotificationNavigation.openFromInbox(
+              ctx,
+              item: item,
+              staffProfile: profile,
+            );
+          },
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final profile = widget.profile;
@@ -65,7 +86,57 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
         : '단지';
 
     return AdminScaffold(
-      safeTop: true,
+      appBar: AppBar(
+        backgroundColor: DanjiColors.background,
+        foregroundColor: DanjiColors.textPrimary,
+        elevation: 0,
+        scrolledUnderElevation: 0,
+        automaticallyImplyLeading: false,
+        title: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              complexName,
+              style: const TextStyle(
+                color: DanjiColors.textPrimary,
+                fontWeight: FontWeight.w800,
+                fontSize: 18,
+                height: 1.2,
+              ),
+            ),
+            Text(
+              profile.displayName,
+              style: const TextStyle(
+                color: DanjiColors.textSecondary,
+                fontSize: 12,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          NotificationBellButton(
+            onlyOwnRows: true,
+            onPressed: _openNotifications,
+          ),
+          TextButton.icon(
+            onPressed: _logout,
+            icon: const Icon(Icons.logout, size: 16),
+            label: const Text('로그아웃'),
+            style: TextButton.styleFrom(
+              foregroundColor: DanjiColors.textSecondary,
+              padding: const EdgeInsets.symmetric(horizontal: 8),
+              minimumSize: Size.zero,
+              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+              textStyle: const TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
+          const SizedBox(width: 4),
+        ],
+      ),
       body: RefreshIndicator(
         color: DanjiColors.buttonBlue,
         onRefresh: () async => _reload(),
@@ -73,52 +144,6 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
           physics: const AlwaysScrollableScrollPhysics(),
           padding: const EdgeInsets.fromLTRB(16, 12, 16, 20),
             children: [
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          complexName,
-                          style: const TextStyle(
-                            color: DanjiColors.textPrimary,
-                            fontWeight: FontWeight.w800,
-                            fontSize: 20,
-                            height: 1.2,
-                          ),
-                        ),
-                        const SizedBox(height: 2),
-                        Text(
-                          profile.displayName,
-                          style: const TextStyle(
-                            color: DanjiColors.textSecondary,
-                            fontSize: 12,
-                            fontWeight: FontWeight.w500,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  TextButton.icon(
-                    onPressed: _logout,
-                    icon: const Icon(Icons.logout, size: 16),
-                    label: const Text('로그아웃'),
-                    style: TextButton.styleFrom(
-                      foregroundColor: DanjiColors.textSecondary,
-                      padding: const EdgeInsets.symmetric(horizontal: 8),
-                      minimumSize: Size.zero,
-                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                      textStyle: const TextStyle(
-                        fontSize: 12,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 10),
               FutureBuilder<BranchStats>(
                 future: _statsFuture,
                 builder: (context, snap) {

@@ -9,6 +9,8 @@ end
 where photo_type is null
   and phase in ('pickup', 'return');
 
+drop function if exists public.get_ride_photos_for_staff(text, text);
+
 create or replace function public.get_ride_photos_for_staff(
   p_reservation_id text,
   p_photo_type text

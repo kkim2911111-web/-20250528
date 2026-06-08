@@ -9,8 +9,23 @@ import '../theme/danji_typography.dart';
 import '../utils/danji_snackbar.dart';
 import '../widgets/danji_app_bar.dart';
 
+typedef NotificationTapHandler = Future<void> Function(
+  BuildContext context,
+  InboxNotification item,
+);
+
 class NotificationListScreen extends StatefulWidget {
-  const NotificationListScreen({super.key});
+  /// 관리자 RLS 중복 행 방지 — 본인 user_id 알림만 표시
+  final bool onlyOwnRows;
+
+  /// null이면 입주민 기본 동작(예약 상세 등)
+  final NotificationTapHandler? onNotificationTap;
+
+  const NotificationListScreen({
+    super.key,
+    this.onlyOwnRows = false,
+    this.onNotificationTap,
+  });
 
   @override
   State<NotificationListScreen> createState() => _NotificationListScreenState();
@@ -30,13 +45,13 @@ class _NotificationListScreenState extends State<NotificationListScreen> {
 
   void _reload() {
     setState(() {
-      _future = _service.fetchNotifications();
+      _future = _service.fetchNotifications(onlyOwnRows: widget.onlyOwnRows);
     });
   }
 
   Future<void> _markAllRead() async {
     try {
-      await _service.markAllRead();
+      await _service.markAllRead(onlyOwnRows: widget.onlyOwnRows);
       _reload();
     } catch (e) {
       if (!mounted) return;
@@ -49,6 +64,14 @@ class _NotificationListScreenState extends State<NotificationListScreen> {
       try {
         await _service.markRead(item.id);
       } catch (_) {}
+    }
+
+    if (widget.onNotificationTap != null) {
+      if (!mounted) return;
+      await widget.onNotificationTap!(context, item);
+      if (!mounted) return;
+      _reload();
+      return;
     }
 
     final reservationId = item.reservationId;

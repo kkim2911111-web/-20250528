@@ -6,6 +6,7 @@ import '../../models/staff_profile.dart';
 import '../../services/admin_service.dart';
 import '../../theme/danji_colors.dart';
 import '../../theme/danji_theme.dart';
+import '../../utils/vehicle_insurance_status.dart';
 import '../../widgets/admin_scaffold.dart';
 import '../../widgets/danji_app_bar.dart';
 
@@ -151,6 +152,16 @@ class _AdminVehicleFormScreenState extends State<AdminVehicleFormScreen> {
       body: ListView(
         padding: const EdgeInsets.all(20),
         children: [
+          if (_isEdit &&
+              VehicleInsuranceStatus.badgeKind(
+                    widget.initial?.insuranceExpiresAt,
+                  ) !=
+                  VehicleInsuranceBadgeKind.none) ...[
+            VehicleInsuranceBadge(
+              insuranceExpiresAt: widget.initial?.insuranceExpiresAt,
+            ),
+            const SizedBox(height: 16),
+          ],
           _field('차종 / 모델명', _name, hint: '예: 더 뉴 스타리아'),
           const SizedBox(height: 12),
           _dropdown('차량 유형', _vehicleType, AdminService.vehicleTypes, (v) {

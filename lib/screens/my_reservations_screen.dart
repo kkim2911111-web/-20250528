@@ -99,6 +99,20 @@ class _MyReservationsScreenState extends State<MyReservationsScreen> {
     }
   }
 
+  ReservationPaymentPricing? _pricingFor(
+    GroupedReservations grouped,
+    Reservation item,
+  ) {
+    final map = grouped.paymentPricing;
+    final byId = map[item.id];
+    if (byId != null) return byId;
+    final oid = item.orderId?.trim();
+    if (oid != null && oid.isNotEmpty) {
+      return map[oid];
+    }
+    return null;
+  }
+
   GroupedReservations _filterFinishedByMonth(GroupedReservations grouped) {
     final finished = _filterHistoryByTab(grouped.finished)
         .where(_reservationInSelectedMonth)
@@ -437,7 +451,7 @@ class _MyReservationsScreenState extends State<MyReservationsScreen> {
                       padding: const EdgeInsets.only(bottom: 12),
                       child: _ReservationCard(
                         reservation: item,
-                        pricing: groupedRaw.paymentPricing[item.id],
+                        pricing: _pricingFor(groupedRaw, item),
                         dateFormat: _dateFormat,
                         won: _won,
                         variant: _CardVariant.operating,
@@ -485,7 +499,7 @@ class _MyReservationsScreenState extends State<MyReservationsScreen> {
                       padding: const EdgeInsets.only(bottom: 12),
                       child: _ReservationCard(
                         reservation: item,
-                        pricing: groupedRaw.paymentPricing[item.id],
+                        pricing: _pricingFor(groupedRaw, item),
                         dateFormat: _dateFormat,
                         won: _won,
                         variant: _CardVariant.waiting,
@@ -528,7 +542,7 @@ class _MyReservationsScreenState extends State<MyReservationsScreen> {
                       padding: const EdgeInsets.only(bottom: 12),
                       child: _ReservationCard(
                         reservation: item,
-                        pricing: groupedRaw.paymentPricing[item.id],
+                        pricing: _pricingFor(groupedRaw, item),
                         dateFormat: _dateFormat,
                         won: _won,
                         variant: _CardVariant.finished,
@@ -618,7 +632,7 @@ class _MyReservationsScreenState extends State<MyReservationsScreen> {
                 padding: const EdgeInsets.only(bottom: 12),
                 child: _ReservationCard(
                   reservation: item,
-                  pricing: groupedRaw.paymentPricing[item.id],
+                  pricing: _pricingFor(groupedRaw, item),
                   dateFormat: _dateFormat,
                   won: _won,
                   variant: _CardVariant.finished,
@@ -646,7 +660,7 @@ class _MyReservationsScreenState extends State<MyReservationsScreen> {
                 padding: const EdgeInsets.only(bottom: 12),
                 child: _ReservationCard(
                   reservation: item,
-                  pricing: groupedRaw.paymentPricing[item.id],
+                  pricing: _pricingFor(groupedRaw, item),
                   dateFormat: _dateFormat,
                   won: _won,
                   variant: _CardVariant.cancelled,

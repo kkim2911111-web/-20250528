@@ -1,5 +1,10 @@
 -- 매출·정산 집계: completed만, 월 기준 = 반납 완료일(returned_at / actual_end_at)
 
+drop function if exists public.get_admin_sales_summary(uuid, integer, integer);
+drop function if exists public.get_admin_branch_sales_stats(uuid);
+drop function if exists public.get_super_admin_dashboard();
+drop function if exists public.get_super_admin_settlement_reservations(uuid, integer, integer);
+
 -- ── 단지 관리자 매출 요약 ─────────────────────────────────────
 create or replace function public.get_admin_sales_summary(
   p_complex_id uuid,

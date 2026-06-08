@@ -1,6 +1,8 @@
 -- vehicles 테이블에는 model_name만 존재 (name 컬럼 없음)
 -- get_admin_reservations_with_conflict RPC의 v.name 참조 제거
 
+drop function if exists public.get_admin_reservations_with_conflict();
+
 create or replace function public.get_admin_reservations_with_conflict()
 returns table (
   reservation_id text,

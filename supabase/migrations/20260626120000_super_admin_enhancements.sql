@@ -1,5 +1,7 @@
 -- 최고관리자 보강: 입주민 블랙리스트 조회, 공지 목록, 면허 강제 거절
 
+drop function if exists public.get_super_admin_residents();
+
 create or replace function public.get_super_admin_residents()
 returns table (
   user_id uuid,

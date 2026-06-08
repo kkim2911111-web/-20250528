@@ -1,6 +1,7 @@
 -- coupons 실제 컬럼: id, code, title, discount_amount, min_amount, expires_at, is_active, created_at
 
 drop function if exists public.upsert_super_admin_coupon(text, text, text, integer, integer);
+drop function if exists public.get_super_admin_coupons();
 
 create or replace function public.get_super_admin_coupons()
 returns table (

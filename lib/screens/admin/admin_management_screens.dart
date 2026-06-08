@@ -2,8 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
 import '../../models/staff_profile.dart';
+import '../../models/super_admin_models.dart';
 import '../../services/admin_service.dart';
 import '../../theme/danji_colors.dart';
+import '../../utils/danji_snackbar.dart';
 import '../../theme/danji_theme.dart';
 import '../../widgets/admin_scaffold.dart';
 import '../../widgets/danji_app_bar.dart';
@@ -11,7 +13,9 @@ import '../../widgets/month_filter_bar.dart';
 import '../../widgets/admin_reservation_card_extras.dart';
 import '../../widgets/return_inspection_photo_compare.dart';
 import '../../widgets/section_card.dart';
+import '../../widgets/settlement_detail_sheet.dart';
 import '../../utils/reservation_display.dart';
+import '../../utils/vehicle_insurance_status.dart';
 import 'admin_vehicle_form_screen.dart';
 
 /// complexes.name 조인값 우선, 없으면 관리자 프로필 단지명
@@ -89,9 +93,18 @@ class _AdminVehicleManageScreenState extends State<AdminVehicleManageScreen> {
               return SectionCard(
                 child: ListTile(
                   contentPadding: EdgeInsets.zero,
-                  title: Text(
-                    v.name,
-                    style: const TextStyle(fontWeight: FontWeight.w800),
+                  title: Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          v.name,
+                          style: const TextStyle(fontWeight: FontWeight.w800),
+                        ),
+                      ),
+                      VehicleInsuranceBadge(
+                        insuranceExpiresAt: v.insuranceExpiresAt,
+                      ),
+                    ],
                   ),
                   subtitle: Text(
                     '${_vehicleComplexLabel(v, widget.profile)} · '
@@ -172,12 +185,26 @@ class _AdminInsuranceScreenState extends State<AdminInsuranceScreen> {
             separatorBuilder: (_, __) => const SizedBox(height: 10),
             itemBuilder: (context, index) {
               final v = list[index];
-              final expired = v.isInsuranceExpired;
               final missing = !v.hasInsurance;
+              final insuranceKind =
+                  VehicleInsuranceStatus.badgeKind(v.insuranceExpiresAt);
               return SectionCard(
                 child: ListTile(
                   contentPadding: EdgeInsets.zero,
-                  title: Text(v.name, style: const TextStyle(fontWeight: FontWeight.w800)),
+                  title: Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          v.name,
+                          style: const TextStyle(fontWeight: FontWeight.w800),
+                        ),
+                      ),
+                      if (!missing)
+                        VehicleInsuranceBadge(
+                          insuranceExpiresAt: v.insuranceExpiresAt,
+                        ),
+                    ],
+                  ),
                   subtitle: Text(
                     missing
                         ? '${_vehicleComplexLabel(v, widget.profile)} · 보험 미등록'
@@ -186,34 +213,46 @@ class _AdminInsuranceScreenState extends State<AdminInsuranceScreen> {
                             '증권 ${v.insurancePolicyNumber}\n'
                             '만료 ${v.insuranceExpiresAt != null ? _date.format(v.insuranceExpiresAt!) : '-'}',
                   ),
-                  trailing: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                    decoration: BoxDecoration(
-                      color: (missing
-                              ? DanjiColors.accentRed
-                              : expired
-                                  ? const Color(0xFFFB8C00)
-                                  : const Color(0xFF43A047))
-                          .withValues(alpha: 0.12),
-                      borderRadius: BorderRadius.circular(20),
-                    ),
-                    child: Text(
-                      missing
-                          ? '미등록'
-                          : expired
-                              ? '만료'
-                              : '정상',
-                      style: TextStyle(
-                        color: missing
-                            ? DanjiColors.accentRed
-                            : expired
-                                ? const Color(0xFFFB8C00)
-                                : const Color(0xFF43A047),
-                        fontWeight: FontWeight.w700,
-                        fontSize: 12,
-                      ),
-                    ),
-                  ),
+                  trailing: missing
+                      ? Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 10,
+                            vertical: 4,
+                          ),
+                          decoration: BoxDecoration(
+                            color: DanjiColors.accentRed.withValues(alpha: 0.12),
+                            borderRadius: BorderRadius.circular(20),
+                          ),
+                          child: const Text(
+                            '미등록',
+                            style: TextStyle(
+                              color: DanjiColors.accentRed,
+                              fontWeight: FontWeight.w700,
+                              fontSize: 12,
+                            ),
+                          ),
+                        )
+                      : insuranceKind == VehicleInsuranceBadgeKind.none
+                          ? Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 10,
+                                vertical: 4,
+                              ),
+                              decoration: BoxDecoration(
+                                color: const Color(0xFF43A047)
+                                    .withValues(alpha: 0.12),
+                                borderRadius: BorderRadius.circular(20),
+                              ),
+                              child: const Text(
+                                '정상',
+                                style: TextStyle(
+                                  color: Color(0xFF43A047),
+                                  fontWeight: FontWeight.w700,
+                                  fontSize: 12,
+                                ),
+                              ),
+                            )
+                          : null,
                   onTap: () async {
                     await Navigator.of(context).push<bool>(
                       MaterialPageRoute(
@@ -1486,6 +1525,38 @@ class _AdminSalesScreenState extends State<AdminSalesScreen> {
     });
   }
 
+  Future<void> _openSettlementDetail(SalesSummary summary) async {
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: DanjiColors.surface,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+      ),
+      builder: (ctx) {
+        return Padding(
+          padding: EdgeInsets.only(
+            left: 20,
+            right: 20,
+            top: 16,
+            bottom: MediaQuery.viewInsetsOf(ctx).bottom + 20,
+          ),
+          child: _AdminSettlementDetailSheet(
+            admin: _admin,
+            profile: widget.profile,
+            year: _selectedMonth.year,
+            month: _selectedMonth.month,
+            summary: summary,
+            onUpdated: () {
+              Navigator.pop(ctx);
+              _reload();
+            },
+          ),
+        );
+      },
+    );
+  }
+
   Widget _settlementRow(
     String label,
     int amount, {
@@ -1578,9 +1649,47 @@ class _AdminSalesScreenState extends State<AdminSalesScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(
-                      '$monthLabel 반납 완료 매출',
-                      style: const TextStyle(color: DanjiColors.textSecondary),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            '$monthLabel 반납 완료 매출',
+                            style: const TextStyle(
+                              color: DanjiColors.textSecondary,
+                            ),
+                          ),
+                        ),
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 10,
+                            vertical: 4,
+                          ),
+                          decoration: BoxDecoration(
+                            color: settlementBadgeColor(
+                              isSettled: summary.isSettled,
+                              isRequested: summary.isRequested,
+                              settledColor: const Color(0xFFDCFCE7),
+                              requestedColor: const Color(0xFFFEF3C7),
+                              unsettledColor: const Color(0xFFFEE2E2),
+                            ),
+                            borderRadius: BorderRadius.circular(20),
+                          ),
+                          child: Text(
+                            summary.settlementBadgeLabel,
+                            style: TextStyle(
+                              color: settlementBadgeColor(
+                                isSettled: summary.isSettled,
+                                isRequested: summary.isRequested,
+                                settledColor: const Color(0xFF16A34A),
+                                requestedColor: const Color(0xFFD97706),
+                                unsettledColor: DanjiColors.danger,
+                              ),
+                              fontWeight: FontWeight.w700,
+                              fontSize: 12,
+                            ),
+                          ),
+                        ),
+                      ],
                     ),
                     const SizedBox(height: 2),
                     const Text(
@@ -1599,10 +1708,15 @@ class _AdminSalesScreenState extends State<AdminSalesScreen> {
                         color: DanjiColors.buttonBlue,
                       ),
                     ),
-                    const SizedBox(height: 4),
-                    Text('예약 ${summary.reservationCount}건'),
+                    const SizedBox(height: 12),
+                    SettlementCountRow(
+                      paymentCount: summary.paymentCount,
+                      cancelCount: summary.cancelCount,
+                      rentalCount: summary.rentalCount,
+                      paymentSublabel: '연장결제+',
+                    ),
                     if (summary.extensionRevenue > 0) ...[
-                      const SizedBox(height: 4),
+                      const SizedBox(height: 8),
                       Text(
                         '연장 매출 ₩${_won.format(summary.extensionRevenue)} 포함',
                         style: const TextStyle(
@@ -1611,6 +1725,11 @@ class _AdminSalesScreenState extends State<AdminSalesScreen> {
                         ),
                       ),
                     ],
+                    const SizedBox(height: 12),
+                    OutlinedButton(
+                      onPressed: () => _openSettlementDetail(summary),
+                      child: const Text('정산 상세 보기'),
+                    ),
                   ],
                 ),
               ),
@@ -1650,6 +1769,197 @@ class _AdminSalesScreenState extends State<AdminSalesScreen> {
             ],
           );
         },
+      ),
+    );
+  }
+}
+
+class _AdminSettlementDetailSheet extends StatefulWidget {
+  final AdminService admin;
+  final StaffProfile profile;
+  final int year;
+  final int month;
+  final SalesSummary summary;
+  final VoidCallback onUpdated;
+
+  const _AdminSettlementDetailSheet({
+    required this.admin,
+    required this.profile,
+    required this.year,
+    required this.month,
+    required this.summary,
+    required this.onUpdated,
+  });
+
+  @override
+  State<_AdminSettlementDetailSheet> createState() =>
+      _AdminSettlementDetailSheetState();
+}
+
+class _AdminSettlementDetailSheetState extends State<_AdminSettlementDetailSheet> {
+  late Future<SuperAdminSettlementSheet> _sheetFuture;
+  bool _requesting = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _reloadSheet();
+  }
+
+  void _reloadSheet() {
+    setState(() {
+      _sheetFuture = widget.admin.fetchSettlementSheet(
+        year: widget.year,
+        month: widget.month,
+      );
+    });
+  }
+
+  Future<void> _requestSettlement() async {
+    setState(() => _requesting = true);
+    try {
+      await widget.admin.requestSettlement(
+        year: widget.year,
+        month: widget.month,
+      );
+      if (mounted) {
+        DanjiSnackBar.show(context, '정산 요청이 전달되었습니다.');
+        widget.onUpdated();
+      }
+    } catch (e) {
+      if (mounted) {
+        DanjiSnackBar.show(context, e.toString());
+      }
+    } finally {
+      if (mounted) setState(() => _requesting = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final sheetHeight = MediaQuery.sizeOf(context).height * 0.62;
+
+    return SizedBox(
+      height: sheetHeight,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Text(
+            widget.profile.complexName ?? '단지',
+            style: const TextStyle(
+              fontWeight: FontWeight.w800,
+              fontSize: 18,
+            ),
+          ),
+          const SizedBox(height: 12),
+          Expanded(
+            child: FutureBuilder<SuperAdminSettlementSheet>(
+              future: _sheetFuture,
+              builder: (context, snap) {
+                if (snap.connectionState == ConnectionState.waiting) {
+                  return const Center(child: CircularProgressIndicator());
+                }
+                if (snap.hasError) {
+                  return Center(child: Text(snap.error.toString()));
+                }
+
+                final sheet = snap.data ?? const SuperAdminSettlementSheet();
+                final isSettled =
+                    sheet.isSettled || widget.summary.isSettled;
+                final isRequested =
+                    sheet.isRequested || widget.summary.isRequested;
+
+                return Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Container(
+                      alignment: Alignment.centerLeft,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 10,
+                          vertical: 4,
+                        ),
+                        decoration: BoxDecoration(
+                          color: settlementBadgeColor(
+                            isSettled: isSettled,
+                            isRequested: isRequested,
+                            settledColor: const Color(0xFFDCFCE7),
+                            requestedColor: const Color(0xFFFEF3C7),
+                            unsettledColor: const Color(0xFFFEE2E2),
+                          ),
+                          borderRadius: BorderRadius.circular(20),
+                        ),
+                        child: Text(
+                          isSettled
+                              ? '정산완료'
+                              : (isRequested ? '정산요청' : '미정산'),
+                          style: TextStyle(
+                            color: settlementBadgeColor(
+                              isSettled: isSettled,
+                              isRequested: isRequested,
+                              settledColor: const Color(0xFF16A34A),
+                              requestedColor: const Color(0xFFD97706),
+                              unsettledColor: DanjiColors.danger,
+                            ),
+                            fontWeight: FontWeight.w700,
+                            fontSize: 12,
+                          ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    SettlementCountRow(
+                      paymentCount: sheet.paymentCount,
+                      cancelCount: sheet.cancelCount,
+                      rentalCount: sheet.rentalCount,
+                      paymentSublabel: '연장결제+',
+                    ),
+                    const SizedBox(height: 12),
+                    SettlementAmountRow(
+                      label: '총 결제금액',
+                      amount: sheet.totalPaid,
+                    ),
+                    SettlementAmountRow(
+                      label: '취소 환불금액',
+                      amount: sheet.cancelRefund,
+                      muted: true,
+                    ),
+                    SettlementAmountRow(
+                      label: '순 매출',
+                      amount: sheet.netRevenue,
+                      emphasize: true,
+                    ),
+                    const SizedBox(height: 12),
+                    Expanded(
+                      child: SettlementReservationList(
+                        items: sheet.items,
+                        year: widget.year,
+                        month: widget.month,
+                      ),
+                    ),
+                    if (!isSettled && !isRequested) ...[
+                      const SizedBox(height: 8),
+                      FilledButton(
+                        onPressed: _requesting ? null : _requestSettlement,
+                        style: DanjiTheme.primaryButton,
+                        child: _requesting
+                            ? const SizedBox(
+                                width: 20,
+                                height: 20,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                  color: Colors.white,
+                                ),
+                              )
+                            : const Text('정산 요청'),
+                      ),
+                    ],
+                  ],
+                );
+              },
+            ),
+          ),
+        ],
       ),
     );
   }

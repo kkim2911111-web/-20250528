@@ -180,6 +180,11 @@ revoke all on function public.sales_sum_extension(uuid, timestamptz, timestamptz
 revoke all on function public.sales_count_reservations(uuid, timestamptz, timestamptz) from public;
 revoke all on function public.sales_total_revenue(uuid, timestamptz, timestamptz) from public;
 
+drop function if exists public.get_admin_sales_summary(uuid, integer, integer);
+drop function if exists public.get_admin_branch_sales_stats(uuid);
+drop function if exists public.get_super_admin_dashboard();
+drop function if exists public.get_super_admin_settlement_reservations(uuid, integer, integer);
+
 -- ── 6) get_admin_sales_summary ───────────────────────────────────
 create or replace function public.get_admin_sales_summary(
   p_complex_id uuid,

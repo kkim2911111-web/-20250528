@@ -11,6 +11,7 @@ import '../../utils/danji_snackbar.dart';
 import '../../widgets/admin_scaffold.dart';
 import '../../widgets/danji_app_bar.dart';
 import '../../widgets/section_card.dart';
+import '../../widgets/settlement_detail_sheet.dart';
 import 'super_admin_common.dart';
 
 class SuperAdminRevenueScreen extends StatefulWidget {
@@ -155,10 +156,15 @@ class _SuperAdminRevenueScreenState extends State<SuperAdminRevenueScreen> {
                                   subtitle: '예약 ${r.reservationCount}건 · '
                                       '₩${superAdminWon.format(r.totalRevenue)}',
                                   trailing: SuperAdminChip(
-                                    label: r.isSettled ? '완료' : '미정산',
-                                    color: r.isSettled
-                                        ? SuperAdminUiColors.availableGreen
-                                        : DanjiColors.danger,
+                                    label: r.settlementBadgeLabel,
+                                    color: settlementBadgeColor(
+                                      isSettled: r.isSettled,
+                                      isRequested: r.isRequested,
+                                      settledColor:
+                                          SuperAdminUiColors.availableGreen,
+                                      requestedColor: const Color(0xFFF59E0B),
+                                      unsettledColor: DanjiColors.danger,
+                                    ),
                                   ),
                                   onTap: () => _openDetail(r),
                                 ),
@@ -196,16 +202,22 @@ class _SettlementDetailSheet extends StatefulWidget {
 }
 
 class _SettlementDetailSheetState extends State<_SettlementDetailSheet> {
-  late Future<List<SuperAdminSettlementReservation>> _detailsFuture;
+  late Future<SuperAdminSettlementSheet> _sheetFuture;
 
   @override
   void initState() {
     super.initState();
-    _detailsFuture = widget.service.fetchSettlementReservations(
-      complexId: widget.row.complexId,
-      year: widget.year,
-      month: widget.month,
-    );
+    _reload();
+  }
+
+  void _reload() {
+    setState(() {
+      _sheetFuture = widget.service.fetchSettlementSheet(
+        complexId: widget.row.complexId,
+        year: widget.year,
+        month: widget.month,
+      );
+    });
   }
 
   @override
@@ -215,117 +227,97 @@ class _SettlementDetailSheetState extends State<_SettlementDetailSheet> {
 
     return SizedBox(
       height: sheetHeight,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          SuperAdminChip(
-            label: r.isSettled ? '정산완료' : '미정산',
-            color: r.isSettled
-                ? SuperAdminUiColors.availableGreen
-                : DanjiColors.danger,
-          ),
-          const SizedBox(height: 12),
-          Text(
-            '예약 ${r.reservationCount}건',
-            style: const TextStyle(fontWeight: FontWeight.w600),
-          ),
-          Text('합계 ₩${superAdminWon.format(r.totalRevenue)}'),
-          Text(
-            '결제 ${r.paidOrderCount}건 · ₩${superAdminWon.format(r.paidOrderAmount)}',
-            style: const TextStyle(
-              color: DanjiColors.textSecondary,
-              fontSize: 13,
-            ),
-          ),
-          const SizedBox(height: 12),
-          Text(
-            '예약 상세 · ${widget.year}년 ${widget.month}월',
-            style: const TextStyle(
-              fontWeight: FontWeight.w700,
-              fontSize: 14,
-            ),
-          ),
-          const SizedBox(height: 8),
-          Expanded(
-            child: FutureBuilder<List<SuperAdminSettlementReservation>>(
-              future: _detailsFuture,
-              builder: (context, snap) {
-                if (snap.connectionState == ConnectionState.waiting) {
-                  return const Center(child: CircularProgressIndicator());
-                }
-                if (snap.hasError) {
-                  return Center(
-                    child: Text(
-                      friendlySuperAdminError(snap.error!),
-                      textAlign: TextAlign.center,
-                    ),
-                  );
-                }
-                final items = snap.data ?? [];
-                if (items.isEmpty) {
-                  return const Center(
-                    child: Text(
-                      '해당 월 예약 내역이 없습니다.',
-                      style: TextStyle(color: DanjiColors.textSecondary),
-                    ),
-                  );
-                }
-                return ListView.separated(
-                  itemCount: items.length,
-                  separatorBuilder: (_, __) => const Divider(height: 1),
-                  itemBuilder: (_, i) {
-                    final item = items[i];
-                    final period =
-                        '${item.displayRentalStartAt != null ? superAdminDateTime.format(item.displayRentalStartAt!.toLocal()) : '-'} ~ '
-                        '${item.displayRentalEndAt != null ? superAdminDateTime.format(item.displayRentalEndAt!.toLocal()) : '-'}';
-                    return ListTile(
-                      contentPadding: EdgeInsets.zero,
-                      title: Text(
-                        '#${item.reservationId}',
-                        style: const TextStyle(
-                          fontWeight: FontWeight.w700,
-                          fontSize: 14,
-                        ),
-                      ),
-                      subtitle: Text(
-                        '${item.renterName} · $period',
-                        style: const TextStyle(fontSize: 13),
-                      ),
-                      trailing: Text(
-                        '₩${superAdminWon.format(item.totalPrice)}',
-                        style: const TextStyle(
-                          fontWeight: FontWeight.w700,
-                          color: DanjiColors.buttonBlue,
-                        ),
-                      ),
-                    );
+      child: FutureBuilder<SuperAdminSettlementSheet>(
+        future: _sheetFuture,
+        builder: (context, snap) {
+          if (snap.connectionState == ConnectionState.waiting) {
+            return const Center(child: CircularProgressIndicator());
+          }
+          if (snap.hasError) {
+            return Center(
+              child: Text(
+                friendlySuperAdminError(snap.error!),
+                textAlign: TextAlign.center,
+              ),
+            );
+          }
+
+          final sheet = snap.data ?? const SuperAdminSettlementSheet();
+          final isSettled = sheet.isSettled || r.isSettled;
+          final isRequested = sheet.isRequested || r.isRequested;
+
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              SuperAdminChip(
+                label: isSettled
+                    ? '정산완료'
+                    : (isRequested ? '정산요청' : '미정산'),
+                color: settlementBadgeColor(
+                  isSettled: isSettled,
+                  isRequested: isRequested,
+                  settledColor: SuperAdminUiColors.availableGreen,
+                  requestedColor: const Color(0xFFF59E0B),
+                  unsettledColor: DanjiColors.danger,
+                ),
+              ),
+              const SizedBox(height: 12),
+              SettlementCountRow(
+                paymentCount: sheet.paymentCount,
+                cancelCount: sheet.cancelCount,
+                rentalCount: sheet.rentalCount,
+                paymentSublabel: '연장결제+',
+              ),
+              const SizedBox(height: 12),
+              SettlementAmountRow(
+                label: '총 결제금액',
+                amount: sheet.totalPaid,
+              ),
+              SettlementAmountRow(
+                label: '취소 환불금액',
+                amount: sheet.cancelRefund,
+                muted: true,
+              ),
+              SettlementAmountRow(
+                label: '순 매출',
+                amount: sheet.netRevenue,
+                emphasize: true,
+              ),
+              const SizedBox(height: 12),
+              Expanded(
+                child: SettlementReservationList(
+                  items: sheet.items,
+                  year: widget.year,
+                  month: widget.month,
+                ),
+              ),
+              if (!isSettled && isRequested) ...[
+                const SizedBox(height: 8),
+                FilledButton(
+                  onPressed: () async {
+                    try {
+                      await widget.service.markSettlement(
+                        complexId: r.complexId,
+                        year: widget.year,
+                        month: widget.month,
+                      );
+                      widget.onSettled();
+                    } catch (e) {
+                      if (mounted) {
+                        DanjiSnackBar.show(
+                          context,
+                          friendlySuperAdminError(e),
+                        );
+                      }
+                    }
                   },
-                );
-              },
-            ),
-          ),
-          if (!r.isSettled) ...[
-            const SizedBox(height: 8),
-            FilledButton(
-              onPressed: () async {
-                try {
-                  await widget.service.markSettlement(
-                    complexId: r.complexId,
-                    year: widget.year,
-                    month: widget.month,
-                  );
-                  widget.onSettled();
-                } catch (e) {
-                  if (mounted) {
-                    DanjiSnackBar.show(context, friendlySuperAdminError(e));
-                  }
-                }
-              },
-              style: superAdminPrimaryFabStyle,
-              child: const Text('정산 완료 처리'),
-            ),
-          ],
-        ],
+                  style: superAdminPrimaryFabStyle,
+                  child: const Text('정산'),
+                ),
+              ],
+            ],
+          );
+        },
       ),
     );
   }

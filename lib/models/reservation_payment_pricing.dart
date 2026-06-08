@@ -64,9 +64,7 @@ class ReservationPaymentPricing {
     final paymentReservationId = row['reservation_id']?.toString();
     final priced = fromPaymentOrderRow(row, fallbackPrice: fallbackPrice);
     if (priced != null) return priced;
-    if (paymentReservationId == null ||
-        paymentReservationId.trim().isEmpty ||
-        !RegExp(r'^\d+$').hasMatch(paymentReservationId.trim())) {
+    if (paymentReservationId == null || paymentReservationId.trim().isEmpty) {
       return null;
     }
     return ReservationPaymentPricing(

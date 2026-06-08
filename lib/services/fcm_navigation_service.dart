@@ -23,6 +23,11 @@ class FcmNavigationService {
     final type = data['type']?.toString() ?? '';
     final reservationId = data['reservation_id']?.toString();
 
+    if (type.startsWith('admin_') || type == 'admin') {
+      // 관리자 앱 — 알림함에서 탭 시 화면 이동 (대시보드 벨 아이콘)
+      return;
+    }
+
     if (reservationId != null && reservationId.isNotEmpty) {
       if (type.contains('reservation') ||
           type.startsWith('customer_') ||

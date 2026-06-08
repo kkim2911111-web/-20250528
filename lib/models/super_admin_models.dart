@@ -431,7 +431,9 @@ class SuperAdminRevenueRow {
   final int paidOrderAmount;
   final int extensionRevenue;
   final bool isSettled;
+  final bool isRequested;
   final DateTime? settledAt;
+  final DateTime? requestedAt;
 
   const SuperAdminRevenueRow({
     required this.complexId,
@@ -444,10 +446,18 @@ class SuperAdminRevenueRow {
     this.paidOrderAmount = 0,
     this.extensionRevenue = 0,
     this.isSettled = false,
+    this.isRequested = false,
     this.settledAt,
+    this.requestedAt,
   });
 
   int get totalRevenue => grossRevenue + extensionRevenue;
+
+  String get settlementBadgeLabel {
+    if (isSettled) return '완료';
+    if (isRequested) return '정산요청';
+    return '미정산';
+  }
 
   factory SuperAdminRevenueRow.fromMap(Map<String, dynamic> m) {
     return SuperAdminRevenueRow(
@@ -461,7 +471,64 @@ class SuperAdminRevenueRow {
       paidOrderAmount: (m['paid_order_amount'] as num?)?.toInt() ?? 0,
       extensionRevenue: (m['extension_revenue'] as num?)?.toInt() ?? 0,
       isSettled: m['is_settled'] == true,
+      isRequested: m['is_requested'] == true,
       settledAt: _dt(m['settled_at']),
+      requestedAt: _dt(m['requested_at']),
+    );
+  }
+}
+
+class SuperAdminSettlementSheet {
+  final int totalPaid;
+  final int cancelRefund;
+  final int netRevenue;
+  final int paymentCount;
+  final int cancelCount;
+  final int rentalCount;
+  final bool isSettled;
+  final bool isRequested;
+  final List<SuperAdminSettlementReservation> items;
+
+  const SuperAdminSettlementSheet({
+    this.totalPaid = 0,
+    this.cancelRefund = 0,
+    this.netRevenue = 0,
+    this.paymentCount = 0,
+    this.cancelCount = 0,
+    this.rentalCount = 0,
+    this.isSettled = false,
+    this.isRequested = false,
+    this.items = const [],
+  });
+
+  factory SuperAdminSettlementSheet.fromRpc(dynamic data) {
+    if (data is! Map) {
+      return const SuperAdminSettlementSheet();
+    }
+    final m = Map<String, dynamic>.from(data);
+    final itemsRaw = m['items'];
+    final items = itemsRaw is List
+        ? itemsRaw
+            .map((e) => SuperAdminSettlementReservation.fromMap(
+                  Map<String, dynamic>.from(e as Map),
+                ))
+            .toList()
+        : <SuperAdminSettlementReservation>[];
+
+    final totalPaid = (m['total_paid'] as num?)?.toInt() ?? 0;
+    final cancelRefund = (m['cancel_refund'] as num?)?.toInt() ?? 0;
+    final net = (m['net_revenue'] as num?)?.toInt() ?? (totalPaid - cancelRefund);
+
+    return SuperAdminSettlementSheet(
+      totalPaid: totalPaid,
+      cancelRefund: cancelRefund,
+      netRevenue: net,
+      paymentCount: (m['payment_count'] as num?)?.toInt() ?? 0,
+      cancelCount: (m['cancel_count'] as num?)?.toInt() ?? 0,
+      rentalCount: (m['rental_count'] as num?)?.toInt() ?? 0,
+      isSettled: m['is_settled'] == true,
+      isRequested: m['is_requested'] == true,
+      items: items,
     );
   }
 }
@@ -567,16 +634,27 @@ class SuperAdminCoupon {
 class BulkIssueCouponResult {
   final int issuedCount;
   final int skippedCount;
+  final List<String> issuedUserIds;
 
   const BulkIssueCouponResult({
     this.issuedCount = 0,
     this.skippedCount = 0,
+    this.issuedUserIds = const [],
   });
 
   factory BulkIssueCouponResult.fromMap(Map<String, dynamic> m) {
+    final rawIds = m['issued_user_ids'];
+    final ids = <String>[];
+    if (rawIds is List) {
+      for (final id in rawIds) {
+        final s = id?.toString().trim() ?? '';
+        if (s.isNotEmpty) ids.add(s);
+      }
+    }
     return BulkIssueCouponResult(
       issuedCount: (m['issued_count'] as num?)?.toInt() ?? 0,
       skippedCount: (m['skipped_count'] as num?)?.toInt() ?? 0,
+      issuedUserIds: ids,
     );
   }
 }
