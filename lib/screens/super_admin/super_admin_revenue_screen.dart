@@ -11,6 +11,8 @@ import '../../utils/danji_snackbar.dart';
 import '../../widgets/admin_scaffold.dart';
 import '../../widgets/danji_app_bar.dart';
 import '../../widgets/section_card.dart';
+import '../../models/rental_detail.dart';
+import '../../utils/rental_detail_navigation.dart';
 import '../../widgets/settlement_detail_sheet.dart';
 import 'super_admin_common.dart';
 
@@ -292,6 +294,20 @@ class _SettlementDetailSheetState extends State<_SettlementDetailSheet> {
                   tab: _selectedTab,
                   year: widget.year,
                   month: widget.month,
+                  onItemTap: (id, {prefetch}) async {
+                    Navigator.pop(context);
+                    await openSuperAdminRentalDetail(
+                      context,
+                      reservationId: id,
+                      service: widget.service,
+                      prefetch: RentalDetailPrefetch(
+                        cancelReason: prefetch?.cancelReason,
+                        paidAmount: prefetch?.paidAmount,
+                        refundAmount: prefetch?.refundAmount,
+                        complexName: r.complexName,
+                      ),
+                    );
+                  },
                 ),
               ),
               if (!isSettled && isRequested) ...[

@@ -9,6 +9,7 @@ import '../../utils/danji_snackbar.dart';
 import '../../utils/resident_display.dart';
 import '../../widgets/admin_scaffold.dart';
 import '../../widgets/danji_app_bar.dart';
+import '../../utils/rental_detail_navigation.dart';
 import '../../widgets/section_card.dart';
 
 class AdminCustomerDetailScreen extends StatefulWidget {
@@ -255,6 +256,11 @@ class _AdminCustomerDetailScreenState extends State<AdminCustomerDetailScreen> {
                         return SectionCard(
                           child: ListTile(
                             contentPadding: EdgeInsets.zero,
+                            onTap: () => openStaffRentalDetail(
+                              context,
+                              reservationId: r.reservationId,
+                              adminService: _admin,
+                            ),
                             title: Text(
                               r.vehicleName,
                               style: const TextStyle(fontWeight: FontWeight.w700),

@@ -6,7 +6,7 @@ import 'package:intl/intl.dart';
 import '../models/admin_timeline.dart';
 import '../models/staff_profile.dart';
 import '../models/vehicle.dart';
-import '../screens/admin/admin_reservation_detail_screen.dart';
+import '../utils/rental_detail_navigation.dart';
 import '../screens/reservation_screen.dart';
 import '../theme/danji_colors.dart';
 import '../utils/phone_launcher.dart';
@@ -454,15 +454,12 @@ class _AdminReservationTimelineViewState
               FilledButton(
                 onPressed: () {
                   Navigator.pop(ctx);
-                  Navigator.of(context).push(
-                    MaterialPageRoute(
-                      builder: (_) => AdminReservationDetailScreen(
-                        reservation: reservation,
-                      ),
-                    ),
+                  openStaffRentalDetail(
+                    context,
+                    reservationId: reservation.id,
                   );
                 },
-                child: const Text('예약 상세 보기'),
+                child: const Text('상세'),
               ),
             ],
           ),

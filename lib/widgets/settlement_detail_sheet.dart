@@ -1,9 +1,15 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
+import '../models/rental_detail.dart';
 import '../models/super_admin_models.dart';
 import '../theme/danji_colors.dart';
 import 'rental_type_badge.dart';
+
+typedef RentalDetailItemTap = void Function(
+  String reservationId, {
+  RentalDetailPrefetch? prefetch,
+});
 
 final _won = NumberFormat('#,###');
 final _dateTime = DateFormat('yyyy-MM-dd HH:mm');
@@ -211,6 +217,7 @@ class SettlementDetailList extends StatelessWidget {
   final SettlementDetailTab tab;
   final int year;
   final int month;
+  final RentalDetailItemTap? onItemTap;
 
   const SettlementDetailList({
     super.key,
@@ -218,6 +225,7 @@ class SettlementDetailList extends StatelessWidget {
     required this.tab,
     required this.year,
     required this.month,
+    this.onItemTap,
   });
 
   @override
@@ -238,14 +246,17 @@ class SettlementDetailList extends StatelessWidget {
             SettlementDetailTab.rental => _RentalList(
                 items: sheet.items,
                 emptyMessage: tab.emptyMessage(),
+                onItemTap: onItemTap,
               ),
             SettlementDetailTab.payment => _PaymentList(
                 items: sheet.paymentItems,
                 emptyMessage: tab.emptyMessage(),
+                onItemTap: onItemTap,
               ),
             SettlementDetailTab.cancel => _CancelList(
                 items: sheet.cancelItems,
                 emptyMessage: tab.emptyMessage(),
+                onItemTap: onItemTap,
               ),
           },
         ),
@@ -281,10 +292,12 @@ class SettlementReservationList extends StatelessWidget {
 class _RentalList extends StatelessWidget {
   final List<SuperAdminSettlementReservation> items;
   final String emptyMessage;
+  final RentalDetailItemTap? onItemTap;
 
   const _RentalList({
     required this.items,
     required this.emptyMessage,
+    this.onItemTap,
   });
 
   @override
@@ -308,6 +321,9 @@ class _RentalList extends StatelessWidget {
             '${item.displayRentalEndAt != null ? _dateTime.format(item.displayRentalEndAt!.toLocal()) : '-'}';
         return ListTile(
           contentPadding: EdgeInsets.zero,
+          onTap: onItemTap == null
+              ? null
+              : () => onItemTap!(item.reservationId),
           title: Row(
             children: [
               Expanded(
@@ -342,10 +358,12 @@ class _RentalList extends StatelessWidget {
 class _PaymentList extends StatelessWidget {
   final List<SuperAdminSettlementPaymentItem> items;
   final String emptyMessage;
+  final RentalDetailItemTap? onItemTap;
 
   const _PaymentList({
     required this.items,
     required this.emptyMessage,
+    this.onItemTap,
   });
 
   @override
@@ -369,6 +387,9 @@ class _PaymentList extends StatelessWidget {
             : '-';
         return ListTile(
           contentPadding: EdgeInsets.zero,
+          onTap: onItemTap == null
+              ? null
+              : () => onItemTap!(item.reservationId),
           title: Text(
             item.reservationNumberLabel,
             style: const TextStyle(
@@ -396,10 +417,12 @@ class _PaymentList extends StatelessWidget {
 class _CancelList extends StatelessWidget {
   final List<SuperAdminSettlementCancelItem> items;
   final String emptyMessage;
+  final RentalDetailItemTap? onItemTap;
 
   const _CancelList({
     required this.items,
     required this.emptyMessage,
+    this.onItemTap,
   });
 
   @override
@@ -423,6 +446,16 @@ class _CancelList extends StatelessWidget {
             : '-';
         return ListTile(
           contentPadding: EdgeInsets.zero,
+          onTap: onItemTap == null
+              ? null
+              : () => onItemTap!(
+                    item.reservationId,
+                    prefetch: RentalDetailPrefetch(
+                      cancelReason: item.cancelReason,
+                      paidAmount: item.paidAmount,
+                      refundAmount: item.refundAmount,
+                    ),
+                  ),
           title: Text(
             item.reservationNumberLabel,
             style: const TextStyle(

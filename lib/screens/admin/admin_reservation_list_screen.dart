@@ -15,6 +15,7 @@ import '../../widgets/admin_reservation_timeline_view.dart';
 import '../../widgets/reservation_times_panel.dart';
 import '../../widgets/section_card.dart';
 import '../../models/admin_timeline.dart';
+import '../../utils/rental_detail_navigation.dart';
 
 enum _ReservationFilter { all, inUse, waiting, conflict, completed }
 
@@ -282,6 +283,17 @@ class _AdminReservationListScreenState
         ],
       ),
     );
+  }
+
+  Future<void> _openRentalDetail(Map<String, dynamic> row) async {
+    final id = _reservationId(row);
+    if (id == null) return;
+    final changed = await openStaffRentalDetail(
+      context,
+      reservationId: id,
+      adminService: _admin,
+    );
+    if (changed == true && mounted) _reload();
   }
 
   Future<void> _confirmForceReturn(Map<String, dynamic> row) async {
@@ -566,6 +578,7 @@ class _AdminReservationListScreenState
             dateTime: _dateTime,
             won: _won,
             admin: _admin,
+            onOpenDetail: () => _openRentalDetail(row),
           );
         }
         final isNoShowSuspect = _isNoShowSuspect(row);
@@ -581,6 +594,7 @@ class _AdminReservationListScreenState
               _filter == _ReservationFilter.conflict && isBackToBack,
           showConflictHighlight: isBackToBack,
           showNoShowSuspect: isNoShowSuspect,
+          onOpenDetail: () => _openRentalDetail(row),
           onForceReturn: () => _confirmForceReturn(row),
           onForcePaymentCancel:
               status == 'confirmed' || status == 'in_use'
@@ -719,12 +733,14 @@ class _CompletedReservationCard extends StatelessWidget {
   final DateFormat dateTime;
   final NumberFormat won;
   final AdminService admin;
+  final VoidCallback? onOpenDetail;
 
   const _CompletedReservationCard({
     required this.row,
     required this.dateTime,
     required this.won,
     required this.admin,
+    this.onOpenDetail,
   });
 
   @override
@@ -741,55 +757,60 @@ class _CompletedReservationCard extends StatelessWidget {
     final hasSecondDriver =
         adminHasSecondDriver(secondDriverName: secondDriverName);
 
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: SectionCard.cardColor,
+    return Material(
+      color: SectionCard.cardColor,
+      borderRadius: BorderRadius.circular(16),
+      child: InkWell(
+        onTap: onOpenDetail,
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: DanjiColors.border),
-        boxShadow: const [
-          BoxShadow(
-            color: Color(0x0A000000),
-            blurRadius: 8,
-            offset: Offset(0, 2),
-          ),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Expanded(
-                child: Text(
-                  vehicleName,
-                  style: const TextStyle(
-                    fontWeight: FontWeight.w800,
-                    fontSize: 16,
-                    color: DanjiColors.textPrimary,
-                  ),
-                ),
-              ),
-              Wrap(
-                spacing: 6,
-                runSpacing: 4,
-                crossAxisAlignment: WrapCrossAlignment.center,
-                children: [
-                  if (hasSecondDriver)
-                    GestureDetector(
-                      onTap: () => showAdminSecondDriverInfoSheet(
-                        context,
-                        secondDriverName: secondDriverName,
-                        secondDriverLicense: secondDriverLicense,
-                      ),
-                      child: const AdminSecondDriverBadge(),
-                    ),
-                  _CompletedTabStatusBadge(row: row),
-                ],
+        child: Container(
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: DanjiColors.border),
+            boxShadow: const [
+              BoxShadow(
+                color: Color(0x0A000000),
+                blurRadius: 8,
+                offset: Offset(0, 2),
               ),
             ],
           ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Expanded(
+                    child: Text(
+                      vehicleName,
+                      style: const TextStyle(
+                        fontWeight: FontWeight.w800,
+                        fontSize: 16,
+                        color: DanjiColors.textPrimary,
+                      ),
+                    ),
+                  ),
+                  Wrap(
+                    spacing: 6,
+                    runSpacing: 4,
+                    crossAxisAlignment: WrapCrossAlignment.center,
+                    children: [
+                      if (hasSecondDriver)
+                        GestureDetector(
+                          onTap: () => showAdminSecondDriverInfoSheet(
+                            context,
+                            secondDriverName: secondDriverName,
+                            secondDriverLicense: secondDriverLicense,
+                          ),
+                          child: const AdminSecondDriverBadge(),
+                        ),
+                      _CompletedTabStatusBadge(row: row),
+                    ],
+                  ),
+                ],
+              ),
           if (carNumber != null && carNumber.isNotEmpty) ...[
             const SizedBox(height: 4),
             Text(
@@ -841,7 +862,9 @@ class _CompletedReservationCard extends StatelessWidget {
               ),
             ),
           ],
-        ],
+            ],
+          ),
+        ),
       ),
     );
   }
@@ -855,6 +878,7 @@ class _ReservationCard extends StatefulWidget {
   final bool enableConflictSwipe;
   final bool showConflictHighlight;
   final bool showNoShowSuspect;
+  final VoidCallback? onOpenDetail;
   final VoidCallback onForceReturn;
   final VoidCallback? onForcePaymentCancel;
 
@@ -866,6 +890,7 @@ class _ReservationCard extends StatefulWidget {
     this.enableConflictSwipe = false,
     this.showConflictHighlight = false,
     this.showNoShowSuspect = false,
+    this.onOpenDetail,
     required this.onForceReturn,
     this.onForcePaymentCancel,
   });
@@ -931,24 +956,29 @@ class _ReservationCardState extends State<_ReservationCard> {
               }
             }
           : null,
-      child: Container(
-        padding: const EdgeInsets.all(16),
-        decoration: BoxDecoration(
-          color: SectionCard.cardColor,
+      child: Material(
+        color: SectionCard.cardColor,
+        borderRadius: BorderRadius.circular(16),
+        child: InkWell(
+          onTap: widget.onOpenDetail,
           borderRadius: BorderRadius.circular(16),
-          border: Border.all(
-            color: conflict ? DanjiColors.accentRed : DanjiColors.border,
-            width: conflict ? 2 : 1,
-          ),
-          boxShadow: const [
-            BoxShadow(
-              color: Color(0x0A000000),
-              blurRadius: 8,
-              offset: Offset(0, 2),
+          child: Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(
+                color: conflict ? DanjiColors.accentRed : DanjiColors.border,
+                width: conflict ? 2 : 1,
+              ),
+              boxShadow: const [
+                BoxShadow(
+                  color: Color(0x0A000000),
+                  blurRadius: 8,
+                  offset: Offset(0, 2),
+                ),
+              ],
             ),
-          ],
-        ),
-        child: Column(
+            child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             cardBody,
@@ -974,6 +1004,8 @@ class _ReservationCardState extends State<_ReservationCard> {
               ),
             ],
           ],
+            ),
+          ),
         ),
       ),
     );

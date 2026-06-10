@@ -15,6 +15,8 @@ import '../../widgets/admin_reservation_card_extras.dart';
 import '../../widgets/return_inspection_photo_compare.dart';
 import '../../widgets/section_card.dart';
 import '../../widgets/settlement_detail_sheet.dart';
+import '../../models/rental_detail.dart';
+import '../../utils/rental_detail_navigation.dart';
 import '../../utils/reservation_display.dart';
 import '../../widgets/rental_type_badge.dart';
 import '../../widgets/reservation_times_panel.dart';
@@ -1735,13 +1737,35 @@ class _ReturnInspectionCardState extends State<_ReturnInspectionCard> {
             crossAxisAlignment: CrossAxisAlignment.center,
             children: [
               Expanded(
-                child: Text(
-                  r.vehicleName,
-                  style: const TextStyle(
-                    fontWeight: FontWeight.w800,
-                    fontSize: 16,
+                child: InkWell(
+                  onTap: () => openStaffRentalDetail(
+                    context,
+                    reservationId: r.id,
+                    adminService: widget.admin,
+                  ).then((changed) {
+                    if (changed == true) widget.onChanged?.call();
+                  }),
+                  child: Text(
+                    r.vehicleName,
+                    style: const TextStyle(
+                      fontWeight: FontWeight.w800,
+                      fontSize: 16,
+                      color: DanjiColors.buttonBlue,
+                      decoration: TextDecoration.underline,
+                    ),
                   ),
                 ),
+              ),
+              IconButton(
+                tooltip: '대여 상세',
+                icon: const Icon(Icons.open_in_new, size: 20),
+                onPressed: () => openStaffRentalDetail(
+                  context,
+                  reservationId: r.id,
+                  adminService: widget.admin,
+                ).then((changed) {
+                  if (changed == true) widget.onChanged?.call();
+                }),
               ),
               if (r.hasSecondDriver) const AdminSecondDriverBadge(),
               RentalTypeBadge(rentalType: r.rentalType),
@@ -2492,6 +2516,21 @@ class _AdminSettlementDetailSheetState extends State<_AdminSettlementDetailSheet
                         tab: _selectedTab,
                         year: widget.year,
                         month: widget.month,
+                        onItemTap: (id, {prefetch}) async {
+                          Navigator.pop(context);
+                          await openStaffRentalDetail(
+                            context,
+                            reservationId: id,
+                            adminService: widget.admin,
+                            prefetch: RentalDetailPrefetch(
+                              cancelReason: prefetch?.cancelReason,
+                              paidAmount: prefetch?.paidAmount,
+                              refundAmount: prefetch?.refundAmount,
+                              complexName: widget.profile.complexName,
+                            ),
+                          );
+                          widget.onUpdated();
+                        },
                       ),
                     ),
                     if (!isSettled && !isRequested) ...[

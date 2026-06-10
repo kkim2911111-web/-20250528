@@ -10,6 +10,7 @@ import '../../widgets/admin_scaffold.dart';
 import '../../widgets/danji_app_bar.dart';
 import '../../widgets/inspection_photo_compare_panel.dart';
 import '../../widgets/rental_type_badge.dart';
+import '../../utils/rental_detail_navigation.dart';
 import '../../widgets/section_card.dart';
 import 'super_admin_common.dart';
 
@@ -448,8 +449,20 @@ class _SuperAdminReservationDetailSheetState
         InspectionPhotoComparePanel(
           future: widget.service.fetchInspectionPhotoSet(r),
         ),
+        const SizedBox(height: 12),
+        FilledButton(
+          onPressed: () {
+            Navigator.pop(context);
+            openSuperAdminRentalDetail(
+              context,
+              reservationId: r.id,
+              service: widget.service,
+            );
+          },
+          child: const Text('상세'),
+        ),
         if (r.showForceActionButtons) ...[
-          const SizedBox(height: 16),
+          const SizedBox(height: 8),
           if (r.canShowForceReturnButton) ...[
             OutlinedButton(
               onPressed: widget.onForceReturn,
