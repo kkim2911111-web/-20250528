@@ -56,7 +56,7 @@ abstract final class VehicleInsuranceStatus {
     );
   }
 
-  /// 1) 8~30일 전: warning / 2) 7일 이내: urgent / 3) 만료: expired
+  /// D-30~D-8: warning(주황) / D-7~만료 전: urgent(빨강) / 만료(D+1~): expired
   static VehicleInsuranceBadgeKind badgeKind(DateTime? expiresAt) {
     if (expiresAt == null) return VehicleInsuranceBadgeKind.none;
 

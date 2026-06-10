@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 
-import '../../models/super_admin_models.dart';
 import '../../services/super_admin_service.dart';
 import '../../theme/danji_colors.dart';
 import '../../widgets/admin_scaffold.dart';
@@ -11,24 +10,28 @@ import 'super_admin_common.dart';
 class SuperAdminPlatformFeeRow {
   final String complexId;
   final String complexName;
-  final int activeVehicleCount;
+  final int billableVehicleCount;
   final int monthlyFee;
+  final bool isFeeEstimate;
 
   const SuperAdminPlatformFeeRow({
     required this.complexId,
     required this.complexName,
-    required this.activeVehicleCount,
+    required this.billableVehicleCount,
     required this.monthlyFee,
+    this.isFeeEstimate = false,
   });
 }
 
 class _PlatformFeeSnapshot {
   final List<SuperAdminPlatformFeeRow> rows;
   final int totalFee;
+  final bool isFeeEstimate;
 
   const _PlatformFeeSnapshot({
     required this.rows,
     required this.totalFee,
+    this.isFeeEstimate = false,
   });
 }
 
@@ -71,31 +74,21 @@ class _SuperAdminPlatformFeeScreenState
   }
 
   Future<_PlatformFeeSnapshot> _loadSnapshot() async {
-    final results = await Future.wait([
-      widget.service.fetchComplexes(),
-      widget.service.fetchVehicles(),
-    ]);
+    final revenueRows = await widget.service.fetchRevenue(
+      year: _year,
+      month: _month,
+    );
 
-    final complexes = results[0] as List<SuperAdminComplex>;
-    final vehicles = results[1] as List<SuperAdminVehicle>;
-
-    final activeByComplex = <String, int>{};
-    for (final vehicle in vehicles) {
-      if (!vehicle.isAvailable) continue;
-      activeByComplex[vehicle.complexId] =
-          (activeByComplex[vehicle.complexId] ?? 0) + 1;
-    }
-
-    final rows = complexes
-        .map((complex) {
-          final count = activeByComplex[complex.id] ?? 0;
-          return SuperAdminPlatformFeeRow(
-            complexId: complex.id,
-            complexName: complex.name,
-            activeVehicleCount: count,
-            monthlyFee: superAdminPlatformFee(count),
-          );
-        })
+    final rows = revenueRows
+        .map(
+          (r) => SuperAdminPlatformFeeRow(
+            complexId: r.complexId,
+            complexName: r.complexName,
+            billableVehicleCount: r.billableVehicleCount,
+            monthlyFee: r.platformFeeAmount,
+            isFeeEstimate: r.isFeeEstimate,
+          ),
+        )
         .toList()
       ..sort((a, b) {
         final byFee = b.monthlyFee.compareTo(a.monthlyFee);
@@ -104,8 +97,14 @@ class _SuperAdminPlatformFeeScreenState
       });
 
     final totalFee = rows.fold<int>(0, (sum, row) => sum + row.monthlyFee);
+    final isFeeEstimate =
+        revenueRows.any((r) => r.isFeeEstimate) && revenueRows.isNotEmpty;
 
-    return _PlatformFeeSnapshot(rows: rows, totalFee: totalFee);
+    return _PlatformFeeSnapshot(
+      rows: rows,
+      totalFee: totalFee,
+      isFeeEstimate: isFeeEstimate,
+    );
   }
 
   @override
@@ -140,7 +139,8 @@ class _SuperAdminPlatformFeeScreenState
                 ),
                 const SizedBox(height: 8),
                 const Text(
-                  '운영 차량 수는 현재 등록 기준(is_available) · 대당 월 10만원',
+                  '해당 월 등록·해지 기준 차량 대수 × 10만원 (일할 없음). '
+                  '미래 월은 현재 미해지 차량 예상치.',
                   style: TextStyle(
                     color: DanjiColors.textMuted,
                     fontSize: 11,
@@ -244,8 +244,9 @@ class _PlatformFeeCard extends StatelessWidget {
           ),
           const SizedBox(height: 10),
           _InfoLine(
-            label: '운영 차량',
-            value: '${row.activeVehicleCount}대',
+            label: '과금 차량',
+            value: '${row.billableVehicleCount}대'
+                '${row.isFeeEstimate ? ' (예상)' : ''}',
           ),
           const SizedBox(height: 4),
           _InfoLine(
@@ -255,7 +256,7 @@ class _PlatformFeeCard extends StatelessWidget {
           ),
           const SizedBox(height: 4),
           Text(
-            '${row.activeVehicleCount}대 × ₩${superAdminWon.format(superAdminPlatformFeePerVehicle)}',
+            '${row.billableVehicleCount}대 × 10만원',
             style: const TextStyle(
               fontSize: 11,
               color: DanjiColors.textMuted,
@@ -333,6 +334,7 @@ class _PlatformFeeTotalBar extends StatelessWidget {
             future: future,
             builder: (context, snap) {
               final total = snap.data?.totalFee ?? 0;
+              final isEstimate = snap.data?.isFeeEstimate ?? false;
               return Row(
                 children: [
                   Expanded(
@@ -341,7 +343,8 @@ class _PlatformFeeTotalBar extends StatelessWidget {
                       mainAxisSize: MainAxisSize.min,
                       children: [
                         Text(
-                          '$year년 $month월 수수료 합계',
+                          '$year년 $month월 수수료 합계'
+                          '${isEstimate ? ' (예상)' : ''}',
                           style: const TextStyle(
                             fontSize: 12,
                             color: DanjiColors.textSecondary,

@@ -6,6 +6,7 @@ import 'package:intl/intl.dart';
 import '../../models/super_admin_models.dart';
 import '../../services/super_admin_service.dart';
 import '../../theme/danji_colors.dart';
+import '../../widgets/super_admin_complex_revenue_list.dart';
 import '../../theme/danji_theme.dart';
 import '../../widgets/section_card.dart';
 import 'super_admin_nav.dart';
@@ -508,14 +509,12 @@ typedef SuperAdminMonthCallback = void Function(int year, int month);
 
 class SuperAdminMonthlyRevenuePanel extends StatefulWidget {
   final SuperAdminService service;
-  final Map<String, int> vehicleCountByComplexId;
   final VoidCallback? onOpenRevenue;
   final SuperAdminMonthCallback? onOpenPlatformFee;
 
   const SuperAdminMonthlyRevenuePanel({
     super.key,
     required this.service,
-    required this.vehicleCountByComplexId,
     this.onOpenRevenue,
     this.onOpenPlatformFee,
   });
@@ -610,7 +609,6 @@ class _SuperAdminMonthlyRevenuePanelState
                 final pageMonth = superAdminMonthFromPageIndex(index);
                 return _SuperAdminMonthRevenuePage(
                   future: _revenueFor(pageMonth.year, pageMonth.month),
-                  vehicleCountByComplexId: widget.vehicleCountByComplexId,
                   year: pageMonth.year,
                   month: pageMonth.month,
                   onOpenRevenue: widget.onOpenRevenue,
@@ -627,7 +625,6 @@ class _SuperAdminMonthlyRevenuePanelState
 
 class _SuperAdminMonthRevenuePage extends StatelessWidget {
   final Future<List<SuperAdminRevenueRow>> future;
-  final Map<String, int> vehicleCountByComplexId;
   final int year;
   final int month;
   final VoidCallback? onOpenRevenue;
@@ -635,7 +632,6 @@ class _SuperAdminMonthRevenuePage extends StatelessWidget {
 
   const _SuperAdminMonthRevenuePage({
     required this.future,
-    required this.vehicleCountByComplexId,
     required this.year,
     required this.month,
     this.onOpenRevenue,
@@ -668,15 +664,14 @@ class _SuperAdminMonthRevenuePage extends StatelessWidget {
         final rows = snap.data ?? [];
         var totalRevenue = 0;
         var totalFee = 0;
+        var isFeeEstimate = false;
         for (final r in rows) {
           totalRevenue += r.totalRevenue;
-          totalFee += superAdminPlatformFee(
-            vehicleCountByComplexId[r.complexId] ?? 0,
-          );
+          totalFee += r.platformFeeAmount;
+          if (r.isFeeEstimate) isFeeEstimate = true;
         }
 
-        final visible = [...rows]
-          ..sort((a, b) => b.totalRevenue.compareTo(a.totalRevenue));
+        final feeLabel = isFeeEstimate ? '월 수수료(예상)' : '월 수수료';
 
         return Padding(
           padding: const EdgeInsets.symmetric(horizontal: 4),
@@ -696,7 +691,7 @@ class _SuperAdminMonthRevenuePage extends StatelessWidget {
                   const SizedBox(width: 8),
                   Expanded(
                     child: _RevenueSummaryChip(
-                      label: '월 수수료',
+                      label: feeLabel,
                       value: '₩${superAdminWon.format(totalFee)}',
                       color: SuperAdminUiColors.staffViolet,
                       onTap: onOpenPlatformFee == null
@@ -706,71 +701,16 @@ class _SuperAdminMonthRevenuePage extends StatelessWidget {
                   ),
                 ],
               ),
-                const SizedBox(height: 10),
-                Expanded(
-                  child: visible.isEmpty
-                      ? const Center(
-                          child: Text(
-                            '해당 월 매출·등록 차량이 없습니다.',
-                            style: TextStyle(color: DanjiColors.textSecondary),
-                          ),
-                        )
-                      : ListView.separated(
-                          padding: EdgeInsets.zero,
-                          itemCount: visible.length,
-                          separatorBuilder: (_, __) =>
-                              const SizedBox(height: 6),
-                          itemBuilder: (context, i) {
-                            final r = visible[i];
-                            final vehicles =
-                                vehicleCountByComplexId[r.complexId] ?? 0;
-                            final fee = superAdminPlatformFee(vehicles);
-                            return Container(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 10,
-                                vertical: 8,
-                              ),
-                              decoration: BoxDecoration(
-                                color: DanjiColors.background,
-                                borderRadius: BorderRadius.circular(10),
-                                border: Border.all(color: DanjiColors.border),
-                              ),
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(
-                                    r.complexName,
-                                    style: const TextStyle(
-                                      fontWeight: FontWeight.w800,
-                                      fontSize: 13,
-                                      color: DanjiColors.textPrimary,
-                                    ),
-                                  ),
-                                  const SizedBox(height: 4),
-                                  Text(
-                                    '매출 ₩${superAdminWon.format(r.totalRevenue)}',
-                                    style: const TextStyle(
-                                      fontSize: 12,
-                                      fontWeight: FontWeight.w600,
-                                      color: DanjiColors.textPrimary,
-                                    ),
-                                  ),
-                                  Text(
-                                    '수수료 ₩${superAdminWon.format(fee)} '
-                                        '($vehicles대 × 10만원)',
-                                    style: const TextStyle(
-                                      fontSize: 11,
-                                      color: DanjiColors.textSecondary,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            );
-                          },
-                        ),
+              const SizedBox(height: 10),
+              Expanded(
+                child: SuperAdminComplexRevenueList(
+                  rows: rows,
+                  isFeeEstimate: isFeeEstimate,
+                  onOpenRevenue: onOpenRevenue,
                 ),
-              ],
-            ),
+              ),
+            ],
+          ),
         );
       },
     );

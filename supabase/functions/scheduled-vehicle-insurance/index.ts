@@ -9,6 +9,7 @@ type VehicleRow = {
   complex_id?: string | null;
   insurance_expires_at?: string | null;
   insurance_warn_7d_sent_at?: string | null;
+  insurance_expired_push_sent_at?: string | null;
 };
 
 function todayKst(): string {
@@ -36,7 +37,7 @@ Deno.serve(async (req) => {
     const { data: vehicles, error } = await admin
       .from('vehicles')
       .select(
-        'id, model_name, car_number, complex_id, insurance_expires_at, insurance_warn_7d_sent_at',
+        'id, model_name, car_number, complex_id, insurance_expires_at, insurance_warn_7d_sent_at, insurance_expired_push_sent_at',
       )
       .not('insurance_expires_at', 'is', null);
 
@@ -45,7 +46,8 @@ Deno.serve(async (req) => {
     }
 
     let warned = 0;
-    let disabled = 0;
+    let expiredNotified = 0;
+    let expiredSkipped = 0;
 
     for (const raw of vehicles ?? []) {
       const v = raw as VehicleRow;
@@ -60,6 +62,7 @@ Deno.serve(async (req) => {
       const complexId = v.complex_id?.toString();
       if (!complexId) continue;
 
+      // D-7 1회 경고 (단지관리자 + 최고관리자 — dispatchPushScenario)
       if (expires === warnTarget && v.insurance_warn_7d_sent_at !== warnTarget) {
         try {
           await dispatchPushScenario({
@@ -84,7 +87,12 @@ Deno.serve(async (req) => {
         }
       }
 
-      if (expires <= today) {
+      // 만료일 익일부터 — 갱신 전 매일 1회 (만료 당일은 예약 가능하므로 제외)
+      if (expires < today) {
+        if (v.insurance_expired_push_sent_at === today) {
+          expiredSkipped++;
+          continue;
+        }
         try {
           await dispatchPushScenario({
             admin,
@@ -95,9 +103,16 @@ Deno.serve(async (req) => {
               endAt: expires,
             },
           });
-          disabled++;
+          await admin
+            .from('vehicles')
+            .update({
+              insurance_expired_push_sent_at: today,
+              updated_at: new Date().toISOString(),
+            })
+            .eq('id', v.id);
+          expiredNotified++;
         } catch (e) {
-          console.error('[scheduled-vehicle-insurance] disable', v.id, e);
+          console.error('[scheduled-vehicle-insurance] expired', v.id, e);
         }
       }
     }
@@ -107,7 +122,8 @@ Deno.serve(async (req) => {
       today,
       warnTarget,
       warned,
-      disabled,
+      expiredNotified,
+      expiredSkipped,
     });
   } catch (e) {
     const err = e as Error;

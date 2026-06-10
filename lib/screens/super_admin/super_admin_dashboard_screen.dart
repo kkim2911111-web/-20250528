@@ -38,7 +38,6 @@ class _SuperAdminDashboardScreenState extends State<SuperAdminDashboardScreen> {
     month: 0,
     kind: SuperAdminSettlementDashboardKind.complete,
   );
-  Map<String, int> _vehicleCountByComplexId = {};
   Object? _loadError;
   bool _loading = true;
 
@@ -53,12 +52,10 @@ class _SuperAdminDashboardScreenState extends State<SuperAdminDashboardScreen> {
       final period = superAdminSettlementDashboardPeriod();
       final results = await Future.wait([
         _service.fetchDashboard(),
-        _service.fetchComplexes(),
         _service.fetchRevenue(year: period.year, month: period.month),
       ]);
       if (!mounted) return;
-      final complexes = results[1] as List<SuperAdminComplex>;
-      final revenueRows = results[2] as List<SuperAdminRevenueRow>;
+      final revenueRows = results[1] as List<SuperAdminRevenueRow>;
       setState(() {
         _dashboard = results[0] as SuperAdminDashboard;
         _settlementCard = SuperAdminSettlementDashboardCard.fromRevenueRows(
@@ -66,9 +63,6 @@ class _SuperAdminDashboardScreenState extends State<SuperAdminDashboardScreen> {
           year: period.year,
           month: period.month,
         );
-        _vehicleCountByComplexId = {
-          for (final c in complexes) c.id: c.vehicleCount,
-        };
         _loadError = null;
         _loading = false;
       });
@@ -294,7 +288,6 @@ class _SuperAdminDashboardScreenState extends State<SuperAdminDashboardScreen> {
                   const SizedBox(height: 10),
                   SuperAdminMonthlyRevenuePanel(
                     service: _service,
-                    vehicleCountByComplexId: _vehicleCountByComplexId,
                     onOpenRevenue: () =>
                         _open(SuperAdminRevenueScreen(service: _service)),
                     onOpenPlatformFee: (year, month) => _open(

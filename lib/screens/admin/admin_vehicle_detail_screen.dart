@@ -385,8 +385,6 @@ class _AdminVehicleDetailScreenState extends State<AdminVehicleDetailScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final exposure = _vehicle.exposureStatus;
-
     return PopScope(
       canPop: false,
       onPopInvokedWithResult: (didPop, result) {
@@ -444,11 +442,10 @@ class _AdminVehicleDetailScreenState extends State<AdminVehicleDetailScreen> {
                               isUnderMaintenance: _vehicle.isUnderMaintenance,
                               insuranceExpiresAt: _vehicle.insuranceExpiresAt,
                             ),
-                            if (exposure == VehicleExposureStatus.published &&
-                                VehicleInsuranceStatus.badgeKind(
-                                      _vehicle.insuranceExpiresAt,
-                                    ) !=
-                                    VehicleInsuranceBadgeKind.none) ...[
+                            if (VehicleInsuranceStatus.badgeKind(
+                                  _vehicle.insuranceExpiresAt,
+                                ) !=
+                                VehicleInsuranceBadgeKind.none) ...[
                               const SizedBox(width: 8),
                               VehicleInsuranceBadge(
                                 insuranceExpiresAt:

@@ -308,7 +308,7 @@ export function buildPushMessage(
     case 'staff_insurance_expired':
       return {
         title: '차량 보험 만료 — 예약 비활성화',
-        body: `[${vehicle}] 보험이 만료되어 예약이 비활성화되었습니다.`,
+        body: `[${vehicle}] 보험이 만료되어 입주민 예약이 차단되었습니다. 갱신 후 자동 해제됩니다.`,
         data: { ...data, type: 'admin_vehicle' },
       };
     case 'staff_no_show_auto_completed': {

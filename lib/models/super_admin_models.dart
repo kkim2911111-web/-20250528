@@ -565,6 +565,8 @@ class SuperAdminRevenueRow {
   final bool isRequested;
   final DateTime? settledAt;
   final DateTime? requestedAt;
+  final int billableVehicleCount;
+  final bool isFeeEstimate;
 
   const SuperAdminRevenueRow({
     required this.complexId,
@@ -580,9 +582,13 @@ class SuperAdminRevenueRow {
     this.isRequested = false,
     this.settledAt,
     this.requestedAt,
+    this.billableVehicleCount = 0,
+    this.isFeeEstimate = false,
   });
 
   int get totalRevenue => grossRevenue + extensionRevenue;
+
+  int get platformFeeAmount => billableVehicleCount * 100000;
 
   String get settlementBadgeLabel {
     if (isSettled) return '완료';
@@ -605,6 +611,8 @@ class SuperAdminRevenueRow {
       isRequested: m['is_requested'] == true,
       settledAt: _dt(m['settled_at']),
       requestedAt: _dt(m['requested_at']),
+      billableVehicleCount: (m['billable_vehicle_count'] as num?)?.toInt() ?? 0,
+      isFeeEstimate: m['is_fee_estimate'] == true,
     );
   }
 }

@@ -343,12 +343,10 @@ class _AdminVehicleManageCard extends StatelessWidget {
                                         insuranceExpiresAt:
                                             vehicle.insuranceExpiresAt,
                                       ),
-                                      if (exposure ==
-                                              VehicleExposureStatus.published &&
-                                          VehicleInsuranceStatus.badgeKind(
-                                                vehicle.insuranceExpiresAt,
-                                              ) !=
-                                              VehicleInsuranceBadgeKind.none) ...[
+                                      if (VehicleInsuranceStatus.badgeKind(
+                                            vehicle.insuranceExpiresAt,
+                                          ) !=
+                                          VehicleInsuranceBadgeKind.none) ...[
                                         const SizedBox(width: 6),
                                         VehicleInsuranceBadge(
                                           insuranceExpiresAt:
