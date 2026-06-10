@@ -15,6 +15,7 @@ import '../services/vehicle_service.dart';
 import '../supabase_client.dart';
 import '../theme/danji_colors.dart';
 import '../theme/danji_typography.dart';
+import '../utils/booking_period_resolver.dart';
 import '../utils/rental_inquiry_flow.dart';
 import '../utils/rental_pricing.dart';
 import '../widgets/danji_app_bar.dart';
@@ -74,6 +75,7 @@ class _BookingScreenState extends State<BookingScreen> {
   final _couponService = CouponService();
   final _pointService = PointService();
   final _dateLabelFormat = DateFormat('yyyy년 M월 d일 (E)', 'ko_KR');
+  final _periodDateFormat = DateFormat('M/d HH:mm');
 
   Future<VehicleQueryResult>? _vehiclesFuture;
   Future<List<_BookingVehicleListEntry>>? _vehicleListFuture;
@@ -81,7 +83,9 @@ class _BookingScreenState extends State<BookingScreen> {
   List<Vehicle> _allVehicles = [];
   Vehicle? _selected;
   late DateTime _focusedDay;
-  DateTime? _selectedDay;
+  late DateTime _returnFocusedDay;
+  DateTime? _startDay;
+  DateTime? _returnDay;
   int _startHour = 9;
   int _endHour = 10;
   bool _endHourManuallySet = false;
@@ -104,6 +108,7 @@ class _BookingScreenState extends State<BookingScreen> {
   void initState() {
     super.initState();
     _applyInitialDateTime();
+    _applyResolvedPeriod(_resolvedPeriod);
     _vehiclesFuture = _loadVehicles();
   }
 
@@ -112,14 +117,18 @@ class _BookingScreenState extends State<BookingScreen> {
     final now = DateTime.now();
     if (now.hour >= 23) {
       final tomorrow = _todayCalendarDate.add(const Duration(days: 1));
-      _selectedDay = tomorrow;
+      _startDay = tomorrow;
+      _returnDay = tomorrow;
       _focusedDay = tomorrow;
+      _returnFocusedDay = tomorrow;
       _startHour = 0;
       _endHour = 1;
     } else {
       final today = _todayCalendarDate;
-      _selectedDay = today;
+      _startDay = today;
+      _returnDay = today;
       _focusedDay = today;
+      _returnFocusedDay = today;
       _startHour = (now.hour + 1).clamp(_minHour, _maxHour);
       _endHour = _startHour + 1;
     }
@@ -134,14 +143,16 @@ class _BookingScreenState extends State<BookingScreen> {
       _todayCalendarDate.add(const Duration(days: 1));
 
   bool get _isTomorrowMidnightSlot {
-    final day = _selectedDay;
+    final day = _startDay;
     if (day == null) return false;
     return isSameDay(day, _tomorrowCalendarDate) && _startHour == 0;
   }
 
   void _applyTomorrowMidnightSlot() {
-    _selectedDay = _tomorrowCalendarDate;
+    _startDay = _tomorrowCalendarDate;
+    _returnDay = _tomorrowCalendarDate;
     _focusedDay = _tomorrowCalendarDate;
+    _returnFocusedDay = _tomorrowCalendarDate;
     _startHour = 0;
     _endHour = 1;
     _endHourManuallySet = false;
@@ -194,6 +205,7 @@ class _BookingScreenState extends State<BookingScreen> {
     _lastResult = result;
     _allVehicles = result.vehicles;
 
+    _applyResolvedPeriod(_resolvedPeriod);
     if (!_availableRentalTypes.contains(_rentalType)) {
       _rentalType = _availableRentalTypes.first;
     }
@@ -210,12 +222,46 @@ class _BookingScreenState extends State<BookingScreen> {
     return types.isEmpty ? {RentalType.hourly} : types;
   }
 
-  bool get _hasValidDuration => RentalPricing.isValidDuration(
-        _rentalType,
-        hours: _durationHours,
-        days: _durationDays,
-        months: _durationMonths,
-      );
+  bool get _hasValidDuration {
+    final period = _resolvedPeriod;
+    return period != null && period.valid && period.inquiry == null;
+  }
+
+  bool get _isSameDayBooking =>
+      _startDay != null &&
+      _returnDay != null &&
+      BookingPeriodResolver.isSameCalendarDay(_startDay!, _returnDay!);
+
+  BookingPeriodResult? get _resolvedPeriod {
+    final startDay = _startDay;
+    final returnDay = _returnDay;
+    if (startDay == null || returnDay == null) return null;
+    return BookingPeriodResolver.resolve(
+      startDay: startDay,
+      returnDay: returnDay,
+      startHour: _startHour,
+      endHour: _isSameDayBooking ? _endHour : null,
+    );
+  }
+
+  void _applyResolvedPeriod(BookingPeriodResult? period) {
+    if (period == null || !period.valid) return;
+    _rentalType = period.rentalType;
+    switch (period.rentalType) {
+      case RentalType.hourly:
+        _durationDays = 1;
+        _durationMonths = 1;
+        break;
+      case RentalType.daily:
+        _durationDays = period.days;
+        _durationMonths = 1;
+        break;
+      case RentalType.monthly:
+        _durationDays = 1;
+        _durationMonths = period.months;
+        break;
+    }
+  }
 
   String get _durationSummary => RentalPricing.durationSummary(
         _rentalType,
@@ -223,6 +269,20 @@ class _BookingScreenState extends State<BookingScreen> {
         days: _durationDays,
         months: _durationMonths,
       );
+
+  String? get _periodSummaryLine {
+    final period = _resolvedPeriod;
+    if (period == null || !period.valid) return null;
+    final startLabel = _periodDateFormat.format(period.start);
+    final endLabel = _periodDateFormat.format(period.end);
+    final duration = _durationSummary;
+    final price = _originalPrice;
+    final buffer = StringBuffer('$startLabel ~ $endLabel · $duration');
+    if (price != null) {
+      buffer.write(' · ₩${_formatWon(price)}');
+    }
+    return buffer.toString();
+  }
 
   int get _activeStep {
     if (_selected == null) return 1;
@@ -235,20 +295,19 @@ class _BookingScreenState extends State<BookingScreen> {
       _selected != null && _hasValidDuration && _originalPrice != null;
 
   int get _durationHours {
-    final start = _buildStartDateTime(_selectedDay, _startHour);
-    final end = _buildEndDateTime(_selectedDay, _endHour);
+    final period = _resolvedPeriod;
+    if (period != null && period.valid && period.rentalType == RentalType.hourly) {
+      return period.hours;
+    }
+    final start = _buildStartDateTime(_startDay, _startHour);
+    final end = _buildEndDateTime(_startDay, _endHour);
     if (start == null || end == null) return 0;
     return end.difference(start).inHours;
   }
 
-  DateTime? get _rangeStartDay => _selectedDay;
+  DateTime? get _rangeStartDay => _startDay;
 
-  DateTime? get _rangeEndDay {
-    final day = _selectedDay;
-    if (day == null) return null;
-    final end = _buildEndDateTime(day, _endHour);
-    return end == null ? null : _dateOnly(end);
-  }
+  DateTime? get _rangeEndDay => _returnDay;
 
   bool _isRangeStart(DateTime day) {
     final start = _rangeStartDay;
@@ -289,7 +348,7 @@ class _BookingScreenState extends State<BookingScreen> {
     final options = <int>[
       for (var h = _minHour; h <= _maxHour; h++) h,
     ];
-    final day = _selectedDay;
+    final day = _startDay;
     if (day == null) return const [];
     if (!_isToday(day)) return options;
 
@@ -298,7 +357,7 @@ class _BookingScreenState extends State<BookingScreen> {
 
   /// 종료 시각 목록 — 시작 시각 다음부터 순환 (예: 21:00 시작 → 22:00, 23:00, 00:00(익일)…)
   List<int> get _endHourOptions {
-    final day = _selectedDay;
+    final day = _startDay;
     if (day == null) return const [];
 
     final ordered = <int>[
@@ -318,9 +377,15 @@ class _BookingScreenState extends State<BookingScreen> {
     return hours >= 1 && hours <= RentalPricing.maxHourlyHours;
   }
 
-  DateTime? get _rentalStartTime => _buildStartDateTime(_selectedDay, _startHour);
+  DateTime? get _rentalStartTime {
+    final period = _resolvedPeriod;
+    if (period != null && period.valid) return period.start;
+    return _buildStartDateTime(_startDay, _startHour);
+  }
 
   DateTime? get _rentalEndTime {
+    final period = _resolvedPeriod;
+    if (period != null && period.valid) return period.end;
     final start = _rentalStartTime;
     if (start == null) return null;
     return RentalPricing.buildEndTime(
@@ -336,7 +401,7 @@ class _BookingScreenState extends State<BookingScreen> {
   void _syncEndHourFromStart({bool force = false}) {
     if (!force && _endHourManuallySet) return;
 
-    final day = _selectedDay;
+    final day = _startDay;
     if (day == null) return;
 
     final start = _buildStartDateTime(day, _startHour);
@@ -401,7 +466,7 @@ class _BookingScreenState extends State<BookingScreen> {
       '${hour.toString().padLeft(2, '0')}:00';
 
   String _formatEndHourLabel(int hour) {
-    final day = _selectedDay;
+    final day = _startDay;
     if (day == null) return _formatHourLabel(hour);
 
     final start = _buildStartDateTime(day, _startHour);
@@ -488,10 +553,12 @@ class _BookingScreenState extends State<BookingScreen> {
     if (_loading || _selected == null || _originalPrice == null) return false;
     if (!_hasValidDuration) return false;
     if (_pointsInputInvalid) return false;
-    final start = _buildStartDateTime(_selectedDay, _startHour);
-    if (start == null) return false;
-    if (_selectedDay != null &&
-        _isToday(_selectedDay!) &&
+    final period = _resolvedPeriod;
+    if (period?.inquiry != null) return false;
+    if (period == null || !period.valid) return false;
+    final start = period.start;
+    if (_startDay != null &&
+        _isToday(_startDay!) &&
         !_isStartTimeInFuture(start)) {
       return false;
     }
@@ -602,7 +669,7 @@ class _BookingScreenState extends State<BookingScreen> {
     List<Vehicle> vehicles,
   ) async {
     final complexId = _lastResult?.complexId;
-    final day = _selectedDay;
+    final day = _startDay;
 
     if (day == null || !_hasValidDuration) {
       return [];
@@ -693,6 +760,7 @@ class _BookingScreenState extends State<BookingScreen> {
   void _onDateTimeChanged() {
     setState(() {
       _normalizeHoursForSelectedDay();
+      _applyResolvedPeriod(_resolvedPeriod);
       _error = null;
       _validateCouponForCurrentPrice();
       _clampPointsToUse();
@@ -714,120 +782,88 @@ class _BookingScreenState extends State<BookingScreen> {
     _scheduleCheckoutExtrasLoad();
   }
 
-  void _onRentalTypeChanged(RentalType type) {
-    if (!_availableRentalTypes.contains(type)) return;
-    setState(() {
-      _rentalType = type;
-      _selected = null;
-      _error = null;
-      _resetCheckoutSelection();
-    });
-    _refreshAvailability();
+  bool _isReturnDayEnabled(DateTime day) {
+    if (!_isCalendarDayEnabled(day)) return false;
+    final start = _startDay;
+    if (start == null) return false;
+    return !_tableCalendarDay(day).isBefore(_tableCalendarDay(start));
   }
 
-  Future<void> _openDurationCountPicker({
-    required String title,
-    required int min,
-    required int max,
-    required int current,
-    required ValueChanged<int> onSelected,
-    required String Function(int value) labelBuilder,
-    String? inquiryLabel,
-    String? inquiryMessage,
-  }) async {
-    final values = [
-      for (var i = min; i <= max; i++) i,
-      if (inquiryLabel != null) -1,
-    ];
-
-    await showModalBottomSheet<void>(
-      context: context,
-      backgroundColor: DanjiColors.surface,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      builder: (sheetContext) {
-        return SafeArea(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Padding(
-                padding: const EdgeInsets.fromLTRB(20, 16, 20, 8),
-                child: Text(
-                  title,
-                  style: const TextStyle(
-                    fontSize: 17,
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-              ),
-              ConstrainedBox(
-                constraints: BoxConstraints(
-                  maxHeight: MediaQuery.sizeOf(sheetContext).height * 0.45,
-                ),
-                child: ListView.builder(
-                  shrinkWrap: true,
-                  itemCount: values.length,
-                  itemBuilder: (context, index) {
-                    final value = values[index];
-                    if (value == -1) {
-                      return ListTile(
-                        title: Text(
-                          inquiryLabel!,
-                          style: const TextStyle(
-                            color: DanjiColors.buttonBlue,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                        onTap: () async {
-                          Navigator.pop(sheetContext);
-                          if (inquiryMessage != null) {
-                            await showExtendedRentalInquiryDialog(
-                              context,
-                              message: inquiryMessage,
-                            );
-                          }
-                        },
-                      );
-                    }
-                    final selected = value == current;
-                    return ListTile(
-                      title: Text(
-                        labelBuilder(value),
-                        style: TextStyle(
-                          fontWeight:
-                              selected ? FontWeight.w700 : FontWeight.w500,
-                          color: selected
-                              ? DanjiColors.buttonBlue
-                              : DanjiColors.textPrimary,
-                        ),
-                      ),
-                      trailing: selected
-                          ? const Icon(
-                              Icons.check,
-                              color: DanjiColors.buttonBlue,
-                            )
-                          : null,
-                      onTap: () {
-                        Navigator.pop(sheetContext);
-                        onSelected(value);
-                      },
-                    );
-                  },
-                ),
-              ),
-              const SizedBox(height: 8),
-            ],
-          ),
-        );
+  Future<void> _openStartDayPicker() async {
+    await _openBookingDayPicker(
+      title: '대여 시작일',
+      focusedDay: _focusedDay,
+      selectedDay: _startDay,
+      enabledDayPredicate: _isCalendarDayEnabled,
+      onSelected: (selectedDay, newFocused) async {
+        final picked = _calendarDateOnly(selectedDay);
+        setState(() {
+          _startDay = picked;
+          _focusedDay = _calendarDateOnly(newFocused);
+          if (_returnDay != null &&
+              _tableCalendarDay(_returnDay!)
+                  .isBefore(_tableCalendarDay(picked))) {
+            _returnDay = picked;
+            _returnFocusedDay = picked;
+          }
+        });
+        _onDateTimeChanged();
+      },
+      onFocusedChanged: (newFocused) {
+        _focusedDay = _calendarDateOnly(newFocused);
       },
     );
   }
 
-  Future<void> _openDatePicker() async {
-    final day = _selectedDay;
-    if (day == null) return;
+  Future<void> _openReturnDayPicker() async {
+    final start = _startDay;
+    if (start == null) return;
 
+    await _openBookingDayPicker(
+      title: '반납 일자',
+      focusedDay: _returnFocusedDay,
+      selectedDay: _returnDay,
+      enabledDayPredicate: _isReturnDayEnabled,
+      onSelected: (selectedDay, newFocused) async {
+        final picked = _calendarDateOnly(selectedDay);
+        final preview = BookingPeriodResolver.resolve(
+          startDay: start,
+          returnDay: picked,
+          startHour: _startHour,
+          endHour: BookingPeriodResolver.isSameCalendarDay(start, picked)
+              ? _endHour
+              : null,
+        );
+        if (preview.inquiry != null) {
+          if (!mounted) return;
+          await showExtendedRentalInquiryDialog(
+            context,
+            message: BookingPeriodResolver.inquiryMessage(preview.inquiry!),
+          );
+          return;
+        }
+        if (!mounted) return;
+        setState(() {
+          _returnDay = picked;
+          _returnFocusedDay = _calendarDateOnly(newFocused);
+        });
+        _onDateTimeChanged();
+      },
+      onFocusedChanged: (newFocused) {
+        _returnFocusedDay = _calendarDateOnly(newFocused);
+      },
+    );
+  }
+
+  Future<void> _openBookingDayPicker({
+    required String title,
+    required DateTime focusedDay,
+    required DateTime? selectedDay,
+    required bool Function(DateTime day) enabledDayPredicate,
+    required Future<void> Function(DateTime selectedDay, DateTime newFocused)
+        onSelected,
+    required void Function(DateTime newFocused) onFocusedChanged,
+  }) async {
     await showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
@@ -838,7 +874,7 @@ class _BookingScreenState extends State<BookingScreen> {
       builder: (sheetContext) {
         return StatefulBuilder(
           builder: (context, setSheetState) {
-            var focused = _tableCalendarDay(_focusedDay);
+            var focused = _tableCalendarDay(focusedDay);
             final calendarToday = _tableCalendarDay(DateTime.now());
             return SafeArea(
               child: Padding(
@@ -855,7 +891,7 @@ class _BookingScreenState extends State<BookingScreen> {
                       ),
                     ),
                     const SizedBox(height: 12),
-                    Text('날짜 선택', style: DanjiTypography.subtitleLarge),
+                    Text(title, style: DanjiTypography.subtitleLarge),
                     const SizedBox(height: 8),
                     TableCalendar<void>(
                       firstDay: calendarToday,
@@ -863,9 +899,9 @@ class _BookingScreenState extends State<BookingScreen> {
                       focusedDay: focused,
                       currentDay: calendarToday,
                       selectedDayPredicate: (d) =>
-                          _selectedDay != null &&
+                          selectedDay != null &&
                           _tableCalendarDay(d) ==
-                              _tableCalendarDay(_selectedDay!),
+                              _tableCalendarDay(selectedDay),
                       locale: 'ko_KR',
                       startingDayOfWeek: StartingDayOfWeek.sunday,
                       headerStyle: const HeaderStyle(
@@ -910,19 +946,15 @@ class _BookingScreenState extends State<BookingScreen> {
                         defaultBuilder: (context, cellDay, _) =>
                             _bookingCalendarDayCell(cellDay),
                       ),
-                      enabledDayPredicate: _isCalendarDayEnabled,
-                      onDaySelected: (selectedDay, newFocused) {
-                        if (!_isCalendarDayEnabled(selectedDay)) return;
+                      enabledDayPredicate: enabledDayPredicate,
+                      onDaySelected: (pickedDay, newFocused) async {
+                        if (!enabledDayPredicate(pickedDay)) return;
                         Navigator.pop(sheetContext);
-                        setState(() {
-                          _selectedDay = _calendarDateOnly(selectedDay);
-                          _focusedDay = _calendarDateOnly(newFocused);
-                        });
-                        _onDateTimeChanged();
+                        await onSelected(pickedDay, newFocused);
                       },
                       onPageChanged: (newFocused) {
                         final d = _tableCalendarDay(newFocused);
-                        _focusedDay = _calendarDateOnly(newFocused);
+                        onFocusedChanged(newFocused);
                         setSheetState(() => focused = d);
                       },
                     ),
@@ -1009,13 +1041,13 @@ class _BookingScreenState extends State<BookingScreen> {
 
   Future<void> _submit() async {
     final vehicle = _selected;
-    final day = _selectedDay;
+    final day = _startDay;
     if (vehicle == null) {
       setState(() => _error = '예약할 차량을 선택해주세요.');
       return;
     }
-    if (day == null) {
-      setState(() => _error = '예약 날짜를 선택해주세요.');
+    if (day == null || _returnDay == null) {
+      setState(() => _error = '대여·반납 일자를 선택해주세요.');
       return;
     }
     if (!_hasValidDuration) {
@@ -1117,8 +1149,14 @@ class _BookingScreenState extends State<BookingScreen> {
 
   String _formatWon(int amount) => NumberFormat('#,###').format(amount);
 
-  String? get _selectedDateLabel {
-    final day = _selectedDay;
+  String? get _startDateLabel {
+    final day = _startDay;
+    if (day == null) return null;
+    return _dateLabelFormat.format(day);
+  }
+
+  String? get _returnDateLabel {
+    final day = _returnDay;
     if (day == null) return null;
     return _dateLabelFormat.format(day);
   }
@@ -1185,159 +1223,73 @@ class _BookingScreenState extends State<BookingScreen> {
                         const _BookingRentalDeliveryNotice(),
                         const SizedBox(height: 12),
                       ],
-                      if (_availableRentalTypes.length > 1) ...[
-                        _BookingRentalTypeTabs(
-                          availableTypes: _availableRentalTypes,
-                          selected: _rentalType,
-                          onChanged: _onRentalTypeChanged,
-                        ),
-                        const SizedBox(height: 16),
-                      ],
-                      _DateSelectCard(
-                        label: _selectedDateLabel ?? '날짜를 선택해주세요',
-                        onTap: _openDatePicker,
+                      Row(
+                        children: [
+                          Expanded(
+                            child: _DateSelectCard(
+                              title: '대여 시작',
+                              label: _startDateLabel ?? '날짜를 선택해주세요',
+                              onTap: _openStartDayPicker,
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: _DateSelectCard(
+                              title: '반납 일자',
+                              label: _returnDateLabel ?? '날짜를 선택해주세요',
+                              onTap: _openReturnDayPicker,
+                            ),
+                          ),
+                        ],
                       ),
                       const SizedBox(height: 12),
-                      if (_rentalType == RentalType.hourly) ...[
-                        Row(
-                          children: [
-                            Expanded(
-                              child: _TimeSelectCard(
-                                title: '시작 시간',
-                                time: _formatHourLabel(_startHour),
-                                subtitle: '1시간 단위',
-                                onTap: () => _openHourPicker(
-                                  title: '시작 시간',
-                                  hours: _startHourOptions,
-                                  current: _startHour,
-                                  labelBuilder: _formatHourLabel,
-                                  onSelected: (hour) {
-                                    setState(() {
-                                      _startHour = hour;
-                                      _syncEndHourFromStart();
-                                    });
-                                    _onDateTimeChanged();
-                                  },
-                                ),
-                              ),
-                            ),
-                            const SizedBox(width: 12),
-                            Expanded(
-                              child: _TimeSelectCard(
-                                title: '종료 시간',
-                                time: _formatEndHourLabel(_endHour),
-                                subtitle: _durationHours >= 1
-                                    ? '${_durationHours}시간 선택됨'
-                                    : '1시간 이상 선택',
-                                subtitleHighlight: _durationHours >= 1,
-                                onTap: () => _openHourPicker(
-                                  title: '종료 시간',
-                                  hours: _endHourOptions,
-                                  current: _endHour,
-                                  labelBuilder: _formatEndHourLabel,
-                                  onSelected: (hour) {
-                                    setState(() {
-                                      _endHour = hour;
-                                      _endHourManuallySet = true;
-                                    });
-                                    _onDateTimeChanged();
-                                  },
-                                ),
-                              ),
-                            ),
-                          ],
+                      _TimeSelectCard(
+                        title: '출고 시각',
+                        time: _formatHourLabel(_startHour),
+                        subtitle: _isSameDayBooking
+                            ? '당일 대여 시작 시각'
+                            : '반납 시각도 동일하게 적용',
+                        onTap: () => _openHourPicker(
+                          title: '출고 시각',
+                          hours: _startHourOptions,
+                          current: _startHour,
+                          labelBuilder: _formatHourLabel,
+                          onSelected: (hour) {
+                            setState(() => _startHour = hour);
+                            if (_isSameDayBooking) {
+                              _syncEndHourFromStart();
+                            }
+                            _onDateTimeChanged();
+                          },
                         ),
-                      ] else if (_rentalType == RentalType.daily) ...[
-                        Row(
-                          children: [
-                            Expanded(
-                              child: _TimeSelectCard(
-                                title: '시작 시간',
-                                time: _formatHourLabel(_startHour),
-                                subtitle: '대여 시작 시각',
-                                onTap: () => _openHourPicker(
-                                  title: '시작 시간',
-                                  hours: _startHourOptions,
-                                  current: _startHour,
-                                  labelBuilder: _formatHourLabel,
-                                  onSelected: (hour) {
-                                    setState(() => _startHour = hour);
-                                    _onDateTimeChanged();
-                                  },
-                                ),
-                              ),
-                            ),
-                            const SizedBox(width: 12),
-                            Expanded(
-                              child: _TimeSelectCard(
-                                title: '대여 일수',
-                                time: '${_durationDays}일',
-                                subtitle: '최대 ${RentalPricing.maxDailyDays}일',
-                                subtitleHighlight: _durationDays >= 1,
-                                onTap: () => _openDurationCountPicker(
-                                  title: '대여 일수',
-                                  min: 1,
-                                  max: RentalPricing.maxDailyDays,
-                                  current: _durationDays,
-                                  inquiryLabel: '30일 이상 전화 문의',
-                                  inquiryMessage:
-                                      '30일 이상 대여는 전화로 문의해주세요.',
-                                  labelBuilder: (value) => '$value일',
-                                  onSelected: (value) {
-                                    setState(() => _durationDays = value);
-                                    _onDateTimeChanged();
-                                  },
-                                ),
-                              ),
-                            ),
-                          ],
+                      ),
+                      if (_isSameDayBooking) ...[
+                        const SizedBox(height: 12),
+                        _TimeSelectCard(
+                          title: '종료 시간',
+                          time: _formatEndHourLabel(_endHour),
+                          subtitle: _durationHours >= 1
+                              ? '${_durationHours}시간 선택됨'
+                              : '1시간 이상 선택',
+                          subtitleHighlight: _durationHours >= 1,
+                          onTap: () => _openHourPicker(
+                            title: '종료 시간',
+                            hours: _endHourOptions,
+                            current: _endHour,
+                            labelBuilder: _formatEndHourLabel,
+                            onSelected: (hour) {
+                              setState(() {
+                                _endHour = hour;
+                                _endHourManuallySet = true;
+                              });
+                              _onDateTimeChanged();
+                            },
+                          ),
                         ),
-                      ] else ...[
-                        Row(
-                          children: [
-                            Expanded(
-                              child: _TimeSelectCard(
-                                title: '시작 시간',
-                                time: _formatHourLabel(_startHour),
-                                subtitle: '대여 시작 시각',
-                                onTap: () => _openHourPicker(
-                                  title: '시작 시간',
-                                  hours: _startHourOptions,
-                                  current: _startHour,
-                                  labelBuilder: _formatHourLabel,
-                                  onSelected: (hour) {
-                                    setState(() => _startHour = hour);
-                                    _onDateTimeChanged();
-                                  },
-                                ),
-                              ),
-                            ),
-                            const SizedBox(width: 12),
-                            Expanded(
-                              child: _TimeSelectCard(
-                                title: '대여 개월',
-                                time: '${_durationMonths}개월',
-                                subtitle:
-                                    '최대 ${RentalPricing.maxMonthlyMonths}개월',
-                                subtitleHighlight: _durationMonths >= 1,
-                                onTap: () => _openDurationCountPicker(
-                                  title: '대여 개월',
-                                  min: 1,
-                                  max: RentalPricing.maxMonthlyMonths,
-                                  current: _durationMonths,
-                                  inquiryLabel: '12개월 이상 전화 문의',
-                                  inquiryMessage:
-                                      '12개월 이상 대여는 전화로 문의해주세요.',
-                                  labelBuilder: (value) => '$value개월',
-                                  onSelected: (value) {
-                                    setState(() => _durationMonths = value);
-                                    _onDateTimeChanged();
-                                  },
-                                ),
-                              ),
-                            ),
-                          ],
-                        ),
+                      ],
+                      if (_periodSummaryLine != null) ...[
+                        const SizedBox(height: 12),
+                        _BookingPeriodSummaryBanner(text: _periodSummaryLine!),
                       ],
                       if (_selected != null &&
                           _compareStrikethroughPrice != null &&
@@ -1380,9 +1332,9 @@ class _BookingScreenState extends State<BookingScreen> {
                                 padding:
                                     const EdgeInsets.symmetric(vertical: 24),
                                 child: Text(
-                                  _rentalType == RentalType.hourly
+                                  _isSameDayBooking
                                       ? '종료 시간을 시작 시간보다 1시간 이상 뒤로 설정해주세요.'
-                                      : '대여 기간을 선택해주세요.',
+                                      : '반납 일자를 시작일 이후로 선택해주세요.',
                                   textAlign: TextAlign.center,
                                   style: const TextStyle(
                                     color: DanjiColors.textSecondary,
@@ -1484,7 +1436,7 @@ class _BookingStepIndicator extends StatelessWidget {
         Expanded(
           child: _StepDot(
             step: 1,
-            label: '날짜/시간',
+            label: '기간선택',
             state: _stepState(1),
           ),
         ),
@@ -1593,11 +1545,44 @@ class _StepConnector extends StatelessWidget {
   }
 }
 
+class _BookingPeriodSummaryBanner extends StatelessWidget {
+  final String text;
+
+  const _BookingPeriodSummaryBanner({required this.text});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      decoration: BoxDecoration(
+        color: DanjiColors.surface,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: DanjiColors.border),
+      ),
+      child: Text(
+        text,
+        style: const TextStyle(
+          color: DanjiColors.textPrimary,
+          fontSize: 13,
+          fontWeight: FontWeight.w600,
+          height: 1.45,
+        ),
+      ),
+    );
+  }
+}
+
 class _DateSelectCard extends StatelessWidget {
+  final String title;
   final String label;
   final VoidCallback onTap;
 
-  const _DateSelectCard({required this.label, required this.onTap});
+  const _DateSelectCard({
+    required this.title,
+    required this.label,
+    required this.onTap,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -1620,9 +1605,9 @@ class _DateSelectCard extends StatelessWidget {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const Text(
-                        '날짜',
-                        style: TextStyle(
+                      Text(
+                        title,
+                        style: const TextStyle(
                           color: DanjiColors.textSecondary,
                           fontSize: 12,
                           fontWeight: FontWeight.w600,
@@ -1774,39 +1759,6 @@ class _BookingRentalDeliveryNotice extends StatelessWidget {
           fontWeight: FontWeight.w600,
           height: 1.4,
         ),
-      ),
-    );
-  }
-}
-
-class _BookingRentalTypeTabs extends StatelessWidget {
-  final Set<RentalType> availableTypes;
-  final RentalType selected;
-  final ValueChanged<RentalType> onChanged;
-
-  const _BookingRentalTypeTabs({
-    required this.availableTypes,
-    required this.selected,
-    required this.onChanged,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final types = RentalType.values
-        .where((type) => availableTypes.contains(type))
-        .toList();
-    return SegmentedButton<RentalType>(
-      segments: [
-        for (final type in types)
-          ButtonSegment(value: type, label: Text(type.label)),
-      ],
-      selected: {selected},
-      onSelectionChanged: (value) {
-        if (value.isNotEmpty) onChanged(value.first);
-      },
-      style: ButtonStyle(
-        visualDensity: VisualDensity.compact,
-        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
       ),
     );
   }

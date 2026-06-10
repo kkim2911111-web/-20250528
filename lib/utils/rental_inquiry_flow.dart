@@ -4,12 +4,13 @@ import '../services/support_contacts_service.dart';
 import '../theme/danji_colors.dart';
 import 'phone_launcher.dart';
 
-const _dialogTitle = '일반렌트문의';
+const _dialogTitle = '보험대차 문의 전화를 연결할까요?';
 
-const _dialogMessageLine1 = '24시간 이상 대여 시 문의주세요.';
+const _dialogMessageLine1 =
+    '자동차사고로 보험사 대차가 필요하시면 단지에서 바로 이용하실 수 있습니다.';
 const _dialogMessageLine2 = '운영시간 09:00~18:00';
 
-/// 일반렌트 문의 — `rental_inquiry` 번호로 전화 연결
+/// 보험대차 문의 — `rental_inquiry` 번호로 전화 연결
 Future<void> launchRentalInquiryPhone(BuildContext context) async {
   final phone = await SupportContactsService().fetchRentalInquiryPhone();
   if (!context.mounted) return;
@@ -18,7 +19,7 @@ Future<void> launchRentalInquiryPhone(BuildContext context) async {
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(
         content: Text(
-          '일반렌트 문의 전화번호가 등록되지 않았습니다. 관리자에게 문의해주세요.',
+          '보험대차 문의 전화번호가 등록되지 않았습니다. 관리자에게 문의해주세요.',
         ),
       ),
     );
@@ -80,7 +81,7 @@ Future<void> showExtendedRentalInquiryDialog(
   }
 }
 
-/// 일반 렌트 문의 — 확인 후 전화 연결 (DB `app_support_contacts.rental_inquiry`)
+/// 보험대차 문의 — 확인 후 전화 연결 (DB `app_support_contacts.rental_inquiry`)
 Future<void> showRentalInquiryDialog(BuildContext context) async {
   final phone = await SupportContactsService().fetchRentalInquiryPhone();
   if (!context.mounted) return;
@@ -89,7 +90,7 @@ Future<void> showRentalInquiryDialog(BuildContext context) async {
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(
         content: Text(
-          '일반렌트 문의 전화번호가 등록되지 않았습니다. 관리자에게 문의해주세요.',
+          '보험대차 문의 전화번호가 등록되지 않았습니다. 관리자에게 문의해주세요.',
         ),
       ),
     );
