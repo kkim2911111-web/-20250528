@@ -1,0 +1,109 @@
+import 'package:danjicar_app/models/vehicle.dart';
+import 'package:danjicar_app/utils/booking_period_resolver.dart';
+import 'package:danjicar_app/utils/rental_pricing.dart';
+import 'package:flutter_test/flutter_test.dart';
+
+Vehicle _carnivalMonthly() {
+  return const Vehicle(
+    id: '28',
+    complexId: 'c1',
+    name: '카니발9',
+    vehicleType: 'MPV',
+    serviceType: VehicleServiceType.rental,
+    pricePerHour: 0,
+    monthlyPrice: 1100000,
+    rentalTypes: [RentalType.monthly],
+    isAvailable: true,
+    carNumber: '116하1712',
+  );
+}
+
+void main() {
+  final startDay = DateTime(2026, 6, 12);
+
+  group('monthly booking opening', () {
+    test('반납 달력 7월 이동 범위 — 6/12 시작 시 7월·상한 포함', () {
+      final julyDay = DateTime(2026, 7, 15);
+      final maxReturn = RentalPricing.maxReturnDay(startDay);
+
+      expect(
+        BookingPeriodResolver.dateOnly(julyDay).month,
+        7,
+      );
+      expect(
+        BookingPeriodResolver.dateOnly(maxReturn),
+        BookingPeriodResolver.dateOnly(RentalPricing.addMonths(startDay, 11)),
+      );
+    });
+
+    test('35일 선택 → 카니발9 월 110만 노출·2개월 청구 요금', () {
+      final vehicle = _carnivalMonthly();
+      final result = BookingPeriodResolver.resolve(
+        startDay: startDay,
+        returnDay: startDay.add(const Duration(days: 35)),
+        startHour: 9,
+      );
+
+      expect(result.valid, isTrue);
+      expect(result.rentalType, RentalType.monthly);
+      expect(result.months, 2);
+      expect(
+        RentalPricing.displayUnitPriceLabel(vehicle, result.rentalType),
+        '₩1,100,000/월',
+      );
+
+      final checkoutPrice = RentalPricing.calculatePrice(
+        vehicle,
+        RentalType.monthly,
+        hours: 0,
+        days: 1,
+        months: result.months,
+      );
+      expect(checkoutPrice, 2200000);
+    });
+
+    test('29일 daily 회귀', () {
+      final vehicle = _carnivalMonthly();
+      final result = BookingPeriodResolver.resolve(
+        startDay: startDay,
+        returnDay: startDay.add(const Duration(days: 29)),
+        startHour: 9,
+      );
+
+      expect(result.valid, isTrue);
+      expect(result.rentalType, RentalType.daily);
+      expect(result.days, 29);
+      expect(vehicle.supportsRentalType(result.rentalType), isFalse);
+    });
+
+    test('30일 경계 monthly 전환', () {
+      final result = BookingPeriodResolver.resolve(
+        startDay: startDay,
+        returnDay: startDay.add(const Duration(days: 30)),
+        startHour: 9,
+      );
+
+      expect(result.valid, isTrue);
+      expect(result.rentalType, RentalType.monthly);
+      expect(result.months, 1);
+
+      final vehicle = _carnivalMonthly();
+      final price = RentalPricing.calculatePrice(
+        vehicle,
+        RentalType.monthly,
+        hours: 0,
+        days: 1,
+        months: result.months,
+      );
+      expect(price, 1100000);
+    });
+
+    test('월 전용 차량 대표 요금 — ₩0/h 대신 ₩N/월', () {
+      final vehicle = _carnivalMonthly();
+      expect(
+        RentalPricing.displayUnitPriceLabel(vehicle, RentalType.hourly),
+        '₩1,100,000/월',
+      );
+    });
+  });
+}

@@ -116,11 +116,16 @@ abstract final class BookingPeriodResolver {
       );
     }
 
+    final maxReturn = RentalPricing.maxReturnDay(dateOnly(startDay));
+    if (dateOnly(returnDay).isAfter(dateOnly(maxReturn))) {
+      return BookingPeriodResult.inquiry(BookingPeriodInquiry.monthlyOverMax);
+    }
+
     final type = RentalPricing.inferRentalTypeFromInterval(start: start, end: end);
     if (type == RentalType.daily) {
       final days = RentalPricing.inferDaysBetween(start, end);
-      if (days == null || days > RentalPricing.maxDailyDays) {
-        return BookingPeriodResult.inquiry(BookingPeriodInquiry.dailyOverMax);
+      if (days == null) {
+        return BookingPeriodResult.invalid();
       }
       return BookingPeriodResult(
         rentalType: RentalType.daily,
@@ -133,7 +138,8 @@ abstract final class BookingPeriodResolver {
       );
     }
 
-    final months = RentalPricing.inferMonthsBetween(start, end);
+    final months = RentalPricing.inferMonthsBetween(start, end) ??
+        RentalPricing.inferBillingMonthsBetween(start, end);
     if (months == null) {
       return BookingPeriodResult.inquiry(BookingPeriodInquiry.monthlyOverMax);
     }
@@ -151,9 +157,9 @@ abstract final class BookingPeriodResolver {
   static String inquiryMessage(BookingPeriodInquiry inquiry) {
     switch (inquiry) {
       case BookingPeriodInquiry.dailyOverMax:
-        return '30일 이상 대여는 전화로 문의해주세요.';
+        return '30일 이상 대여는 앱에서 월 단위로 예약하시거나 전화로 문의해 주세요.';
       case BookingPeriodInquiry.monthlyOverMax:
-        return '12개월 이상 대여는 전화로 문의해주세요.';
+        return '11개월을 초과하는 장기 대여는 전화로 문의해 주세요.';
     }
   }
 }

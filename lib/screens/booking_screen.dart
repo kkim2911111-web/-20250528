@@ -786,7 +786,11 @@ class _BookingScreenState extends State<BookingScreen> {
     if (!_isCalendarDayEnabled(day)) return false;
     final start = _startDay;
     if (start == null) return false;
-    return !_tableCalendarDay(day).isBefore(_tableCalendarDay(start));
+    final dayOnly = _tableCalendarDay(day);
+    if (dayOnly.isBefore(_tableCalendarDay(start))) return false;
+    final maxReturn =
+        _tableCalendarDay(RentalPricing.maxReturnDay(_localDateOnly(start)));
+    return !dayOnly.isAfter(maxReturn);
   }
 
   Future<void> _openStartDayPicker() async {
@@ -819,10 +823,19 @@ class _BookingScreenState extends State<BookingScreen> {
     final start = _startDay;
     if (start == null) return;
 
+    final calendarToday = _tableCalendarDay(DateTime.now());
+    final startDayOnly = _tableCalendarDay(start);
+    final firstDay =
+        startDayOnly.isAfter(calendarToday) ? startDayOnly : calendarToday;
+    final lastDay =
+        _tableCalendarDay(RentalPricing.maxReturnDay(_localDateOnly(start)));
+
     await _openBookingDayPicker(
       title: '반납 일자',
       focusedDay: _returnFocusedDay,
       selectedDay: _returnDay,
+      calendarFirstDay: firstDay,
+      calendarLastDay: lastDay,
       enabledDayPredicate: _isReturnDayEnabled,
       onSelected: (selectedDay, newFocused) async {
         final picked = _calendarDateOnly(selectedDay);
@@ -863,6 +876,8 @@ class _BookingScreenState extends State<BookingScreen> {
     required Future<void> Function(DateTime selectedDay, DateTime newFocused)
         onSelected,
     required void Function(DateTime newFocused) onFocusedChanged,
+    DateTime? calendarFirstDay,
+    DateTime? calendarLastDay,
   }) async {
     await showModalBottomSheet<void>(
       context: context,
@@ -876,6 +891,11 @@ class _BookingScreenState extends State<BookingScreen> {
           builder: (context, setSheetState) {
             var focused = _tableCalendarDay(focusedDay);
             final calendarToday = _tableCalendarDay(DateTime.now());
+            final firstDay = calendarFirstDay ?? calendarToday;
+            final lastDay = calendarLastDay ??
+                calendarToday.add(const Duration(days: 365));
+            if (focused.isBefore(firstDay)) focused = firstDay;
+            if (focused.isAfter(lastDay)) focused = lastDay;
             return SafeArea(
               child: Padding(
                 padding: const EdgeInsets.fromLTRB(8, 12, 8, 16),
@@ -894,9 +914,10 @@ class _BookingScreenState extends State<BookingScreen> {
                     Text(title, style: DanjiTypography.subtitleLarge),
                     const SizedBox(height: 8),
                     TableCalendar<void>(
-                      firstDay: calendarToday,
-                      lastDay: calendarToday.add(const Duration(days: 365)),
+                      firstDay: firstDay,
+                      lastDay: lastDay,
                       focusedDay: focused,
+                      availableGestures: AvailableGestures.all,
                       currentDay: calendarToday,
                       selectedDayPredicate: (d) =>
                           selectedDay != null &&
@@ -1343,8 +1364,13 @@ class _BookingScreenState extends State<BookingScreen> {
                                 ),
                               );
                             }
-                            return const _BookingNoAvailableVehiclesEmpty();
+                            return const _BookingVehiclePoolEmpty(
+                              kind: _BookingVehiclePoolEmptyKind.noTypeVehicles,
+                            );
                           }
+
+                          final allBlocked =
+                              entries.every((entry) => entry.isBlocked);
 
                           return Column(
                             children: [
@@ -1366,6 +1392,13 @@ class _BookingScreenState extends State<BookingScreen> {
                                             _selectVehicle(entry.vehicle),
                                   ),
                                 ),
+                              if (allBlocked) ...[
+                                const SizedBox(height: 8),
+                                const _BookingVehiclePoolEmpty(
+                                  kind:
+                                      _BookingVehiclePoolEmptyKind.allBlocked,
+                                ),
+                              ],
                             ],
                           );
                         },
@@ -1752,7 +1785,7 @@ class _BookingRentalDeliveryNotice extends StatelessWidget {
         border: Border.all(color: const Color(0xFFD6E8FF)),
       ),
       child: const Text(
-        '원하시는 장소로 차량을 배달해 드립니다',
+        '예약하신 단지로 차량을 준비해 드립니다',
         style: TextStyle(
           color: DanjiColors.buttonBlue,
           fontSize: 14,
@@ -1894,7 +1927,8 @@ class _BookingVehicleCard extends StatelessWidget {
       months: durationMonths,
     );
     final isElectric = _isElectricVehicleType(vehicle.vehicleType);
-    final unitPriceLabel = RentalPricing.unitPriceLabel(vehicle, rentalType);
+    final unitPriceLabel =
+        RentalPricing.displayUnitPriceLabel(vehicle, rentalType);
     final plate = vehicle.carNumber?.trim();
     final nameColor =
         _isBlocked ? _disabledText : DanjiColors.textPrimary;
@@ -2203,29 +2237,42 @@ class _BookingSelectionIndicator extends StatelessWidget {
   }
 }
 
-class _BookingNoAvailableVehiclesEmpty extends StatelessWidget {
-  const _BookingNoAvailableVehiclesEmpty();
+enum _BookingVehiclePoolEmptyKind { noTypeVehicles, allBlocked }
+
+class _BookingVehiclePoolEmpty extends StatelessWidget {
+  final _BookingVehiclePoolEmptyKind kind;
+
+  const _BookingVehiclePoolEmpty({required this.kind});
 
   static const _brandBlue = Color(0xFF3182F6);
 
   @override
   Widget build(BuildContext context) {
+    final isNoType = kind == _BookingVehiclePoolEmptyKind.noTypeVehicles;
+    final title = isNoType
+        ? '이 기간 대여 가능한 차량이 아직 없습니다'
+        : '선택하신 기간에는 예약 가능한 차량이 없습니다';
+    final subtitle = isNoType
+        ? '다른 기간을 선택하시거나 전화로 문의해 주세요.'
+        : '다른 일정을 선택하시거나 전화로 문의해 주세요.';
+
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 40),
+      padding: EdgeInsets.symmetric(vertical: isNoType ? 40 : 16),
       child: Center(
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            const Icon(
-              Icons.directions_car_outlined,
-              size: 48,
-              color: _brandBlue,
-            ),
-            const SizedBox(height: 16),
-            const Text(
-              '현재 대여 가능한 차량이 없습니다.',
+            if (isNoType)
+              const Icon(
+                Icons.directions_car_outlined,
+                size: 48,
+                color: _brandBlue,
+              ),
+            if (isNoType) const SizedBox(height: 16),
+            Text(
+              title,
               textAlign: TextAlign.center,
-              style: TextStyle(
+              style: const TextStyle(
                 fontSize: 15,
                 fontWeight: FontWeight.w500,
                 color: Color(0xFF333333),
@@ -2233,10 +2280,10 @@ class _BookingNoAvailableVehiclesEmpty extends StatelessWidget {
               ),
             ),
             const SizedBox(height: 8),
-            const Text(
-              '다른 시간대를 선택하거나 일반렌트로 문의해보세요.',
+            Text(
+              subtitle,
               textAlign: TextAlign.center,
-              style: TextStyle(
+              style: const TextStyle(
                 fontSize: 13,
                 color: Color(0xFF888888),
                 height: 1.45,
@@ -2259,7 +2306,7 @@ class _BookingNoAvailableVehiclesEmpty extends StatelessWidget {
                     fontWeight: FontWeight.w600,
                   ),
                 ),
-                child: const Text('일반렌트 문의하기'),
+                child: const Text('전화 문의하기'),
               ),
             ),
           ],

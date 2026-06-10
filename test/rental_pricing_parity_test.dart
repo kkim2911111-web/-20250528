@@ -133,11 +133,20 @@ void main() {
       );
     });
 
-    test('>30일 → monthly', () {
+    test('30일 이상 → monthly', () {
       final start = DateTime(2026, 5, 1, 9);
-      final end = start.add(const Duration(days: 31));
       expect(
-        RentalPricing.inferRentalTypeFromInterval(start: start, end: end),
+        RentalPricing.inferRentalTypeFromInterval(
+          start: start,
+          end: start.add(const Duration(days: 30)),
+        ),
+        RentalType.monthly,
+      );
+      expect(
+        RentalPricing.inferRentalTypeFromInterval(
+          start: start,
+          end: start.add(const Duration(days: 35)),
+        ),
         RentalType.monthly,
       );
     });

@@ -157,6 +157,21 @@ class RentalPricing {
     }
   }
 
+  /// rental_types 기준 대표 단가 (시간 미지원 차량의 ₩0/h 방지)
+  static RentalType representativeRentalType(Vehicle vehicle) {
+    final types = vehicle.rentalTypes;
+    if (types.contains(RentalType.monthly)) return RentalType.monthly;
+    if (types.contains(RentalType.daily)) return RentalType.daily;
+    return RentalType.hourly;
+  }
+
+  static String displayUnitPriceLabel(Vehicle vehicle, RentalType periodType) {
+    final billingType = vehicle.supportsRentalType(periodType)
+        ? periodType
+        : representativeRentalType(vehicle);
+    return unitPriceLabel(vehicle, billingType);
+  }
+
   static String _formatWon(int amount) {
     final s = amount.toString();
     final buf = StringBuffer('₩');
@@ -273,14 +288,14 @@ class RentalPricing {
     }
   }
 
-  /// 기간으로 rental_type 추론 (DB 백필 규칙과 동일)
+  /// 기간으로 rental_type 추론 — 24h 미만 hourly / 24h~30일 미만 daily / 30일+ monthly
   static RentalType inferRentalTypeFromInterval({
     required DateTime start,
     required DateTime end,
   }) {
     final seconds = end.difference(start).inSeconds;
     if (seconds < 86400) return RentalType.hourly;
-    if (seconds <= 30 * 86400) return RentalType.daily;
+    if (seconds < 30 * 86400) return RentalType.daily;
     return RentalType.monthly;
   }
 
@@ -302,6 +317,17 @@ class RentalPricing {
     }
     return null;
   }
+
+  /// 비정수 월(35일 등) — 30일 단위 올림 청구 개월 수
+  static int? inferBillingMonthsBetween(DateTime start, DateTime end) {
+    final days = end.difference(start).inDays;
+    if (days < 30) return null;
+    final months = (days + 29) ~/ 30;
+    if (months > maxMonthlyMonths) return null;
+    return months;
+  }
+
+  static DateTime maxReturnDay(DateTime startDay) => addMonths(startDay, maxMonthlyMonths);
 
   /// start/end + rental_type으로 기본 요금 계산 (서버 calc_rental_base_price 동일)
   static int? calculateBasePriceFromInterval({
@@ -327,7 +353,8 @@ class RentalPricing {
         if (days == null) return null;
         return days * effectiveDaily;
       case RentalType.monthly:
-        final months = inferMonthsBetween(start, end);
+        final months =
+            inferMonthsBetween(start, end) ?? inferBillingMonthsBetween(start, end);
         if (months == null) return null;
         return months * effectiveMonthly;
     }

@@ -43,14 +43,15 @@ void main() {
       expect(result.end.hour, 14);
     });
 
-    test('30일 초과 일수 → 전화 문의', () {
+    test('29일 → daily 유지', () {
       final result = BookingPeriodResolver.resolve(
         startDay: startDay,
-        returnDay: startDay.add(const Duration(days: 30)),
+        returnDay: startDay.add(const Duration(days: 29)),
         startHour: 9,
       );
-      expect(result.valid, isFalse);
-      expect(result.inquiry, BookingPeriodInquiry.dailyOverMax);
+      expect(result.valid, isTrue);
+      expect(result.rentalType, RentalType.daily);
+      expect(result.days, 29);
     });
   });
 
@@ -66,14 +67,45 @@ void main() {
       expect(result.months, 2);
     });
 
-    test('31일(비정형) → 전화 문의', () {
+    test('30일 경계 → monthly 1개월', () {
       final result = BookingPeriodResolver.resolve(
         startDay: startDay,
-        returnDay: startDay.add(const Duration(days: 31)),
+        returnDay: startDay.add(const Duration(days: 30)),
         startHour: 9,
       );
-      expect(result.valid, isFalse);
-      expect(result.inquiry, BookingPeriodInquiry.monthlyOverMax);
+      expect(result.valid, isTrue);
+      expect(result.rentalType, RentalType.monthly);
+      expect(result.months, 1);
+    });
+
+    test('35일(비정수 월) → monthly 2개월 청구', () {
+      final result = BookingPeriodResolver.resolve(
+        startDay: startDay,
+        returnDay: startDay.add(const Duration(days: 35)),
+        startHour: 9,
+      );
+      expect(result.valid, isTrue);
+      expect(result.rentalType, RentalType.monthly);
+      expect(result.months, 2);
+    });
+
+    test('반납 달력 상한 — 시작일+11개월까지 선택 가능', () {
+      final maxReturn = RentalPricing.maxReturnDay(startDay);
+      final within = BookingPeriodResolver.resolve(
+        startDay: startDay,
+        returnDay: maxReturn,
+        startHour: 9,
+      );
+      expect(within.valid, isTrue);
+      expect(within.inquiry, isNull);
+
+      final over = BookingPeriodResolver.resolve(
+        startDay: startDay,
+        returnDay: maxReturn.add(const Duration(days: 1)),
+        startHour: 9,
+      );
+      expect(over.valid, isFalse);
+      expect(over.inquiry, BookingPeriodInquiry.monthlyOverMax);
     });
 
     test('12개월 초과 → 전화 문의', () {

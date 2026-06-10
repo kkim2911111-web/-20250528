@@ -167,7 +167,12 @@ class _SuperAdminRevenueScreenState extends State<SuperAdminRevenueScreen> {
                                   subtitle: '예약 ${r.reservationCount}건 · '
                                       '₩${superAdminWon.format(r.totalRevenue)}',
                                   trailing: SuperAdminChip(
-                                    label: r.settlementBadgeLabel,
+                                    label: settlementStatusLabel(
+                                      isSettled: r.isSettled,
+                                      isRequested: r.isRequested,
+                                      revenueAmount: r.totalRevenue,
+                                      settledLabel: '완료',
+                                    ),
                                     color: settlementBadgeColor(
                                       isSettled: r.isSettled,
                                       isRequested: r.isRequested,
