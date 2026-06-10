@@ -155,30 +155,6 @@ class ReservationCard extends StatelessWidget {
               onPressed: onCancelTap,
               fullWidth: true,
             ),
-            if (!manageActionsEnabled) ...[
-              const SizedBox(height: 8),
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Icon(
-                    Icons.info_outline,
-                    size: 14,
-                    color: DanjiColors.textMuted,
-                  ),
-                  const SizedBox(width: 6),
-                  Expanded(
-                    child: Text(
-                      ReservationCancelMessages.tooLate,
-                      style: TextStyle(
-                        color: DanjiColors.textSecondary,
-                        fontSize: 12,
-                        height: 1.4,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ],
           ],
           if (showCancelOnly && onCancelOnlyTap != null) ...[
             const SizedBox(height: 10),

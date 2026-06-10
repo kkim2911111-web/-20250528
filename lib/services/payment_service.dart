@@ -972,10 +972,8 @@ String _mapCancelError(String message) {
   if (lower.contains(maintenanceActiveCode)) {
     return AppMaintenanceService.instance.cached.message;
   }
-  if (lower.contains('cancel_too_late') ||
-      lower.contains('1시간') ||
-      lower.contains('60분')) {
-    return ReservationCancelMessages.tooLate;
+  if (lower.contains('refund_amount_mismatch')) {
+    return '환불 금액이 변경되었습니다. 다시 시도해주세요.';
   }
   if (lower.contains('invalid input syntax for type uuid')) {
     return '예약 취소 처리 중 ID 형식 오류가 발생했습니다. 잠시 후 다시 시도해주세요.';
@@ -985,8 +983,8 @@ String _mapCancelError(String message) {
 
 String _friendlyCancelError(PostgrestException error) {
   final msg = error.message.toLowerCase();
-  if (msg.contains('cancel_too_late')) {
-    return ReservationCancelMessages.tooLate;
+  if (msg.contains('refund_amount_mismatch')) {
+    return '환불 금액이 변경되었습니다. 다시 시도해주세요.';
   }
   if (msg.contains('invalid_status')) {
     return '취소할 수 없는 예약 상태입니다.';

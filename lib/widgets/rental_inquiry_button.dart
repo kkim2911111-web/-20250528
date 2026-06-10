@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../utils/rental_inquiry_flow.dart';
 
-/// 홈 화면 — 일반 렌트 문의 버튼 (카드형)
+/// 홈 화면 — 보험대차 문의 버튼 (카드형)
 class RentalInquiryButton extends StatelessWidget {
   const RentalInquiryButton({super.key});
 
@@ -37,7 +37,7 @@ class RentalInquiryButton extends StatelessWidget {
                   borderRadius: BorderRadius.circular(10),
                 ),
                 child: const Icon(
-                  Icons.phone_outlined,
+                  Icons.shield_outlined,
                   size: 18,
                   color: _primaryBlue,
                 ),
@@ -49,7 +49,7 @@ class RentalInquiryButton extends StatelessWidget {
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     Text(
-                      '일반렌트문의',
+                      '자동차사고 보험대차 문의',
                       style: TextStyle(
                         fontSize: 14,
                         fontWeight: FontWeight.w500,
@@ -59,7 +59,7 @@ class RentalInquiryButton extends StatelessWidget {
                     ),
                     SizedBox(height: 2),
                     Text(
-                      '24시간 이상 대여 시 문의주세요.',
+                      '사고 시 보험사 대차, 단지에서 바로 이용',
                       style: TextStyle(
                         fontSize: 11,
                         color: Color(0xFF888888),

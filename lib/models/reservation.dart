@@ -38,6 +38,7 @@ class Reservation {
   final bool isNoShow;
   final String? reservationNumber;
   final RentalType? rentalType;
+  final int refundAmount;
 
   const Reservation({
     required this.id,
@@ -72,6 +73,7 @@ class Reservation {
     this.isNoShow = false,
     this.reservationNumber,
     this.rentalType,
+    this.refundAmount = 0,
   });
 
   bool get hasSecondDriver {
@@ -119,8 +121,12 @@ class Reservation {
       isNoShow: map['is_no_show'] == true,
       reservationNumber: map['reservation_number']?.toString(),
       rentalType: RentalType.fromDb(map['rental_type']?.toString()),
+      refundAmount: (map['refund_amount'] as num?)?.toInt() ?? 0,
     );
   }
+
+  /// 환불 견적·정책 계산용 결제액 (서버는 payment_orders 우선).
+  int get paidAmount => totalPrice;
 
   bool get hasContractContent {
     final c = contractContent?.trim();
@@ -229,18 +235,8 @@ class Reservation {
       isCancellableStatus &&
       isBeforeRentalStart;
 
-  /// 예약 취소 가능 — 대여 시작 1시간(60분) 전까지만 (미결제 pending 은 시작 전이면 가능)
-  bool get canCancel {
-    if (!canShowCancelButton) return false;
-    if (status == 'pending' && !isPaid) return true;
-    final start = _start;
-    if (start == null) return true;
-    return DateTime.now().add(const Duration(hours: 1)).isBefore(start);
-  }
-
-  /// 대여 1시간(60분) 이내로 취소 불가
-  bool get isCancelBlocked =>
-      canShowCancelButton && !canCancel;
+  /// 예약 취소 가능 — 대여 시작 전이면 언제든 (환불율은 별도 정책)
+  bool get canCancel => canShowCancelButton;
 
   /// 예약취소 버튼 표시 — 이용 대기(pending/confirmed), 대여 시작 전
   bool get shouldShowCancelButton => canShowCancelButton;
@@ -437,8 +433,10 @@ abstract final class RentalStartMessages {
 abstract final class ReservationCancelMessages {
   static const success = '예약취소가 완료되었습니다.';
   static const alreadyCancelled = '이미 취소된 예약입니다.';
-  static const tooLate = '대여예약 1시간(60분)이전에는 예약취소가 불가능합니다';
-  static const waitingGuide = '대여 시작 1시간 전까지 취소 시 전액 환불됩니다.';
+  static const waitingGuide =
+      '카셰어링(시간): 출고 1시간 전까지 전액 환불 · '
+      '일·월 렌트: 출고 72시간 전 전액, 72~24시간 50%, 24시간 이내 환불 없음. '
+      '모든 구간에서 취소 가능하며, 전액 환불 시 쿠폰·포인트가 복구됩니다.';
 }
 
 /// DB에서 이미 삭제·취소된 예약에 재요청할 때

@@ -8,6 +8,7 @@ import '../constants/payment_order_status.dart';
 import '../models/reservation.dart';
 import '../models/vehicle.dart';
 import '../supabase_client.dart';
+import '../utils/cancel_refund_policy.dart';
 import 'payment_service.dart';
 import 'reservation_refresh_bus.dart';
 import 'push_notification_service.dart';
@@ -27,7 +28,8 @@ class RentalService {
   /// PostgREST * 가 DB에 없는 updated_at 을 포함할 때 오류 방지
   static const _selectFull = '''
 id,reservation_number,user_id,vehicle_id,start_at,end_at,start_time,end_time,total_price,status,
-payment_key,order_id,payment_status,rental_started_at,returned_at,actual_end_at,
+payment_key,order_id,payment_status,rental_type,refund_amount,cancelled_at,
+rental_started_at,returned_at,actual_end_at,
 return_type,is_no_show,early_return_confirmed_at,
 pickup_photos,return_photos,mileage_start,mileage_end,
 fuel_level_start,fuel_level_end,is_accident,accident_note,door_unlocked,
@@ -910,6 +912,43 @@ contract_content,second_driver_name,second_driver_license
     );
   }
 
+  /// 서버 환불 견적 (취소 확인 화면 — authoritative).
+  Future<CancelRefundQuote> previewCancelRefund(String reservationId) async {
+    final user = supabase.auth.currentUser;
+    if (user == null) {
+      throw const AuthException('로그인이 필요합니다.');
+    }
+
+    try {
+      final data = await supabase.rpc('preview_cancel_refund_for_me', params: {
+        'p_reservation_id': reservationId,
+      });
+      if (data is Map<String, dynamic>) {
+        return CancelRefundQuote.fromRpc(data);
+      }
+      if (data is Map) {
+        return CancelRefundQuote.fromRpc(Map<String, dynamic>.from(data));
+      }
+    } on PostgrestException catch (e) {
+      final msg = e.message.toLowerCase();
+      if (!msg.contains('could not find the function') &&
+          !msg.contains('preview_cancel_refund_for_me')) {
+        throw RentalException(friendlyRentalError(e));
+      }
+    }
+
+    final reservation = await fetchReservation(reservationId);
+    if (reservation == null) {
+      throw const RentalException('예약 정보를 찾을 수 없습니다.');
+    }
+    return CancelRefundQuote.fromReservation(
+      reservationId: reservation.id,
+      startAt: reservation.startAt,
+      paidAmount: reservation.paidAmount,
+      rentalType: reservation.rentalType,
+    );
+  }
+
   Future<Map<String, dynamic>> cancelReservation(String reservationId) async {
     final user = supabase.auth.currentUser;
     if (user == null) {
@@ -935,7 +974,10 @@ contract_content,second_driver_name,second_driver_license
         reservationId: reservationId,
       );
       await _assertReservationCancelled(reservationId);
-      await _runPostCancelRestoreRpcs(reservationId);
+      await _runPostCancelRestoreRpcs(
+        reservationId,
+        restoreBenefits: _shouldRestoreBenefitsFromCancelResult(result),
+      );
       RentalService.signalListRefresh();
       return result;
     } catch (e) {
@@ -1061,9 +1103,6 @@ contract_content,second_driver_name,second_driver_license
 
     final reservation = Reservation.fromMap(Map<String, dynamic>.from(row));
     if (!reservation.canCancel) {
-      if (reservation.isCancelBlocked) {
-        throw RentalException(ReservationCancelMessages.tooLate);
-      }
       throw const RentalException('취소할 수 없는 예약 상태입니다.');
     }
 
@@ -1072,7 +1111,10 @@ contract_content,second_driver_name,second_driver_license
         'p_reservation_id': reservationId,
       });
       await _assertReservationCancelled(reservationId);
-      await _runPostCancelRestoreRpcs(reservationId);
+      await _runPostCancelRestoreRpcs(
+        reservationId,
+        restoreBenefits: _shouldRestoreBenefitsFromCancelResult(_asMap(data)),
+      );
       RentalService.signalListRefresh();
       return _asMap(data);
     } on PostgrestException catch (e) {
@@ -1108,7 +1150,7 @@ contract_content,second_driver_name,second_driver_license
         .eq('user_id', userId);
 
     await _assertReservationCancelled(reservationId);
-    await _runPostCancelRestoreRpcs(reservationId);
+    await _runPostCancelRestoreRpcs(reservationId, restoreBenefits: true);
 
     if (orderId != null && orderId.isNotEmpty) {
       try {
@@ -1124,21 +1166,52 @@ contract_content,second_driver_name,second_driver_license
     return {'reservationId': reservationId, 'deleted': true};
   }
 
-  /// 예약 취소 후 쿠폰·포인트 복구 (DB가 스킵 처리).
-  Future<void> _runPostCancelRestoreRpcs(String reservationId) async {
+  bool _shouldRestoreBenefitsFromCancelResult(Map<String, dynamic>? result) {
+    if (result == null) return false;
+    if (result['restoreBenefits'] == true) return true;
+    final rate = (result['refundRate'] as num?)?.toDouble();
+    if (rate != null && rate >= 1) return true;
+    final paid = (result['paidAmount'] as num?)?.toInt() ?? 0;
+    return paid <= 0;
+  }
+
+  /// 전액 환불(또는 카드 결제 0원) 시에만 쿠폰·포인트 복구.
+  Future<void> _runPostCancelRestoreRpcs(
+    String reservationId, {
+    bool restoreBenefits = false,
+  }) async {
     final user = supabase.auth.currentUser;
     if (user == null) {
       debugPrint('[cancel] skip restore RPCs — not logged in');
+      return;
+    }
+    if (!restoreBenefits) {
+      debugPrint('[cancel] skip restore — partial or no refund');
       return;
     }
 
     final params = {
       'p_user_id': user.id,
       'p_reservation_id': reservationId,
+      'p_restore_benefits': true,
     };
 
     try {
-      final data = await supabase.rpc('restore_user_coupon', params: params);
+      final data = await supabase.rpc(
+        'restore_booking_benefits_after_cancel',
+        params: params,
+      );
+      debugPrint('[cancel] restore_booking_benefits_after_cancel ok: $data');
+      return;
+    } catch (e, st) {
+      debugPrint('[cancel] restore_booking_benefits_after_cancel failed: $e\n$st');
+    }
+
+    try {
+      final data = await supabase.rpc('restore_user_coupon', params: {
+        'p_user_id': user.id,
+        'p_reservation_id': reservationId,
+      });
       debugPrint('[cancel] restore_user_coupon ok: $data');
     } catch (e, st) {
       debugPrint('[cancel] restore_user_coupon failed: $e\n$st');
@@ -1146,7 +1219,7 @@ contract_content,second_driver_name,second_driver_license
 
     try {
       await supabase.rpc('restore_used_points', params: {
-        'p_user_id': supabase.auth.currentUser!.id,
+        'p_user_id': user.id,
         'p_reservation_id': reservationId.toString(),
       });
       debugPrint('[cancel] restore_used_points ok');
@@ -1557,8 +1630,8 @@ String friendlyRentalError(PostgrestException error) {
   if (msg.contains('expired')) {
     return '예약 시간이 지나 대여를 시작할 수 없습니다.';
   }
-  if (msg.contains('cancel_too_late')) {
-    return ReservationCancelMessages.tooLate;
+  if (msg.contains('refund_amount_mismatch')) {
+    return '환불 금액이 변경되었습니다. 다시 시도해주세요.';
   }
   if (msg.contains('auto_complete_expired_reservations_for_me') &&
       msg.contains('could not find')) {

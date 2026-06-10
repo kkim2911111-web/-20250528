@@ -9,6 +9,8 @@ import '../theme/danji_colors.dart';
 import '../theme/danji_theme.dart';
 import '../theme/danji_typography.dart';
 import '../widgets/danji_app_bar.dart';
+import '../utils/cancel_refund_policy.dart';
+import '../widgets/reservation_cancel_dialog.dart';
 import '../widgets/reservation_price_display.dart';
 import '../utils/rental_navigation.dart';
 import '../utils/reservation_display.dart';
@@ -257,9 +259,7 @@ class _MyReservationsScreenState extends State<MyReservationsScreen> {
 
   Future<void> _onCancelTap(Reservation reservation) async {
     if (!reservation.canCancel) {
-      if (reservation.isCancelBlocked) {
-        _showCancelSnack(ReservationCancelMessages.tooLate);
-      }
+      _showCancelSnack('취소할 수 없는 예약입니다.');
       return;
     }
     await _cancelReservation(reservation);
@@ -276,36 +276,21 @@ class _MyReservationsScreenState extends State<MyReservationsScreen> {
   }
 
   Future<void> _cancelReservation(Reservation reservation) async {
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        backgroundColor: DanjiColors.surface,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        title: const Text(
-          '예약 취소',
-          style: TextStyle(
-            color: DanjiColors.textPrimary,
-            fontWeight: FontWeight.w800,
-          ),
-        ),
-        content: const Text(
-          '정말 취소하시겠습니까? 결제하신 금액은 전액 환불됩니다.',
-          style: TextStyle(color: DanjiColors.textSecondary, height: 1.5),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('닫기'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            style: DanjiTheme.dangerButton,
-            child: const Text('예약취소'),
-          ),
-        ],
-      ),
+    CancelRefundQuote quote;
+    try {
+      quote = await _service.previewCancelRefund(reservation.id);
+    } catch (e) {
+      if (!mounted) return;
+      _showCancelSnack(e.toString().replaceFirst('RentalException: ', ''));
+      return;
+    }
+
+    if (!mounted) return;
+    final confirmed = await showReservationCancelConfirmDialog(
+      context,
+      quote: quote,
     );
-    if (confirmed != true || !mounted) return;
+    if (!confirmed || !mounted) return;
 
     showDialog<void>(
       context: context,
@@ -511,7 +496,6 @@ class _MyReservationsScreenState extends State<MyReservationsScreen> {
                             item.status == 'in_use',
                         onReturn: null,
                         showCancelButton: item.shouldShowCancelButton,
-                        cancelBlocked: item.isCancelBlocked,
                         onCancelTap: item.shouldShowCancelButton
                             ? () => _onCancelTap(item)
                             : null,
@@ -816,7 +800,6 @@ class _ReservationCard extends StatelessWidget {
   final VoidCallback? onReturn;
   final VoidCallback? onCancelTap;
   final bool showCancelButton;
-  final bool cancelBlocked;
   final bool useVehicleEnabled;
   final bool showContractButton;
   final VoidCallback? onContractTap;
@@ -832,7 +815,6 @@ class _ReservationCard extends StatelessWidget {
     this.onReturn,
     this.onCancelTap,
     this.showCancelButton = false,
-    this.cancelBlocked = false,
     this.useVehicleEnabled = true,
     this.showContractButton = false,
     this.onContractTap,
@@ -858,6 +840,7 @@ class _ReservationCard extends StatelessWidget {
   }
 
   int get _refundAmount {
+    if (reservation.refundAmount > 0) return reservation.refundAmount;
     if (pricing != null && pricing!.finalPrice > 0) {
       return pricing!.finalPrice;
     }
@@ -985,16 +968,16 @@ class _ReservationCard extends StatelessWidget {
                 height: 1.4,
               ),
             ),
-            if (_refundAmount > 0) ...[
-              const SizedBox(height: 4),
-              Text(
-                '환불금액 ₩${won.format(_refundAmount)}',
-                style: DanjiTypography.caption.copyWith(
-                  color: DanjiColors.accentRed,
-                  fontWeight: FontWeight.w700,
-                ),
+            const SizedBox(height: 4),
+            Text(
+              _refundAmount > 0
+                  ? '환불금액 ₩${won.format(_refundAmount)}'
+                  : '환불금액 ₩0',
+              style: DanjiTypography.caption.copyWith(
+                color: DanjiColors.accentRed,
+                fontWeight: FontWeight.w700,
               ),
-            ],
+            ),
           ],
           if (start != null && end != null) ...[
             const SizedBox(height: 8),
@@ -1087,21 +1070,17 @@ class _ReservationCard extends StatelessWidget {
             SizedBox(
               width: double.infinity,
               child: OutlinedButton.icon(
-                onPressed: cancelBlocked ? null : onCancelTap,
-                icon: Icon(
+                onPressed: onCancelTap,
+                icon: const Icon(
                   Icons.event_busy_outlined,
                   size: 18,
-                  color: cancelBlocked
-                      ? DanjiColors.textMuted
-                      : DanjiColors.accentRed,
+                  color: DanjiColors.accentRed,
                 ),
                 label: const Text('예약취소'),
                 style: OutlinedButton.styleFrom(
                   foregroundColor: DanjiColors.accentRed,
                   side: BorderSide(
-                    color: cancelBlocked
-                        ? DanjiColors.border
-                        : DanjiColors.accentRed.withValues(alpha: 0.6),
+                    color: DanjiColors.accentRed.withValues(alpha: 0.6),
                   ),
                   backgroundColor: DanjiColors.surface,
                   padding: const EdgeInsets.symmetric(vertical: 13),
@@ -1111,30 +1090,6 @@ class _ReservationCard extends StatelessWidget {
                 ),
               ),
             ),
-            if (cancelBlocked) ...[
-              const SizedBox(height: 8),
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Icon(
-                    Icons.info_outline,
-                    size: 14,
-                    color: DanjiColors.textMuted,
-                  ),
-                  const SizedBox(width: 6),
-                  Expanded(
-                    child: Text(
-                      ReservationCancelMessages.tooLate,
-                      style: TextStyle(
-                        color: DanjiColors.textSecondary,
-                        fontSize: 12,
-                        height: 1.4,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ],
           ],
           if (_guideMessage != null) ...[
             const SizedBox(height: 10),

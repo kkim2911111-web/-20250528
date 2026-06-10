@@ -27,6 +27,8 @@ import '../utils/accident_emergency_flow.dart';
 import '../utils/rental_extension_flow.dart';
 import '../utils/rental_navigation.dart';
 import '../utils/booking_eligibility.dart';
+import '../utils/cancel_refund_policy.dart';
+import '../widgets/reservation_cancel_dialog.dart';
 import '../services/app_maintenance_service.dart';
 import '../widgets/maintenance_mode_screen.dart';
 import '../widgets/danji_brand_title.dart';
@@ -384,42 +386,29 @@ class HomeScreenState extends State<HomeScreen> {
   }
 
   Future<void> _onCancelReservation(Reservation reservation) async {
-    if (reservation.isCancelBlocked) {
-      DanjiSnackBar.show(context, ReservationCancelMessages.tooLate);
-      return;
-    }
     if (!reservation.canCancel) {
       DanjiSnackBar.show(context, '취소할 수 없는 예약입니다.');
       return;
     }
 
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        backgroundColor: DanjiColors.surface,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        title: Text('예약 취소', style: DanjiTypography.subtitleLarge),
-        content: Text(
-          '정말 취소하시겠습니까? 결제하신 금액은 전액 환불됩니다.',
-          style: DanjiTypography.bodyRegular.copyWith(
-            color: DanjiColors.textSecondary,
-            height: 1.5,
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('닫기'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            style: DanjiTheme.dangerButton,
-            child: const Text('예약취소'),
-          ),
-        ],
-      ),
+    CancelRefundQuote quote;
+    try {
+      quote = await _rentalService.previewCancelRefund(reservation.id);
+    } catch (e) {
+      if (!mounted) return;
+      DanjiSnackBar.show(
+        context,
+        e.toString().replaceFirst('RentalException: ', ''),
+      );
+      return;
+    }
+
+    if (!mounted) return;
+    final confirmed = await showReservationCancelConfirmDialog(
+      context,
+      quote: quote,
     );
-    if (confirmed != true || !mounted) return;
+    if (!confirmed || !mounted) return;
 
     setState(() => _hiddenReservationIds.add(reservation.id));
 
@@ -566,14 +555,9 @@ String _formatTimeRemaining(DateTime end) {
   return '곧 종료';
 }
 
-/// 퀵메뉴 예약취소 — [Reservation.startAt]까지 60분 이상 남은 경우만 표시
-bool _canShowCancelButton(Reservation reservation) {
-  final reservationStartAt = reservation.startAt;
-  if (reservationStartAt == null) return false;
-  return DateTime.now()
-      .add(const Duration(hours: 1))
-      .isBefore(reservationStartAt);
-}
+/// 퀵메뉴 예약취소 — 대여 시작 전 이용 대기 예약
+bool _canShowCancelButton(Reservation reservation) =>
+    reservation.shouldShowCancelButton;
 
 class _HomeReservationSection extends StatefulWidget {
   final List<Reservation> reservations;
