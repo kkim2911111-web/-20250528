@@ -49,20 +49,26 @@ class _SuperAdminDashboardScreenState extends State<SuperAdminDashboardScreen> {
 
   Future<void> _reload() async {
     try {
-      final period = superAdminSettlementDashboardPeriod();
+      final months = superAdminSettlementScanMonths();
       final results = await Future.wait([
         _service.fetchDashboard(),
-        _service.fetchRevenue(year: period.year, month: period.month),
+        ...months.map(
+          (m) => _service.fetchRevenue(year: m.year, month: m.month),
+        ),
       ]);
       if (!mounted) return;
-      final revenueRows = results[1] as List<SuperAdminRevenueRow>;
+      final snapshots = <SuperAdminMonthlyRevenueSnapshot>[];
+      for (var i = 0; i < months.length; i++) {
+        snapshots.add((
+          year: months[i].year,
+          month: months[i].month,
+          rows: results[i + 1] as List<SuperAdminRevenueRow>,
+        ));
+      }
       setState(() {
         _dashboard = results[0] as SuperAdminDashboard;
-        _settlementCard = SuperAdminSettlementDashboardCard.fromRevenueRows(
-          revenueRows,
-          year: period.year,
-          month: period.month,
-        );
+        _settlementCard =
+            SuperAdminSettlementDashboardCard.fromMonthlySnapshots(snapshots);
         _loadError = null;
         _loading = false;
       });

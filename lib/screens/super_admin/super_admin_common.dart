@@ -6,7 +6,6 @@ import 'package:intl/intl.dart';
 import '../../models/super_admin_models.dart';
 import '../../services/super_admin_service.dart';
 import '../../theme/danji_colors.dart';
-import '../../widgets/super_admin_complex_revenue_list.dart';
 import '../../theme/danji_theme.dart';
 import '../../widgets/section_card.dart';
 import 'super_admin_nav.dart';
@@ -504,7 +503,7 @@ class SuperAdminPeriodFilter extends SuperAdminMonthFilter {
   });
 }
 
-/// 최고관리자 대시보드 — 월별 스와이프 매출·단지별 수수료
+/// 최고관리자 대시보드 — 월별 스와이프 매출·수수료 요약
 typedef SuperAdminMonthCallback = void Function(int year, int month);
 
 class SuperAdminMonthlyRevenuePanel extends StatefulWidget {
@@ -600,7 +599,7 @@ class _SuperAdminMonthlyRevenuePanelState
           ),
           const SizedBox(height: 8),
           SizedBox(
-            height: 300,
+            height: 88,
             child: PageView.builder(
               controller: _pageController,
               onPageChanged: (index) => setState(() => _pageIndex = index),
@@ -608,7 +607,6 @@ class _SuperAdminMonthlyRevenuePanelState
               itemBuilder: (context, index) {
                 final pageMonth = superAdminMonthFromPageIndex(index);
                 return _SuperAdminMonthRevenuePage(
-                  service: widget.service,
                   future: _revenueFor(pageMonth.year, pageMonth.month),
                   year: pageMonth.year,
                   month: pageMonth.month,
@@ -625,7 +623,6 @@ class _SuperAdminMonthlyRevenuePanelState
 }
 
 class _SuperAdminMonthRevenuePage extends StatelessWidget {
-  final SuperAdminService service;
   final Future<List<SuperAdminRevenueRow>> future;
   final int year;
   final int month;
@@ -633,7 +630,6 @@ class _SuperAdminMonthRevenuePage extends StatelessWidget {
   final SuperAdminMonthCallback? onOpenPlatformFee;
 
   const _SuperAdminMonthRevenuePage({
-    required this.service,
     required this.future,
     required this.year,
     required this.month,
@@ -703,17 +699,6 @@ class _SuperAdminMonthRevenuePage extends StatelessWidget {
                     ),
                   ),
                 ],
-              ),
-              const SizedBox(height: 10),
-              Expanded(
-                child: SuperAdminComplexRevenueList(
-                  rows: rows,
-                  isFeeEstimate: isFeeEstimate,
-                  onOpenRevenue: onOpenRevenue,
-                  service: service,
-                  year: year,
-                  month: month,
-                ),
               ),
             ],
           ),
