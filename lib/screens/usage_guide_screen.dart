@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../theme/danji_colors.dart';
 import '../widgets/danji_app_bar.dart';
+import 'support_pages.dart';
 
 class _GuideSection {
   final String title;
@@ -13,13 +14,6 @@ class _GuideSection {
     required this.icon,
     required this.body,
   });
-}
-
-class _GuideFaq {
-  final String question;
-  final String answer;
-
-  const _GuideFaq({required this.question, required this.answer});
 }
 
 /// 이용안내 — 예약·대여·반납·정책 안내
@@ -87,34 +81,6 @@ class UsageGuideScreen extends StatelessWidget {
     ),
   ];
 
-  static const _faqs = [
-    _GuideFaq(
-      question: '입주민 인증이 필요한가요?',
-      answer:
-          '네. 단지카는 입주민 전용 서비스로, 초대코드와 동/호 인증·관리자 승인 후 예약할 수 있습니다.',
-    ),
-    _GuideFaq(
-      question: '면허 등록은 어떻게 하나요?',
-      answer:
-          '마이페이지에서 면허 정보를 등록하면 관리자 심사 후 예약이 가능합니다.',
-    ),
-    _GuideFaq(
-      question: '대여 연장은 가능한가요?',
-      answer:
-          '대여 중 화면의「연장하기」를 이용합니다. 동일 차량에 다음 예약이 없을 때만 연장할 수 있습니다.',
-    ),
-    _GuideFaq(
-      question: '사고 발생 시 어떻게 하나요?',
-      answer:
-          '즉시 고객센터에 연락해 주세요. 회사 안내에 따라 보험 처리 절차를 진행합니다.',
-    ),
-    _GuideFaq(
-      question: '차량 점검 중에는 예약할 수 없나요?',
-      answer:
-          '점검·정비 중인 차량은 예약이 일시 중단됩니다. 다른 차량을 선택해 주세요.',
-    ),
-  ];
-
   @override
   Widget build(BuildContext context) {
     final topPad = embedded ? MediaQuery.of(context).padding.top : 0.0;
@@ -156,19 +122,15 @@ class UsageGuideScreen extends StatelessWidget {
             const SizedBox(height: 10),
           ],
           const SizedBox(height: 6),
-          const Text(
-            '자주 묻는 질문',
-            style: TextStyle(
-              fontSize: 16,
-              fontWeight: FontWeight.w800,
-              color: DanjiColors.textPrimary,
-            ),
+          _GuideNavTile(
+            title: '자주 묻는 질문',
+            icon: Icons.help_outline,
+            onTap: () {
+              Navigator.of(context).push(
+                MaterialPageRoute(builder: (_) => const FaqScreen()),
+              );
+            },
           ),
-          const SizedBox(height: 10),
-          for (final faq in _faqs) ...[
-            _GuideFaqTile(question: faq.question, answer: faq.answer),
-            const SizedBox(height: 10),
-          ],
         ],
       ),
     );
@@ -229,48 +191,51 @@ class _GuideAccordionTile extends StatelessWidget {
   }
 }
 
-class _GuideFaqTile extends StatelessWidget {
-  final String question;
-  final String answer;
+class _GuideNavTile extends StatelessWidget {
+  final String title;
+  final IconData icon;
+  final VoidCallback onTap;
 
-  const _GuideFaqTile({required this.question, required this.answer});
+  const _GuideNavTile({
+    required this.title,
+    required this.icon,
+    required this.onTap,
+  });
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      decoration: BoxDecoration(
-        color: DanjiColors.surface,
+    return Material(
+      color: DanjiColors.surface,
+      borderRadius: BorderRadius.circular(14),
+      child: InkWell(
+        onTap: onTap,
         borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: DanjiColors.border),
-      ),
-      child: Theme(
-        data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
-        child: ExpansionTile(
-          tilePadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 2),
-          childrenPadding: const EdgeInsets.fromLTRB(14, 0, 14, 16),
-          iconColor: DanjiColors.buttonBlue,
-          collapsedIconColor: DanjiColors.textMuted,
-          title: Text(
-            question,
-            style: const TextStyle(
-              fontWeight: FontWeight.w600,
-              fontSize: 14,
-              color: DanjiColors.textPrimary,
-            ),
+        child: Container(
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(color: DanjiColors.border),
           ),
-          children: [
-            Align(
-              alignment: Alignment.centerLeft,
-              child: Text(
-                answer,
-                style: const TextStyle(
-                  color: DanjiColors.textSecondary,
-                  height: 1.5,
-                  fontSize: 14,
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+          child: Row(
+            children: [
+              Icon(icon, color: DanjiColors.buttonBlue, size: 22),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Text(
+                  title,
+                  style: const TextStyle(
+                    fontWeight: FontWeight.w700,
+                    fontSize: 15,
+                    color: DanjiColors.textPrimary,
+                  ),
                 ),
               ),
-            ),
-          ],
+              const Icon(
+                Icons.chevron_right,
+                color: DanjiColors.textMuted,
+              ),
+            ],
+          ),
         ),
       ),
     );

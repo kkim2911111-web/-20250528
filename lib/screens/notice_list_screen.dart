@@ -4,8 +4,8 @@ import 'package:intl/intl.dart';
 import '../models/notice.dart';
 import '../services/notice_service.dart';
 import '../theme/danji_colors.dart';
-import '../theme/danji_typography.dart';
 import '../widgets/danji_app_bar.dart';
+import 'notice_detail_screen.dart';
 
 /// 공지사항 전체 목록
 class NoticeListScreen extends StatefulWidget {
@@ -71,100 +71,81 @@ class _NoticeListScreenState extends State<NoticeListScreen> {
   }
 }
 
-class _NoticeListTile extends StatefulWidget {
+class _NoticeListTile extends StatelessWidget {
   final Notice notice;
   final String? dateLabel;
 
   const _NoticeListTile({required this.notice, this.dateLabel});
 
   @override
-  State<_NoticeListTile> createState() => _NoticeListTileState();
-}
-
-class _NoticeListTileState extends State<_NoticeListTile> {
-  bool _expanded = false;
-
-  @override
   Widget build(BuildContext context) {
-    final notice = widget.notice;
     return Material(
       color: DanjiColors.surface,
       borderRadius: BorderRadius.circular(12),
       child: InkWell(
-        onTap: () => setState(() => _expanded = !_expanded),
+        onTap: () {
+          Navigator.of(context).push(
+            MaterialPageRoute(
+              builder: (_) => NoticeDetailScreen(notice: notice),
+            ),
+          );
+        },
         borderRadius: BorderRadius.circular(12),
         child: Padding(
           padding: const EdgeInsets.all(14),
-          child: Column(
+          child: Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  if (notice.isGlobal)
-                    Container(
-                      margin: const EdgeInsets.only(right: 6, top: 2),
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 6,
-                        vertical: 2,
-                      ),
-                      decoration: BoxDecoration(
-                        color: DanjiColors.primaryBlue.withValues(alpha: 0.12),
-                        borderRadius: BorderRadius.circular(4),
-                      ),
-                      child: const Text(
-                        '전체',
-                        style: TextStyle(
-                          fontSize: 10,
-                          fontWeight: FontWeight.w700,
-                          color: DanjiColors.primaryBlue,
-                        ),
-                      ),
-                    ),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          notice.title,
-                          style: const TextStyle(
-                            fontWeight: FontWeight.w700,
-                            fontSize: 15,
-                            color: DanjiColors.textPrimary,
-                          ),
-                        ),
-                        if (widget.dateLabel != null) ...[
-                          const SizedBox(height: 4),
-                          Text(
-                            widget.dateLabel!,
-                            style: const TextStyle(
-                              fontSize: 12,
-                              color: DanjiColors.textMuted,
-                            ),
-                          ),
-                        ],
-                      ],
-                    ),
+              if (notice.isGlobal)
+                Container(
+                  margin: const EdgeInsets.only(right: 6, top: 2),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 6,
+                    vertical: 2,
                   ),
-                  Icon(
-                    _expanded
-                        ? Icons.keyboard_arrow_up
-                        : Icons.keyboard_arrow_down,
-                    size: 22,
-                    color: DanjiColors.textMuted,
+                  decoration: BoxDecoration(
+                    color: DanjiColors.primaryBlue.withValues(alpha: 0.12),
+                    borderRadius: BorderRadius.circular(4),
                   ),
-                ],
-              ),
-              if (_expanded && notice.content.isNotEmpty) ...[
-                const SizedBox(height: 10),
-                Text(
-                  notice.content,
-                  style: DanjiTypography.bodyRegular.copyWith(
-                    color: DanjiColors.textSecondary,
-                    height: 1.45,
+                  child: const Text(
+                    '전체',
+                    style: TextStyle(
+                      fontSize: 10,
+                      fontWeight: FontWeight.w700,
+                      color: DanjiColors.primaryBlue,
+                    ),
                   ),
                 ),
-              ],
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      notice.title,
+                      style: const TextStyle(
+                        fontWeight: FontWeight.w700,
+                        fontSize: 15,
+                        color: DanjiColors.textPrimary,
+                      ),
+                    ),
+                    if (dateLabel != null) ...[
+                      const SizedBox(height: 4),
+                      Text(
+                        dateLabel!,
+                        style: const TextStyle(
+                          fontSize: 12,
+                          color: DanjiColors.textMuted,
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+              const Icon(
+                Icons.chevron_right,
+                size: 22,
+                color: DanjiColors.textMuted,
+              ),
             ],
           ),
         ),

@@ -608,6 +608,7 @@ class _SuperAdminMonthlyRevenuePanelState
               itemBuilder: (context, index) {
                 final pageMonth = superAdminMonthFromPageIndex(index);
                 return _SuperAdminMonthRevenuePage(
+                  service: widget.service,
                   future: _revenueFor(pageMonth.year, pageMonth.month),
                   year: pageMonth.year,
                   month: pageMonth.month,
@@ -624,6 +625,7 @@ class _SuperAdminMonthlyRevenuePanelState
 }
 
 class _SuperAdminMonthRevenuePage extends StatelessWidget {
+  final SuperAdminService service;
   final Future<List<SuperAdminRevenueRow>> future;
   final int year;
   final int month;
@@ -631,6 +633,7 @@ class _SuperAdminMonthRevenuePage extends StatelessWidget {
   final SuperAdminMonthCallback? onOpenPlatformFee;
 
   const _SuperAdminMonthRevenuePage({
+    required this.service,
     required this.future,
     required this.year,
     required this.month,
@@ -707,6 +710,9 @@ class _SuperAdminMonthRevenuePage extends StatelessWidget {
                   rows: rows,
                   isFeeEstimate: isFeeEstimate,
                   onOpenRevenue: onOpenRevenue,
+                  service: service,
+                  year: year,
+                  month: month,
                 ),
               ),
             ],

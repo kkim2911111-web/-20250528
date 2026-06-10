@@ -171,10 +171,13 @@ class _SuperAdminRevenueScreenState extends State<SuperAdminRevenueScreen> {
                                     color: settlementBadgeColor(
                                       isSettled: r.isSettled,
                                       isRequested: r.isRequested,
+                                      revenueAmount: r.totalRevenue,
                                       settledColor:
                                           SuperAdminUiColors.availableGreen,
                                       requestedColor: const Color(0xFFF59E0B),
                                       unsettledColor: DanjiColors.danger,
+                                      noRevenueColor:
+                                          settlementNoRevenueForeground,
                                     ),
                                   ),
                                   onTap: () => _openDetail(r),
@@ -262,15 +265,19 @@ class _SettlementDetailSheetState extends State<_SettlementDetailSheet> {
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               SuperAdminChip(
-                label: isSettled
-                    ? '정산완료'
-                    : (isRequested ? '정산요청' : '미정산'),
+                label: settlementStatusLabel(
+                  isSettled: isSettled,
+                  isRequested: isRequested,
+                  revenueAmount: widget.row.totalRevenue,
+                ),
                 color: settlementBadgeColor(
                   isSettled: isSettled,
                   isRequested: isRequested,
+                  revenueAmount: widget.row.totalRevenue,
                   settledColor: SuperAdminUiColors.availableGreen,
                   requestedColor: const Color(0xFFF59E0B),
                   unsettledColor: DanjiColors.danger,
+                  noRevenueColor: settlementNoRevenueForeground,
                 ),
               ),
               const SizedBox(height: 12),

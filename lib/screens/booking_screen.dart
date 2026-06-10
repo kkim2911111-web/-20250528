@@ -151,24 +151,43 @@ class _BookingScreenState extends State<BookingScreen> {
     }
   }
 
-  DateTime _dateOnly(DateTime dt) => DateTime(dt.year, dt.month, dt.day);
+  DateTime _dateOnly(DateTime dt) => _localDateOnly(dt);
 
-  /// 달력·선택용 오늘 (시간 제거, 로컬 연월일)
-  DateTime get _todayCalendarDate {
-    final n = DateTime.now();
-    return DateTime(n.year, n.month, n.day);
+  /// 로컬 연월일 (KST 등 디바이스 타임존)
+  DateTime _localDateOnly(DateTime dt) {
+    final local = dt.toLocal();
+    return DateTime(local.year, local.month, local.day);
   }
 
-  DateTime _calendarDateOnly(DateTime dt) =>
-      DateTime(dt.year, dt.month, dt.day);
+  /// TableCalendar 셀용 UTC 연월일 (패키지 내부 day.isBefore(firstDay)와 동일 기준)
+  DateTime _tableCalendarDay(DateTime dt) {
+    final local = dt.toLocal();
+    return DateTime.utc(local.year, local.month, local.day);
+  }
+
+  /// 달력·선택용 오늘 (시간 제거, 로컬 연월일)
+  DateTime get _todayCalendarDate => _localDateOnly(DateTime.now());
+
+  DateTime _calendarDateOnly(DateTime dt) => _localDateOnly(dt);
 
   /// 오늘 이전 날짜만 비활성 (오늘 포함 이후는 선택 가능)
   bool _isCalendarDayBeforeToday(DateTime day) {
-    return _calendarDateOnly(day).isBefore(_todayCalendarDate);
+    return _tableCalendarDay(day).isBefore(_tableCalendarDay(DateTime.now()));
   }
 
   bool _isCalendarDayEnabled(DateTime day) =>
       !_isCalendarDayBeforeToday(day);
+
+  Widget _bookingCalendarDayCell(DateTime cellDay, {bool isPast = false}) {
+    return _BookingRangeDayCell(
+      day: cellDay,
+      isToday: _isToday(cellDay),
+      isRangeStart: _isRangeStart(cellDay),
+      isRangeEnd: _isRangeEnd(cellDay),
+      isInRange: _isInBookingRange(cellDay),
+      isPast: isPast,
+    );
+  }
 
   Future<VehicleQueryResult> _loadVehicles() async {
     final result = await _vehicleService.fetchVehiclesForMyComplex();
@@ -252,7 +271,8 @@ class _BookingScreenState extends State<BookingScreen> {
     return !d.isBefore(s) && !d.isAfter(e);
   }
 
-  bool _isToday(DateTime day) => isSameDay(day, DateTime.now());
+  bool _isToday(DateTime day) =>
+      _localDateOnly(day) == _todayCalendarDate;
 
   /// 오늘이면 시작 시각(시간 단위)이 현재 시각보다 뒤인지
   bool _isStartTimeInFuture(DateTime startTime) =>
@@ -818,7 +838,8 @@ class _BookingScreenState extends State<BookingScreen> {
       builder: (sheetContext) {
         return StatefulBuilder(
           builder: (context, setSheetState) {
-            var focused = _calendarDateOnly(_focusedDay);
+            var focused = _tableCalendarDay(_focusedDay);
+            final calendarToday = _tableCalendarDay(DateTime.now());
             return SafeArea(
               child: Padding(
                 padding: const EdgeInsets.fromLTRB(8, 12, 8, 16),
@@ -837,12 +858,14 @@ class _BookingScreenState extends State<BookingScreen> {
                     Text('날짜 선택', style: DanjiTypography.subtitleLarge),
                     const SizedBox(height: 8),
                     TableCalendar<void>(
-                      firstDay: _todayCalendarDate,
-                      lastDay: _todayCalendarDate.add(const Duration(days: 365)),
+                      firstDay: calendarToday,
+                      lastDay: calendarToday.add(const Duration(days: 365)),
                       focusedDay: focused,
-                      currentDay: _todayCalendarDate,
+                      currentDay: calendarToday,
                       selectedDayPredicate: (d) =>
-                          _selectedDay != null && isSameDay(d, _selectedDay!),
+                          _selectedDay != null &&
+                          _tableCalendarDay(d) ==
+                              _tableCalendarDay(_selectedDay!),
                       locale: 'ko_KR',
                       startingDayOfWeek: StartingDayOfWeek.sunday,
                       headerStyle: const HeaderStyle(
@@ -878,25 +901,14 @@ class _BookingScreenState extends State<BookingScreen> {
                         selectedDecoration: const BoxDecoration(),
                       ),
                       calendarBuilders: CalendarBuilders(
-                        disabledBuilder: (context, cellDay, _) {
-                          return _BookingRangeDayCell(
-                            day: cellDay,
-                            isToday: _isToday(cellDay),
-                            isRangeStart: false,
-                            isRangeEnd: false,
-                            isInRange: false,
-                            isPast: true,
-                          );
-                        },
-                        defaultBuilder: (context, cellDay, _) {
-                          return _BookingRangeDayCell(
-                            day: cellDay,
-                            isToday: _isToday(cellDay),
-                            isRangeStart: _isRangeStart(cellDay),
-                            isRangeEnd: _isRangeEnd(cellDay),
-                            isInRange: _isInBookingRange(cellDay),
-                          );
-                        },
+                        disabledBuilder: (context, cellDay, _) =>
+                            _bookingCalendarDayCell(cellDay, isPast: true),
+                        todayBuilder: (context, cellDay, _) =>
+                            _bookingCalendarDayCell(cellDay),
+                        selectedBuilder: (context, cellDay, _) =>
+                            _bookingCalendarDayCell(cellDay),
+                        defaultBuilder: (context, cellDay, _) =>
+                            _bookingCalendarDayCell(cellDay),
                       ),
                       enabledDayPredicate: _isCalendarDayEnabled,
                       onDaySelected: (selectedDay, newFocused) {
@@ -909,8 +921,8 @@ class _BookingScreenState extends State<BookingScreen> {
                         _onDateTimeChanged();
                       },
                       onPageChanged: (newFocused) {
-                        final d = _calendarDateOnly(newFocused);
-                        _focusedDay = d;
+                        final d = _tableCalendarDay(newFocused);
+                        _focusedDay = _calendarDateOnly(newFocused);
                         setSheetState(() => focused = d);
                       },
                     ),
@@ -1922,13 +1934,6 @@ class _BookingVehicleCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final lineTotal = RentalPricing.calculatePrice(
-      vehicle,
-      rentalType,
-      hours: durationHours < 1 ? 1 : durationHours,
-      days: durationDays,
-      months: durationMonths,
-    );
     final comparePrice = RentalPricing.comparisonStrikethroughPrice(
       vehicle,
       rentalType,
@@ -1937,6 +1942,7 @@ class _BookingVehicleCard extends StatelessWidget {
       months: durationMonths,
     );
     final isElectric = _isElectricVehicleType(vehicle.vehicleType);
+    final unitPriceLabel = RentalPricing.unitPriceLabel(vehicle, rentalType);
     final plate = vehicle.carNumber?.trim();
     final nameColor =
         _isBlocked ? _disabledText : DanjiColors.textPrimary;
@@ -2016,7 +2022,7 @@ class _BookingVehicleCard extends StatelessWidget {
                                         ? DanjiColors.buttonBlue
                                         : const Color(0xFF888888)),
                               ),
-                              if (isElectric)
+                              if (isElectric && vehicle.vehicleType.trim().isEmpty)
                                 _BookingVehicleBadge(
                                   label: '전기',
                                   background: _isBlocked
@@ -2074,10 +2080,7 @@ class _BookingVehicleCard extends StatelessWidget {
                                   ),
                                   const TextSpan(text: '  '),
                                 ],
-                                TextSpan(
-                                  text:
-                                      '₩${NumberFormat('#,###').format(lineTotal)}',
-                                ),
+                                TextSpan(text: unitPriceLabel),
                               ],
                             ),
                           ),

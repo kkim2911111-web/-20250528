@@ -145,6 +145,28 @@ class RentalPricing {
   static int previewMonthlyPrice(int dailyPrice) =>
       dailyPrice * monthlyFromDailyMultiplier;
 
+  /// 차량 카드·목록용 단가 표기 (예: ₩5,000/시간)
+  static String unitPriceLabel(Vehicle vehicle, RentalType type) {
+    switch (type) {
+      case RentalType.hourly:
+        return vehicle.priceLabel;
+      case RentalType.daily:
+        return '${_formatWon(effectiveDailyPrice(vehicle))}/일';
+      case RentalType.monthly:
+        return '${_formatWon(effectiveMonthlyPrice(vehicle))}/월';
+    }
+  }
+
+  static String _formatWon(int amount) {
+    final s = amount.toString();
+    final buf = StringBuffer('₩');
+    for (var i = 0; i < s.length; i++) {
+      if (i > 0 && (s.length - i) % 3 == 0) buf.write(',');
+      buf.write(s[i]);
+    }
+    return buf.toString();
+  }
+
   static int calculatePrice(
     Vehicle vehicle,
     RentalType type, {

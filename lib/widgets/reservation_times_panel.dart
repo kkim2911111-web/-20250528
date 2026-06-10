@@ -3,6 +3,7 @@ import 'package:intl/intl.dart';
 
 import '../theme/danji_colors.dart';
 import '../utils/reservation_display.dart';
+import 'return_confirmation_badge.dart';
 
 enum ReservationTimesLayout { detail, compact }
 
@@ -16,6 +17,7 @@ class ReservationTimesPanel extends StatelessWidget {
   final DateTime? returnedAt;
   final DateTime? returnCompletedAt;
   final bool isNoShow;
+  final String? status;
 
   const ReservationTimesPanel({
     super.key,
@@ -28,6 +30,7 @@ class ReservationTimesPanel extends StatelessWidget {
     this.returnedAt,
     this.returnCompletedAt,
     this.isNoShow = false,
+    this.status,
   });
 
   factory ReservationTimesPanel.fromMap({
@@ -51,7 +54,17 @@ class ReservationTimesPanel extends StatelessWidget {
         updatedAt: parseReservationDate(row['updated_at']),
       ),
       isNoShow: row['is_no_show'] == true,
+      status: row['status']?.toString(),
     );
+  }
+
+  bool get _needsReturnConfirmation {
+    if (isNoShow || rentalStartedAt == null || returnedAt != null) {
+      return false;
+    }
+    final normalized = status?.trim().toLowerCase();
+    if (normalized == 'in_use') return true;
+    return mode == ReservationTimesMode.inspectionPending;
   }
 
   @override
@@ -68,6 +81,7 @@ class ReservationTimesPanel extends StatelessWidget {
             label: rows[i].label,
             value: rows[i].value,
             layout: layout,
+            showReturnConfirmation: rows[i].showReturnConfirmation,
           ),
         ],
       ],
@@ -107,10 +121,13 @@ class ReservationTimesPanel extends StatelessWidget {
       rows.add(
         _TimeRowData(
           label: '반납',
-          value: _formatActualTime(
-            timestamp: returnedAt,
-            forceShow: forceShowActual,
-          ),
+          value: _needsReturnConfirmation
+              ? ''
+              : _formatActualTime(
+                  timestamp: returnedAt,
+                  forceShow: forceShowActual,
+                ),
+          showReturnConfirmation: _needsReturnConfirmation,
         ),
       );
     }
@@ -147,19 +164,26 @@ class ReservationTimesPanel extends StatelessWidget {
 class _TimeRowData {
   final String label;
   final String value;
+  final bool showReturnConfirmation;
 
-  const _TimeRowData({required this.label, required this.value});
+  const _TimeRowData({
+    required this.label,
+    required this.value,
+    this.showReturnConfirmation = false,
+  });
 }
 
 class _TimeRow extends StatelessWidget {
   final String label;
   final String value;
   final ReservationTimesLayout layout;
+  final bool showReturnConfirmation;
 
   const _TimeRow({
     required this.label,
     required this.value,
     required this.layout,
+    this.showReturnConfirmation = false,
   });
 
   @override
@@ -181,17 +205,34 @@ class _TimeRow extends StatelessWidget {
               ),
             ),
             Expanded(
-              child: Text(
-                value,
-                style: const TextStyle(
-                  color: DanjiColors.textPrimary,
-                  fontSize: 14,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
+              child: showReturnConfirmation
+                  ? const ReturnConfirmationBadge()
+                  : Text(
+                      value,
+                      style: const TextStyle(
+                        color: DanjiColors.textPrimary,
+                        fontSize: 14,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
             ),
           ],
         ),
+      );
+    }
+
+    if (showReturnConfirmation) {
+      return Row(
+        children: [
+          Text(
+            '$label: ',
+            style: const TextStyle(
+              color: DanjiColors.textSecondary,
+              height: 1.4,
+            ),
+          ),
+          const ReturnConfirmationBadge(),
+        ],
       );
     }
 

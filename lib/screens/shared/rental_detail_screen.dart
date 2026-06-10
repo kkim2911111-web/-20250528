@@ -443,6 +443,7 @@ class _RentalSection extends StatelessWidget {
           rentalStartedAt: detail.rentalStartedAt,
           returnedAt: detail.returnedAt ?? detail.actualEndAt,
           isNoShow: detail.isNoShow,
+          status: detail.status,
         ),
         const SizedBox(height: 8),
         _InfoLine(

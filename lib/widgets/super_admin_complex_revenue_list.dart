@@ -1,9 +1,13 @@
 import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
 
+import '../models/rental_detail.dart';
 import '../models/super_admin_models.dart';
 import '../screens/super_admin/super_admin_common.dart';
+import '../services/super_admin_service.dart';
 import '../theme/danji_colors.dart';
 import '../utils/platform_fee_billing.dart';
+import '../utils/rental_detail_navigation.dart';
 
 /// 단지별 매출·수수료 — 접이식 목록 (매출 큰 순, ₩0 하단·흐림)
 List<SuperAdminRevenueRow> sortComplexRevenueRows(
@@ -20,12 +24,18 @@ class SuperAdminComplexRevenueList extends StatefulWidget {
   final List<SuperAdminRevenueRow> rows;
   final bool isFeeEstimate;
   final VoidCallback? onOpenRevenue;
+  final SuperAdminService? service;
+  final int year;
+  final int month;
 
   const SuperAdminComplexRevenueList({
     super.key,
     required this.rows,
     this.isFeeEstimate = false,
     this.onOpenRevenue,
+    this.service,
+    this.year = 0,
+    this.month = 0,
   });
 
   @override
@@ -72,6 +82,9 @@ class _SuperAdminComplexRevenueListState
           row: row,
           isZeroRevenue: row.totalRevenue == 0,
           isFeeEstimate: widget.isFeeEstimate,
+          service: widget.service,
+          year: widget.year,
+          month: widget.month,
           expanded: _expandedIds.contains(row.complexId),
           onExpansionChanged: (expanded) {
             setState(() {
@@ -94,6 +107,9 @@ class _ComplexRevenueCollapsibleTile extends StatefulWidget {
   final bool isFeeEstimate;
   final bool expanded;
   final ValueChanged<bool> onExpansionChanged;
+  final SuperAdminService? service;
+  final int year;
+  final int month;
 
   const _ComplexRevenueCollapsibleTile({
     super.key,
@@ -102,6 +118,9 @@ class _ComplexRevenueCollapsibleTile extends StatefulWidget {
     required this.isFeeEstimate,
     required this.expanded,
     required this.onExpansionChanged,
+    this.service,
+    this.year = 0,
+    this.month = 0,
   });
 
   @override
@@ -236,6 +255,21 @@ class _ComplexRevenueCollapsibleTileState
                               : DanjiColors.textSecondary,
                         ),
                       ),
+                      if (widget.expanded &&
+                          widget.service != null &&
+                          widget.year > 0 &&
+                          widget.month > 0) ...[
+                        const SizedBox(height: 10),
+                        _ComplexSettlementRentalList(
+                          future: widget.service!.fetchSettlementSheet(
+                            complexId: r.complexId,
+                            year: widget.year,
+                            month: widget.month,
+                          ),
+                          service: widget.service!,
+                          complexName: r.complexName,
+                        ),
+                      ],
                     ],
                   ),
                 ),
@@ -247,6 +281,144 @@ class _ComplexRevenueCollapsibleTileState
               ),
             ],
           ),
+        ),
+      ),
+    );
+  }
+}
+
+class _ComplexSettlementRentalList extends StatelessWidget {
+  final Future<SuperAdminSettlementSheet> future;
+  final SuperAdminService service;
+  final String complexName;
+
+  const _ComplexSettlementRentalList({
+    required this.future,
+    required this.service,
+    required this.complexName,
+  });
+
+  static final _won = NumberFormat('#,###');
+
+  @override
+  Widget build(BuildContext context) {
+    return FutureBuilder<SuperAdminSettlementSheet>(
+      future: future,
+      builder: (context, snap) {
+        if (snap.connectionState == ConnectionState.waiting) {
+          return const Padding(
+            padding: EdgeInsets.symmetric(vertical: 8),
+            child: Center(
+              child: SizedBox(
+                width: 20,
+                height: 20,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              ),
+            ),
+          );
+        }
+        if (snap.hasError) {
+          return Text(
+            '대여 목록을 불러오지 못했습니다.',
+            style: TextStyle(fontSize: 12, color: DanjiColors.textMuted),
+          );
+        }
+
+        final items = snap.data?.items ?? const [];
+        if (items.isEmpty) {
+          return const Text(
+            '해당 월 완료 대여 내역이 없습니다.',
+            style: TextStyle(fontSize: 12, color: DanjiColors.textMuted),
+          );
+        }
+
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            const Text(
+              '대여 내역',
+              style: TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w700,
+                color: DanjiColors.textPrimary,
+              ),
+            ),
+            const SizedBox(height: 6),
+            for (var i = 0; i < items.length; i++) ...[
+              if (i > 0) const Divider(height: 12),
+              _SettlementRentalRow(
+                item: items[i],
+                onTap: () => openSuperAdminRentalDetail(
+                  context,
+                  reservationId: items[i].reservationId,
+                  service: service,
+                  prefetch: RentalDetailPrefetch(complexName: complexName),
+                ),
+              ),
+            ],
+          ],
+        );
+      },
+    );
+  }
+}
+
+class _SettlementRentalRow extends StatelessWidget {
+  final SuperAdminSettlementReservation item;
+  final VoidCallback onTap;
+
+  const _SettlementRentalRow({
+    required this.item,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(8),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 4),
+        child: Row(
+          children: [
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    item.reservationNumberLabel,
+                    style: const TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w700,
+                      color: DanjiColors.buttonBlue,
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    item.renterName,
+                    style: const TextStyle(
+                      fontSize: 12,
+                      color: DanjiColors.textSecondary,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            Text(
+              '₩${_ComplexSettlementRentalList._won.format(item.totalPrice)}',
+              style: const TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.w700,
+                color: DanjiColors.textPrimary,
+              ),
+            ),
+            const SizedBox(width: 4),
+            const Icon(
+              Icons.chevron_right,
+              size: 18,
+              color: DanjiColors.textMuted,
+            ),
+          ],
         ),
       ),
     );

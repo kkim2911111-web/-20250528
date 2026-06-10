@@ -641,8 +641,10 @@ class SalesSummary {
   });
 
   String get settlementBadgeLabel {
+    // settlement_detail_sheet.settlementStatusLabel — import 순환 방지용 인라인
     if (isSettled) return '정산완료';
     if (isRequested) return '정산요청';
+    if (totalAmount <= 0) return '정산 없음';
     return '미정산';
   }
 

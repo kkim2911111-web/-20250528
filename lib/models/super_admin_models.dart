@@ -594,6 +594,7 @@ class SuperAdminRevenueRow {
   String get settlementBadgeLabel {
     if (isSettled) return '완료';
     if (isRequested) return '정산요청';
+    if (totalRevenue <= 0) return '정산 없음';
     return '미정산';
   }
 

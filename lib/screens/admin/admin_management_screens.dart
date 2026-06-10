@@ -1806,6 +1806,7 @@ class _ReturnInspectionCardState extends State<_ReturnInspectionCard> {
             returnedAt: r.returnedAt,
             returnCompletedAt: r.returnCompletedAt,
             isNoShow: r.isNoShow,
+            status: r.status,
           ),
           const SizedBox(height: 10),
           Text(
@@ -2116,9 +2117,11 @@ class _AdminSalesScreenState extends State<AdminSalesScreen> {
                             color: settlementBadgeColor(
                               isSettled: summary.isSettled,
                               isRequested: summary.isRequested,
+                              revenueAmount: summary.totalAmount,
                               settledColor: const Color(0xFFDCFCE7),
                               requestedColor: const Color(0xFFFEF3C7),
                               unsettledColor: const Color(0xFFFEE2E2),
+                              noRevenueColor: settlementNoRevenueBackground,
                             ),
                             borderRadius: BorderRadius.circular(20),
                           ),
@@ -2128,9 +2131,11 @@ class _AdminSalesScreenState extends State<AdminSalesScreen> {
                               color: settlementBadgeColor(
                                 isSettled: summary.isSettled,
                                 isRequested: summary.isRequested,
+                                revenueAmount: summary.totalAmount,
                                 settledColor: const Color(0xFF16A34A),
                                 requestedColor: const Color(0xFFD97706),
                                 unsettledColor: DanjiColors.danger,
+                                noRevenueColor: settlementNoRevenueForeground,
                               ),
                               fontWeight: FontWeight.w700,
                               fontSize: 12,
@@ -2471,23 +2476,29 @@ class _AdminSettlementDetailSheetState extends State<_AdminSettlementDetailSheet
                           color: settlementBadgeColor(
                             isSettled: isSettled,
                             isRequested: isRequested,
+                            revenueAmount: sheet.netRevenue,
                             settledColor: const Color(0xFFDCFCE7),
                             requestedColor: const Color(0xFFFEF3C7),
                             unsettledColor: const Color(0xFFFEE2E2),
+                            noRevenueColor: settlementNoRevenueBackground,
                           ),
                           borderRadius: BorderRadius.circular(20),
                         ),
                         child: Text(
-                          isSettled
-                              ? '정산완료'
-                              : (isRequested ? '정산요청' : '미정산'),
+                          settlementStatusLabel(
+                            isSettled: isSettled,
+                            isRequested: isRequested,
+                            revenueAmount: sheet.netRevenue,
+                          ),
                           style: TextStyle(
                             color: settlementBadgeColor(
                               isSettled: isSettled,
                               isRequested: isRequested,
+                              revenueAmount: sheet.netRevenue,
                               settledColor: const Color(0xFF16A34A),
                               requestedColor: const Color(0xFFD97706),
                               unsettledColor: DanjiColors.danger,
+                              noRevenueColor: settlementNoRevenueForeground,
                             ),
                             fontWeight: FontWeight.w700,
                             fontSize: 12,
@@ -2533,7 +2544,9 @@ class _AdminSettlementDetailSheetState extends State<_AdminSettlementDetailSheet
                         },
                       ),
                     ),
-                    if (!isSettled && !isRequested) ...[
+                    if (!isSettled &&
+                        !isRequested &&
+                        sheet.netRevenue > 0) ...[
                       const SizedBox(height: 8),
                       FilledButton(
                         onPressed: _requesting ? null : _requestSettlement,

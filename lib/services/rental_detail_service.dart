@@ -46,9 +46,7 @@ return_type, is_no_show, is_accident, accident_note,
 rental_type, cancel_reason, cancelled_at,
 payment_status, order_id,
 pickup_photos, return_photos,
-vehicles(model_name, car_number, complex_id, complexes(name)),
-user_profiles(full_name, name, email, phone, license_verified,
-  license_number, license_rejection_reason, license_submitted_at, is_blacklisted)
+vehicles(model_name, car_number, complex_id, complexes(name))
 ''';
 
     Map<String, dynamic>? row;
@@ -67,9 +65,14 @@ user_profiles(full_name, name, email, phone, license_verified,
     }
 
     final map = Map<String, dynamic>.from(row);
-    final adminRow = AdminReservationRow.fromMap(map);
     final userId = map['user_id']?.toString() ?? '';
-    final profile = _profileMap(map['user_profiles']);
+    final profile = userId.isNotEmpty
+        ? await _fetchStaffUserProfile(userId)
+        : null;
+    if (profile != null) {
+      map['user_profiles'] = profile;
+    }
+    final adminRow = AdminReservationRow.fromMap(map);
     final complexName = _complexName(map['vehicles']);
 
     final usage = userId.isNotEmpty
@@ -366,9 +369,50 @@ user_profiles(full_name, name, email, phone, license_verified,
     return null;
   }
 
-  static Map<String, dynamic>? _profileMap(Object? raw) {
-    if (raw is Map) return Map<String, dynamic>.from(raw);
-    return null;
+  /// reservations ↔ user_profiles FK 없음 — user_id로 별도 조회 (RLS + RPC fallback)
+  Future<Map<String, dynamic>?> _fetchStaffUserProfile(String userId) async {
+    final trimmed = userId.trim();
+    if (trimmed.isEmpty) return null;
+
+    Map<String, dynamic>? profile;
+
+    try {
+      final row = await supabase
+          .from('user_profiles')
+          .select(
+            'user_id, full_name, name, email, phone, license_verified, '
+            'license_number, license_rejection_reason, license_submitted_at, '
+            'is_blacklisted',
+          )
+          .eq('user_id', trimmed)
+          .maybeSingle();
+      if (row != null) {
+        profile = Map<String, dynamic>.from(row);
+      }
+    } on PostgrestException {
+      // RLS 등 — RPC로 이름·이메일 보강
+    }
+
+    try {
+      final rpcRows = await supabase.rpc(
+        'get_renter_profiles_for_staff',
+        params: {'p_user_ids': [trimmed]},
+      );
+      if (rpcRows is List) {
+        for (final row in rpcRows) {
+          if (row is! Map) continue;
+          final rpc = Map<String, dynamic>.from(row);
+          if (rpc['user_id']?.toString() != trimmed) continue;
+          profile ??= {'user_id': trimmed};
+          profile['full_name'] ??= rpc['full_name']?.toString();
+          profile['email'] ??= rpc['email']?.toString();
+        }
+      }
+    } on PostgrestException {
+      // RPC 미배포·권한 오류 시 직접 조회 결과만 사용
+    }
+
+    return profile;
   }
 
   static String? _complexName(Object? vehicleRaw) {

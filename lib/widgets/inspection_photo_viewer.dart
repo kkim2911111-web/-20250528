@@ -8,6 +8,7 @@ import '../utils/danji_snackbar.dart';
 
 final _viewerDateTime = DateFormat('yyyy.MM.dd HH:mm');
 
+/// URL 목록 → 검수 사진 뷰어 (썸네일 탭 통일 진입점)
 Future<void> openInspectionPhotoViewer(
   BuildContext context, {
   required List<InspectionPhotoEntry> photos,
@@ -27,6 +28,19 @@ Future<void> openInspectionPhotoViewer(
         return FadeTransition(opacity: animation, child: child);
       },
     ),
+  );
+}
+
+Future<void> openInspectionPhotoViewerFromUrls(
+  BuildContext context, {
+  required List<String> urls,
+  required int initialIndex,
+  DateTime? capturedAt,
+}) {
+  return openInspectionPhotoViewer(
+    context,
+    photos: InspectionPhotoEntry.fromUrls(urls, capturedAt: capturedAt),
+    initialIndex: initialIndex,
   );
 }
 

@@ -477,14 +477,46 @@ class _CancelList extends StatelessWidget {
   }
 }
 
+const settlementNoRevenueBackground = Color(0xFFF3F4F6);
+const settlementNoRevenueForeground = Color(0xFF9CA3AF);
+
+bool settlementIsNoRevenue({
+  required bool isSettled,
+  required bool isRequested,
+  required int revenueAmount,
+}) =>
+    !isSettled && !isRequested && revenueAmount <= 0;
+
+String settlementStatusLabel({
+  required bool isSettled,
+  required bool isRequested,
+  required int revenueAmount,
+  String settledLabel = '정산완료',
+}) {
+  if (isSettled) return settledLabel;
+  if (isRequested) return '정산요청';
+  if (revenueAmount <= 0) return '정산 없음';
+  return '미정산';
+}
+
 Color settlementBadgeColor({
   required bool isSettled,
   required bool isRequested,
   required Color settledColor,
   required Color requestedColor,
   required Color unsettledColor,
+  int revenueAmount = -1,
+  Color? noRevenueColor,
 }) {
   if (isSettled) return settledColor;
   if (isRequested) return requestedColor;
+  if (revenueAmount >= 0 &&
+      settlementIsNoRevenue(
+        isSettled: isSettled,
+        isRequested: isRequested,
+        revenueAmount: revenueAmount,
+      )) {
+    return noRevenueColor ?? settlementNoRevenueForeground;
+  }
   return unsettledColor;
 }
