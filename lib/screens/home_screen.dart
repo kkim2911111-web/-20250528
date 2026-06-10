@@ -27,6 +27,8 @@ import '../utils/accident_emergency_flow.dart';
 import '../utils/rental_extension_flow.dart';
 import '../utils/rental_navigation.dart';
 import '../utils/booking_eligibility.dart';
+import '../services/app_maintenance_service.dart';
+import '../widgets/maintenance_mode_screen.dart';
 import '../widgets/danji_brand_title.dart';
 import '../widgets/danji_logo.dart';
 import '../utils/danji_snackbar.dart';
@@ -308,6 +310,28 @@ class HomeScreenState extends State<HomeScreen> {
   }
 
   Future<void> _openBooking(BuildContext context) async {
+    final maintenance =
+        await AppMaintenanceService.instance.current(force: true);
+    if (maintenance.enabled) {
+      if (!context.mounted) return;
+      await Navigator.of(context).push(
+        MaterialPageRoute(
+          builder: (_) => MaintenanceModeScreen(
+            message: maintenance.message,
+            onMyReservations: () => _openMyReservations(context),
+            onReturn: () {
+              Navigator.of(context).pop();
+              DanjiSnackBar.show(
+                context,
+                '하단 스마트키 탭에서 반납·차량 제어를 이용할 수 있습니다.',
+              );
+            },
+          ),
+        ),
+      );
+      return;
+    }
+
     try {
       final profile = await _myPageService.fetchProfile();
       final block = BookingEligibility.blockReason(profile);

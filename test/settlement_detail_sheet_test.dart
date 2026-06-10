@@ -38,7 +38,7 @@ void main() {
           'cancelled_at': '2026-06-10T12:00:00Z',
           'paid_amount': 15000,
           'refund_amount': 15000,
-          'cancel_reason': '취소',
+          'cancel_reason': '고객취소',
         },
       ],
     });
@@ -49,6 +49,7 @@ void main() {
     expect(sheet.cancelCount, 1);
     expect(sheet.rentalCount, 3);
     expect(sheet.cancelItems.first.refundAmount, 15000);
+    expect(sheet.cancelItems.first.cancelReason, '고객취소');
   });
 
   test('SettlementDetailTab titles', () {

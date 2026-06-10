@@ -507,7 +507,7 @@ contract_content,second_driver_name,second_driver_license
     throw RentalException(_friendlyFetchError(lastError!));
   }
 
-  Future<List<String>> uploadPhotos({
+  Future<List<({String url, DateTime capturedAt})>> uploadPhotos({
     required String reservationId,
     required String phase,
     required List<Uint8List> photos,
@@ -525,7 +525,7 @@ contract_content,second_driver_name,second_driver_license
       throw const RentalException('사진은 최대 10장까지 등록할 수 있습니다.');
     }
 
-    final urls = <String>[];
+    final uploaded = <({String url, DateTime capturedAt})>[];
     for (var i = 0; i < photos.length; i++) {
       final path =
           '${user.id}/$reservationId/$phase/${DateTime.now().millisecondsSinceEpoch}_$i.jpg';
@@ -537,9 +537,12 @@ contract_content,second_driver_name,second_driver_license
               upsert: false,
             ),
           );
-      urls.add(supabase.storage.from(bucketName).getPublicUrl(path));
+      uploaded.add((
+        url: supabase.storage.from(bucketName).getPublicUrl(path),
+        capturedAt: DateTime.now().toUtc(),
+      ));
     }
-    return urls;
+    return uploaded;
   }
 
   Future<void> _insertRidePhotos({
@@ -547,6 +550,7 @@ contract_content,second_driver_name,second_driver_license
     required String userId,
     required String phase,
     required List<String> photoUrls,
+    List<DateTime>? capturedAts,
   }) async {
     final photoType = phase == 'pickup' ? 'before' : 'after';
     try {
@@ -558,6 +562,9 @@ contract_content,second_driver_name,second_driver_license
           .eq('phase', phase);
 
       final rows = photoUrls.asMap().entries.map((entry) {
+        final capturedAt = capturedAts != null && entry.key < capturedAts.length
+            ? capturedAts[entry.key]
+            : DateTime.now().toUtc();
         return {
           'reservation_id': reservationId,
           'user_id': userId,
@@ -565,6 +572,7 @@ contract_content,second_driver_name,second_driver_license
           'photo_type': photoType,
           'photo_url': entry.value,
           'photo_order': entry.key,
+          'created_at': capturedAt.toIso8601String(),
         };
       }).toList();
 
@@ -634,12 +642,15 @@ contract_content,second_driver_name,second_driver_license
     required String reservationId,
     required List<Uint8List> photos,
   }) async {
-    final photoUrls = await uploadPhotos(
+    final uploadedPhotos = await uploadPhotos(
       reservationId: reservationId,
       phase: 'pickup',
       photos: photos,
       minPhotos: 6,
     );
+    final photoUrls = uploadedPhotos.map((photo) => photo.url).toList();
+    final capturedAts =
+        uploadedPhotos.map((photo) => photo.capturedAt).toList();
 
     PostgrestException? rpcError;
     try {
@@ -650,6 +661,16 @@ contract_content,second_driver_name,second_driver_license
         'p_fuel_level_start': null,
       });
       await _assertReservationInUse(reservationId);
+      final user = supabase.auth.currentUser;
+      if (user != null) {
+        await _insertRidePhotos(
+          reservationId: reservationId,
+          userId: user.id,
+          phase: 'pickup',
+          photoUrls: photoUrls,
+          capturedAts: capturedAts,
+        );
+      }
       RentalService.signalListRefresh();
       final result = _asMap(data);
       try {
@@ -668,6 +689,7 @@ contract_content,second_driver_name,second_driver_license
       final result = await _startRentalDirect(
         reservationId: reservationId,
         photoUrls: photoUrls,
+        capturedAts: capturedAts,
       );
       await _assertReservationInUse(reservationId);
       RentalService.signalListRefresh();
@@ -763,6 +785,7 @@ contract_content,second_driver_name,second_driver_license
   Future<Map<String, dynamic>> _startRentalDirect({
     required String reservationId,
     required List<String> photoUrls,
+    List<DateTime>? capturedAts,
   }) async {
     final user = supabase.auth.currentUser;
     if (user == null) {
@@ -804,6 +827,7 @@ contract_content,second_driver_name,second_driver_license
       userId: user.id,
       phase: 'pickup',
       photoUrls: photoUrls,
+      capturedAts: capturedAts,
     );
 
     return {
@@ -1263,11 +1287,14 @@ contract_content,second_driver_name,second_driver_license
       throw const AuthException('로그인이 필요합니다.');
     }
 
-    final photoUrls = await uploadPhotos(
+    final uploadedPhotos = await uploadPhotos(
       reservationId: reservationId,
       phase: 'return',
       photos: photos,
     );
+    final photoUrls = uploadedPhotos.map((photo) => photo.url).toList();
+    final capturedAts =
+        uploadedPhotos.map((photo) => photo.capturedAt).toList();
 
     final nowIso = DateTime.now().toUtc().toIso8601String();
 
@@ -1286,6 +1313,7 @@ contract_content,second_driver_name,second_driver_license
         userId: user.id,
         phase: 'return',
         photoUrls: photoUrls,
+        capturedAts: capturedAts,
       );
       await _grantReservationPointsAfterReturn(reservationId);
       RentalService.signalListRefresh();
@@ -1312,6 +1340,7 @@ contract_content,second_driver_name,second_driver_license
           userId: user.id,
           phase: 'return',
           photoUrls: photoUrls,
+          capturedAts: capturedAts,
         );
         await _grantReservationPointsAfterReturn(reservationId);
         RentalService.signalListRefresh();

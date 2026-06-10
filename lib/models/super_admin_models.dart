@@ -1,3 +1,4 @@
+import '../utils/cancel_reason.dart';
 import '../utils/rental_pricing.dart';
 import '../utils/reservation_display.dart';
 
@@ -815,7 +816,7 @@ class SuperAdminSettlementCancelItem {
       cancelledAt: _dt(m['cancelled_at']),
       paidAmount: (m['paid_amount'] as num?)?.toInt() ?? 0,
       refundAmount: (m['refund_amount'] as num?)?.toInt() ?? 0,
-      cancelReason: m['cancel_reason']?.toString() ?? '취소',
+      cancelReason: cancelReasonDisplayLabel(m['cancel_reason']?.toString()),
     );
   }
 }

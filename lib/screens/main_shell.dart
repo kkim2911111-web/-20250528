@@ -1,9 +1,13 @@
 import 'package:flutter/material.dart';
 
+import '../models/app_maintenance_status.dart';
+import '../services/app_maintenance_service.dart';
 import '../theme/danji_colors.dart';
+import '../widgets/maintenance_mode_screen.dart';
 import '../widgets/smart_key_nav_icon.dart';
 import 'home_screen.dart';
 import 'my_page_screen.dart';
+import 'my_reservations_screen.dart';
 import 'smart_key_screen.dart';
 import 'usage_guide_screen.dart';
 
@@ -15,22 +19,76 @@ class MainShell extends StatefulWidget {
   State<MainShell> createState() => _MainShellState();
 }
 
-class _MainShellState extends State<MainShell> {
+class _MainShellState extends State<MainShell> with WidgetsBindingObserver {
   int _index = 0;
   final _homeKey = GlobalKey<HomeScreenState>();
   final _smartKeyKey = GlobalKey<SmartKeyScreenState>();
+  AppMaintenanceStatus _maintenance = AppMaintenanceStatus.disabled;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    _loadMaintenance();
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      _loadMaintenance();
+    }
+  }
+
+  Future<void> _loadMaintenance() async {
+    final status = await AppMaintenanceService.instance.fetch(force: true);
+    if (!mounted) return;
+    setState(() => _maintenance = status);
+  }
+
+  void _openMyReservations() {
+    Navigator.of(context)
+        .push(
+      MaterialPageRoute(builder: (_) => const MyReservationsScreen()),
+    )
+        .then((_) {
+      _homeKey.currentState?.reload();
+      _loadMaintenance();
+    });
+  }
+
+  void _goReturn() {
+    setState(() => _index = 1);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _smartKeyKey.currentState?.reload();
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
+    final maintenanceHome = _maintenance.enabled;
+
     return Scaffold(
       backgroundColor: DanjiColors.background,
       body: IndexedStack(
         index: _index,
         children: [
-          HomeScreen(
-            key: _homeKey,
-            onGoMyPage: () => setState(() => _index = 3),
-          ),
+          maintenanceHome
+              ? MaintenanceModeScreen(
+                  message: _maintenance.message,
+                  onMyReservations: _openMyReservations,
+                  onReturn: _goReturn,
+                  onRefresh: _loadMaintenance,
+                )
+              : HomeScreen(
+                  key: _homeKey,
+                  onGoMyPage: () => setState(() => _index = 3),
+                ),
           SmartKeyScreen(
             key: _smartKeyKey,
             isActive: _index == 1,
@@ -55,7 +113,9 @@ class _MainShellState extends State<MainShell> {
           onDestinationSelected: (i) {
             setState(() => _index = i);
             WidgetsBinding.instance.addPostFrameCallback((_) {
-              if (i == 0) _homeKey.currentState?.reload();
+              if (i == 0 && !maintenanceHome) {
+                _homeKey.currentState?.reload();
+              }
               if (i == 1) _smartKeyKey.currentState?.reload();
             });
           },

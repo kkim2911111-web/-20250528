@@ -59,6 +59,7 @@ export async function forceCancelReservationWithRefund(params: {
   const { error: rpcError } = await admin.rpc('cancel_reservation_for_me', {
     p_reservation_id: id,
     p_user_id: userId,
+    p_cancel_reason: 'blacklist_auto',
   });
 
   if (rpcError) {

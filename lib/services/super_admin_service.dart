@@ -232,16 +232,23 @@ class SuperAdminService {
       }
     }
 
+    final beforeRecords = await _fetchRidePhotoRecordsForSuperAdmin(
+      reservationId: reservation.id,
+      photoType: 'before',
+    );
+    final afterRecords = await _fetchRidePhotoRecordsForSuperAdmin(
+      reservationId: reservation.id,
+      photoType: 'after',
+    );
+
     if (before.isEmpty) {
-      before = await _fetchRidePhotosForSuperAdmin(
-        reservationId: reservation.id,
-        photoType: 'before',
+      before = normalizeInspectionPhotoUrls(
+        beforeRecords.map((record) => record.url),
       );
     }
     if (after.isEmpty) {
-      after = await _fetchRidePhotosForSuperAdmin(
-        reservationId: reservation.id,
-        photoType: 'after',
+      after = normalizeInspectionPhotoUrls(
+        afterRecords.map((record) => record.url),
       );
     }
 
@@ -253,10 +260,23 @@ class SuperAdminService {
       actualEndAt: actualEndAt,
       status: status,
       updatedAt: updatedAt,
+      beforeTimestampsByUrl: ridePhotoTimestampsByUrl(beforeRecords),
+      afterTimestampsByUrl: ridePhotoTimestampsByUrl(afterRecords),
     );
   }
 
-  Future<List<String>> _fetchRidePhotosForSuperAdmin({
+  static ({String url, DateTime? createdAt}) _parseRidePhotoRow(dynamic row) {
+    if (row is Map) {
+      return (
+        url: row['photo_url']?.toString().trim() ?? '',
+        createdAt: _parseDate(row['created_at']),
+      );
+    }
+    return (url: row?.toString().trim() ?? '', createdAt: null);
+  }
+
+  Future<List<({String url, DateTime? createdAt})>>
+      _fetchRidePhotoRecordsForSuperAdmin({
     required String reservationId,
     required String photoType,
   }) async {
@@ -266,14 +286,10 @@ class SuperAdminService {
         'p_photo_type': photoType,
       });
       if (data is! List) return const [];
-      return normalizeInspectionPhotoUrls(
-        data.map((row) {
-          if (row is Map) {
-            return row['photo_url']?.toString() ?? '';
-          }
-          return row?.toString() ?? '';
-        }),
-      );
+      return data
+          .map(_parseRidePhotoRow)
+          .where((record) => record.url.isNotEmpty)
+          .toList();
     } catch (_) {
       return const [];
     }

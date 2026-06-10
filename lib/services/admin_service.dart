@@ -841,7 +841,24 @@ class AdminService {
         .toList();
   }
 
-  Future<List<String>> _fetchRidePhotosForStaff({
+  static DateTime? _parseRidePhotoCreatedAt(Object? raw) {
+    if (raw == null) return null;
+    return DateTime.tryParse(raw.toString())?.toLocal();
+  }
+
+  static ({String url, DateTime? createdAt}) _parseRidePhotoStaffRow(
+    dynamic row,
+  ) {
+    if (row is Map) {
+      return (
+        url: row['photo_url']?.toString().trim() ?? '',
+        createdAt: _parseRidePhotoCreatedAt(row['created_at']),
+      );
+    }
+    return (url: row?.toString().trim() ?? '', createdAt: null);
+  }
+
+  Future<List<({String url, DateTime? createdAt})>> _fetchRidePhotoRecordsForStaff({
     required String reservationId,
     required String photoType,
   }) async {
@@ -851,16 +868,10 @@ class AdminService {
         'p_photo_type': photoType,
       });
       if (data is! List) return const [];
-      final urls = data
-          .map((row) {
-            if (row is Map) {
-              return row['photo_url']?.toString().trim() ?? '';
-            }
-            return row?.toString().trim() ?? '';
-          })
-          .where((url) => url.isNotEmpty)
+      return data
+          .map(_parseRidePhotoStaffRow)
+          .where((record) => record.url.isNotEmpty)
           .toList();
-      return _normalizePhotoUrls(urls);
     } on PostgrestException catch (e) {
       final msg = e.message.toLowerCase();
       if (msg.contains('could not find the function') ||
@@ -868,7 +879,7 @@ class AdminService {
         return const [];
       }
       if (msg.contains('p_photo_type')) {
-        return _fetchRidePhotosLegacyPhase(
+        return _fetchRidePhotoRecordsLegacyPhase(
           reservationId: reservationId,
           photoType: photoType,
         );
@@ -877,7 +888,8 @@ class AdminService {
     }
   }
 
-  Future<List<String>> _fetchRidePhotosLegacyPhase({
+  Future<List<({String url, DateTime? createdAt})>>
+      _fetchRidePhotoRecordsLegacyPhase({
     required String reservationId,
     required String photoType,
   }) async {
@@ -892,19 +904,24 @@ class AdminService {
         'p_phase': legacyPhase,
       });
       if (data is! List) return const [];
-      final urls = data
-          .map((row) {
-            if (row is Map) {
-              return row['photo_url']?.toString().trim() ?? '';
-            }
-            return row?.toString().trim() ?? '';
-          })
-          .where((url) => url.isNotEmpty)
+      return data
+          .map(_parseRidePhotoStaffRow)
+          .where((record) => record.url.isNotEmpty)
           .toList();
-      return _normalizePhotoUrls(urls);
     } on PostgrestException {
       return const [];
     }
+  }
+
+  Future<List<String>> _fetchRidePhotosForStaff({
+    required String reservationId,
+    required String photoType,
+  }) async {
+    final records = await _fetchRidePhotoRecordsForStaff(
+      reservationId: reservationId,
+      photoType: photoType,
+    );
+    return _normalizePhotoUrls(records.map((record) => record.url));
   }
 
   static String _normalizeReservationId(String reservationId) {
@@ -980,24 +997,27 @@ class AdminService {
     );
   }
 
-  /// 검수 사진 + 촬영 시각(사진별 없으면 대여시작/반납·검수완료 시각)
+  /// 검수 사진 + 촬영 시각(ride_photos.created_at 우선, 없으면 대여시작/반납·검수완료 시각)
   Future<InspectionPhotoSet> resolveInspectionPhotoSet(
     AdminReservationRow row,
   ) async {
     var before = normalizeInspectionPhotoUrls(row.pickupPhotos);
     var after = normalizeInspectionPhotoUrls(row.returnPhotos);
 
+    final beforeRecords = await _fetchRidePhotoRecordsForStaff(
+      reservationId: row.id,
+      photoType: 'before',
+    );
+    final afterRecords = await _fetchRidePhotoRecordsForStaff(
+      reservationId: row.id,
+      photoType: 'after',
+    );
+
     if (before.isEmpty) {
-      before = await _fetchRidePhotosForStaff(
-        reservationId: row.id,
-        photoType: 'before',
-      );
+      before = _normalizePhotoUrls(beforeRecords.map((record) => record.url));
     }
     if (after.isEmpty) {
-      after = await _fetchRidePhotosForStaff(
-        reservationId: row.id,
-        photoType: 'after',
-      );
+      after = _normalizePhotoUrls(afterRecords.map((record) => record.url));
     }
 
     return buildInspectionPhotoSet(
@@ -1008,6 +1028,8 @@ class AdminService {
       actualEndAt: row.actualEndAt,
       status: row.status,
       updatedAt: row.updatedAt,
+      beforeTimestampsByUrl: ridePhotoTimestampsByUrl(beforeRecords),
+      afterTimestampsByUrl: ridePhotoTimestampsByUrl(afterRecords),
     );
   }
 

@@ -8,6 +8,8 @@ import '../supabase_client.dart';
 import '../utils/vehicle_insurance_status.dart';
 import '../constants/payment_order_status.dart';
 import '../utils/booking_eligibility.dart';
+import '../utils/maintenance_error.dart';
+import 'app_maintenance_service.dart';
 import '../utils/rental_pricing.dart';
 import 'my_page_service.dart';
 import 'push_notification_service.dart';
@@ -1481,6 +1483,9 @@ String friendlyReservationError(Object error) {
     }
     if (msg.contains('time_overlap')) {
       return '이미 예약된 시간입니다';
+    }
+    if (msg.contains(maintenanceActiveCode)) {
+      return AppMaintenanceService.instance.cached.message;
     }
     if (msg.contains('user_blacklisted')) {
       return '서비스 이용이 제한된 계정입니다. 고객센터로 문의해주세요.';

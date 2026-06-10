@@ -1,4 +1,5 @@
 import { handleCors, jsonResponse } from '../_shared/http.ts';
+import { assertResidentMaintenanceAllowed } from '../_shared/maintenance_mode.ts';
 import { getAdminClient, getUserFromRequest } from '../_shared/payment.ts';
 import { issueTossBillingKey } from '../_shared/toss.ts';
 
@@ -25,6 +26,20 @@ Deno.serve(async (req) => {
       return jsonResponse({ error: 'customerKey 불일치' }, 403);
     }
 
+    const admin = getAdminClient();
+    try {
+      await assertResidentMaintenanceAllowed(admin, user.id);
+    } catch (e) {
+      const err = e as Error & { code?: string };
+      if (err.code === 'maintenance_active') {
+        return jsonResponse(
+          { error: 'maintenance_active', code: 'maintenance_active' },
+          503,
+        );
+      }
+      throw e;
+    }
+
     const toss = await issueTossBillingKey({ authKey, customerKey });
     const billingKey = toss.billingKey;
     if (!billingKey) {
@@ -36,7 +51,6 @@ Deno.serve(async (req) => {
       ? cardNumber.slice(-4)
       : '0000';
 
-    const admin = getAdminClient();
     await admin.from('user_profiles').upsert(
       {
         user_id: user.id,

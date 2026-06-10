@@ -15,6 +15,36 @@ List<String> normalizeInspectionPhotoUrls(Iterable<String> urls) {
       .toList();
 }
 
+/// ride_photos 행 → URL별 촬영 시각 맵
+Map<String, DateTime> ridePhotoTimestampsByUrl(
+  Iterable<({String url, DateTime? createdAt})> records,
+) {
+  final map = <String, DateTime>{};
+  for (final record in records) {
+    final url = record.url.trim();
+    if (!isDisplayableInspectionPhotoUrl(url)) continue;
+    final at = record.createdAt;
+    if (at == null) continue;
+    map.putIfAbsent(url, () => at);
+  }
+  return map;
+}
+
+/// 사진별 시각 우선, 없으면 단계 폴백(대여시작/반납 등)
+List<InspectionPhotoEntry> buildInspectionPhotoEntries(
+  List<String> urls, {
+  Map<String, DateTime>? timestampsByUrl,
+  DateTime? fallbackCapturedAt,
+}) {
+  return urls.map((url) {
+    final trimmed = url.trim();
+    return InspectionPhotoEntry(
+      url: trimmed,
+      capturedAt: timestampsByUrl?[trimmed] ?? fallbackCapturedAt,
+    );
+  }).toList();
+}
+
 InspectionPhotoSet buildInspectionPhotoSet({
   required List<String> beforeUrls,
   required List<String> afterUrls,
@@ -23,6 +53,8 @@ InspectionPhotoSet buildInspectionPhotoSet({
   DateTime? actualEndAt,
   String? status,
   DateTime? updatedAt,
+  Map<String, DateTime>? beforeTimestampsByUrl,
+  Map<String, DateTime>? afterTimestampsByUrl,
 }) {
   final afterCapturedAt = returnedAt ??
       actualEndAt ??
@@ -33,13 +65,15 @@ InspectionPhotoSet buildInspectionPhotoSet({
       );
 
   return InspectionPhotoSet(
-    before: InspectionPhotoEntry.fromUrls(
+    before: buildInspectionPhotoEntries(
       beforeUrls,
-      capturedAt: rentalStartedAt,
+      timestampsByUrl: beforeTimestampsByUrl,
+      fallbackCapturedAt: rentalStartedAt,
     ),
-    after: InspectionPhotoEntry.fromUrls(
+    after: buildInspectionPhotoEntries(
       afterUrls,
-      capturedAt: afterCapturedAt,
+      timestampsByUrl: afterTimestampsByUrl,
+      fallbackCapturedAt: afterCapturedAt,
     ),
   );
 }

@@ -14,7 +14,9 @@ import '../screens/payment_success_screen.dart';
 import '../screens/toss_billing_webview_screen.dart';
 import '../screens/toss_payment_webview_screen.dart';
 import '../supabase_client.dart';
+import '../utils/maintenance_error.dart';
 import '../utils/network_retry.dart';
+import 'app_maintenance_service.dart';
 import '../utils/rental_pricing.dart';
 import 'reservation_service.dart';
 import 'toss_payments.dart';
@@ -66,6 +68,9 @@ class PaymentService {
         return 'payment_orders status 값이 DB 허용 범위를 벗어났습니다.\n'
             '허용값: ${PaymentOrderStatus.allowed.join(', ')}\n'
             'Supabase에서 fix_payment_orders_status_check.sql 을 실행해주세요.';
+      }
+      if (msg.contains(maintenanceActiveCode)) {
+        return AppMaintenanceService.instance.cached.message;
       }
       if (msg.contains('not_authenticated')) {
         return '로그인이 필요합니다. 다시 로그인한 뒤 결제를 시도해주세요.';
@@ -119,8 +124,14 @@ class PaymentService {
     }
     if (error is FunctionException) {
       final details = error.details;
-      if (details is Map && details['error'] != null) {
-        return _mapCancelError(details['error'].toString());
+      if (details is Map) {
+        if (details['code']?.toString() == maintenanceActiveCode ||
+            details['error']?.toString() == maintenanceActiveCode) {
+          return AppMaintenanceService.instance.cached.message;
+        }
+        if (details['error'] != null) {
+          return _mapCancelError(details['error'].toString());
+        }
       }
       if (details is String && details.isNotEmpty) {
         final lower = details.toLowerCase();
@@ -154,6 +165,10 @@ class PaymentService {
 
       final data = response.data;
       if (data is Map<String, dynamic>) {
+        if (data['code']?.toString() == maintenanceActiveCode ||
+            data['error']?.toString() == maintenanceActiveCode) {
+          throw Exception(AppMaintenanceService.instance.cached.message);
+        }
         if (data['error'] != null) {
           throw Exception(_mapCancelError(data['error'].toString()));
         }
@@ -161,6 +176,10 @@ class PaymentService {
       }
       if (data is Map) {
         final map = Map<String, dynamic>.from(data);
+        if (map['code']?.toString() == maintenanceActiveCode ||
+            map['error']?.toString() == maintenanceActiveCode) {
+          throw Exception(AppMaintenanceService.instance.cached.message);
+        }
         if (map['error'] != null) {
           throw Exception(_mapCancelError(map['error'].toString()));
         }
@@ -519,6 +538,12 @@ class PaymentService {
   Future<bool> registerSignupBillingKey(BuildContext context) async {
     if (!PaymentConfig.isConfigured) {
       throw StateError('TOSS_CLIENT_KEY가 필요합니다.');
+    }
+
+    final maintenance =
+        await AppMaintenanceService.instance.current(force: true);
+    if (maintenance.enabled) {
+      throw Exception(maintenance.message);
     }
 
     final user = supabase.auth.currentUser;
@@ -944,6 +969,9 @@ String _mapCancelError(String message) {
     return ReservationCancelMessages.alreadyCancelled;
   }
   final lower = message.toLowerCase();
+  if (lower.contains(maintenanceActiveCode)) {
+    return AppMaintenanceService.instance.cached.message;
+  }
   if (lower.contains('cancel_too_late') ||
       lower.contains('1시간') ||
       lower.contains('60분')) {

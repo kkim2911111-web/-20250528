@@ -10,6 +10,8 @@ import '../services/my_page_service.dart';
 import '../supabase_client.dart';
 import '../theme/danji_colors.dart';
 import '../utils/booking_eligibility.dart';
+import '../widgets/maintenance_mode_gate.dart';
+import 'my_reservations_screen.dart';
 
 /// 결제 실패 후 예약 화면 복귀 — 관리자 계정은 지점 관리로 분기
 class BookingRoute extends StatelessWidget {
@@ -52,8 +54,17 @@ class BookingRoute extends StatelessWidget {
               return const ResidentProfileScreen();
             }
 
-            return _BookingEligibilityGate(
-              child: const BookingScreen(),
+            return MaintenanceModeGate(
+              onMyReservations: () {
+                Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (_) => const MyReservationsScreen(),
+                  ),
+                );
+              },
+              child: const _BookingEligibilityGate(
+                child: BookingScreen(),
+              ),
             );
           },
         );
