@@ -1,23 +1,15 @@
 import 'package:flutter/material.dart';
 
+import '../models/inspection_photo.dart';
 import '../theme/danji_colors.dart';
-
-bool _isDisplayablePhotoUrl(String? url) {
-  if (url == null) return false;
-  final trimmed = url.trim();
-  return trimmed.startsWith('http://') || trimmed.startsWith('https://');
-}
-
-List<String> _validPhotoUrls(List<String> photos) {
-  return photos.where(_isDisplayablePhotoUrl).toList();
-}
+import 'inspection_photo_viewer.dart';
 
 enum _CompareLayout { sideBySide, stacked }
 
-/// 반납 검수 — 대여 전/반납 후 사진 비교
+/// 반납 검수 — 대여 전/반납 후 사진 비교 (썸네일 탭 → 전체화면 뷰어)
 class ReturnInspectionPhotoCompare extends StatefulWidget {
-  final List<String> beforePhotos;
-  final List<String> afterPhotos;
+  final List<InspectionPhotoEntry> beforePhotos;
+  final List<InspectionPhotoEntry> afterPhotos;
 
   const ReturnInspectionPhotoCompare({
     super.key,
@@ -48,13 +40,10 @@ class _ReturnInspectionPhotoCompareState
     super.dispose();
   }
 
-  List<String> get _beforePhotos => _validPhotoUrls(widget.beforePhotos);
-  List<String> get _afterPhotos => _validPhotoUrls(widget.afterPhotos);
-
   int get _pageCount {
     final max = [
-      _beforePhotos.length,
-      _afterPhotos.length,
+      widget.beforePhotos.length,
+      widget.afterPhotos.length,
     ].reduce((a, b) => a > b ? a : b);
     return max == 0 ? 1 : max;
   }
@@ -110,8 +99,8 @@ class _ReturnInspectionPhotoCompareState
             const SizedBox(height: 12),
             if (_layout == _CompareLayout.sideBySide)
               _SideBySideCompare(
-                beforePhotos: _beforePhotos,
-                afterPhotos: _afterPhotos,
+                beforePhotos: widget.beforePhotos,
+                afterPhotos: widget.afterPhotos,
                 pageController: _pageController,
                 pageIndex: _pageIndex,
                 pageCount: _pageCount,
@@ -119,8 +108,8 @@ class _ReturnInspectionPhotoCompareState
               )
             else
               _StackedCompare(
-                beforePhotos: _beforePhotos,
-                afterPhotos: _afterPhotos,
+                beforePhotos: widget.beforePhotos,
+                afterPhotos: widget.afterPhotos,
               ),
           ],
         ),
@@ -130,8 +119,8 @@ class _ReturnInspectionPhotoCompareState
 }
 
 class _SideBySideCompare extends StatelessWidget {
-  final List<String> beforePhotos;
-  final List<String> afterPhotos;
+  final List<InspectionPhotoEntry> beforePhotos;
+  final List<InspectionPhotoEntry> afterPhotos;
   final PageController pageController;
   final int pageIndex;
   final int pageCount;
@@ -165,18 +154,22 @@ class _SideBySideCompare extends StatelessWidget {
                         Expanded(
                           child: _PhotoPanel(
                             title: '대여 전',
-                            url: index < beforePhotos.length
+                            entry: index < beforePhotos.length
                                 ? beforePhotos[index]
                                 : null,
+                            gallery: beforePhotos,
+                            galleryIndex: index,
                           ),
                         ),
                         const SizedBox(width: 8),
                         Expanded(
                           child: _PhotoPanel(
                             title: '반납 후',
-                            url: index < afterPhotos.length
+                            entry: index < afterPhotos.length
                                 ? afterPhotos[index]
                                 : null,
+                            gallery: afterPhotos,
+                            galleryIndex: index,
                           ),
                         ),
                       ],
@@ -185,9 +178,9 @@ class _SideBySideCompare extends StatelessWidget {
                 )
               : Row(
                   children: const [
-                    Expanded(child: _PhotoPanel(title: '대여 전', url: null)),
+                    Expanded(child: _PhotoPanel(title: '대여 전', entry: null)),
                     SizedBox(width: 8),
-                    Expanded(child: _PhotoPanel(title: '반납 후', url: null)),
+                    Expanded(child: _PhotoPanel(title: '반납 후', entry: null)),
                   ],
                 ),
         ),
@@ -217,8 +210,8 @@ class _SideBySideCompare extends StatelessWidget {
 }
 
 class _StackedCompare extends StatelessWidget {
-  final List<String> beforePhotos;
-  final List<String> afterPhotos;
+  final List<InspectionPhotoEntry> beforePhotos;
+  final List<InspectionPhotoEntry> afterPhotos;
 
   const _StackedCompare({
     required this.beforePhotos,
@@ -240,7 +233,7 @@ class _StackedCompare extends StatelessWidget {
 
 class _PhotoStripSection extends StatelessWidget {
   final String title;
-  final List<String> photos;
+  final List<InspectionPhotoEntry> photos;
 
   const _PhotoStripSection({
     required this.title,
@@ -271,7 +264,12 @@ class _PhotoStripSection extends StatelessWidget {
               itemCount: photos.length,
               separatorBuilder: (_, __) => const SizedBox(width: 8),
               itemBuilder: (context, index) {
-                return _NetworkPhotoThumb(url: photos[index], width: 96);
+                return InspectionPhotoThumb(
+                  entry: photos[index],
+                  gallery: photos,
+                  galleryIndex: index,
+                  width: 96,
+                );
               },
             ),
           ),
@@ -282,11 +280,15 @@ class _PhotoStripSection extends StatelessWidget {
 
 class _PhotoPanel extends StatelessWidget {
   final String title;
-  final String? url;
+  final InspectionPhotoEntry? entry;
+  final List<InspectionPhotoEntry> gallery;
+  final int galleryIndex;
 
   const _PhotoPanel({
     required this.title,
-    this.url,
+    this.entry,
+    this.gallery = const [],
+    this.galleryIndex = 0,
   });
 
   @override
@@ -305,63 +307,22 @@ class _PhotoPanel extends StatelessWidget {
         ),
         const SizedBox(height: 6),
         Expanded(
-          child: url == null
+          child: entry == null
               ? const _EmptyPhotoBox()
-              : _NetworkPhotoThumb(url: url!, expand: true),
+              : InspectionPhotoThumb(
+                  entry: entry!,
+                  gallery: gallery.isEmpty ? [entry!] : gallery,
+                  galleryIndex: gallery.isEmpty ? 0 : galleryIndex,
+                  expand: true,
+                ),
         ),
       ],
     );
   }
 }
 
-class _NetworkPhotoThumb extends StatelessWidget {
-  final String url;
-  final double? width;
-  final bool expand;
-
-  const _NetworkPhotoThumb({
-    required this.url,
-    this.width,
-    this.expand = false,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    if (!_isDisplayablePhotoUrl(url)) {
-      return expand
-          ? const SizedBox.expand(child: _EmptyPhotoBox())
-          : const SizedBox(width: 96, height: 96, child: _EmptyPhotoBox());
-    }
-
-    final image = ClipRRect(
-      borderRadius: BorderRadius.circular(10),
-      child: ColoredBox(
-        color: DanjiColors.skyLight,
-        child: Image.network(
-          url.trim(),
-          width: expand ? double.infinity : width,
-          height: expand ? double.infinity : 96,
-          fit: BoxFit.cover,
-          errorBuilder: (_, __, ___) => const _EmptyPhotoBox(),
-          loadingBuilder: (context, child, progress) {
-            if (progress == null) return child;
-            return const _EmptyPhotoBox(showProgress: true);
-          },
-        ),
-      ),
-    );
-
-    if (expand) {
-      return SizedBox.expand(child: image);
-    }
-    return SizedBox(width: width, height: 96, child: image);
-  }
-}
-
 class _EmptyPhotoBox extends StatelessWidget {
-  final bool showProgress;
-
-  const _EmptyPhotoBox({this.showProgress = false});
+  const _EmptyPhotoBox();
 
   @override
   Widget build(BuildContext context) {
@@ -371,20 +332,14 @@ class _EmptyPhotoBox extends StatelessWidget {
         borderRadius: BorderRadius.circular(10),
         border: Border.all(color: DanjiColors.border),
       ),
-      child: Center(
-        child: showProgress
-            ? const SizedBox(
-                width: 22,
-                height: 22,
-                child: CircularProgressIndicator(strokeWidth: 2),
-              )
-            : const Text(
-                '사진 없음',
-                style: TextStyle(
-                  fontSize: 12,
-                  color: DanjiColors.textMuted,
-                ),
-              ),
+      child: const Center(
+        child: Text(
+          '사진 없음',
+          style: TextStyle(
+            fontSize: 12,
+            color: DanjiColors.textMuted,
+          ),
+        ),
       ),
     );
   }

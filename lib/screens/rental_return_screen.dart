@@ -10,6 +10,7 @@ import '../services/rental_start_service.dart';
 import '../utils/danji_snackbar.dart';
 import '../widgets/danji_app_bar.dart';
 import '../widgets/fuel_level_selector.dart';
+import '../widgets/rental_photo_capture_guide.dart';
 import '../widgets/rental_pickup_photo_grid.dart';
 import '../widgets/smart_key_door_buttons.dart';
 import '../theme/danji_colors.dart';
@@ -311,14 +312,23 @@ class _RentalReturnScreenState extends State<RentalReturnScreen> {
                     ),
                     const SizedBox(height: 16),
                     SectionCard(
-                      child: RentalPickupPhotoGrid(
-                        sectionTitle: '반납 사진',
-                        guideLine:
-                            '앞·뒤·좌·우·실내·계기판 순으로 최소 6장, 최대 10장 등록해 주세요.',
-                        photos: _photos,
-                        onBulkGallery: _pickFromGallery,
-                        onCamera: _takePhoto,
-                        onRemove: _removePhotoAt,
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          RentalPhotoCaptureGuide(
+                            capturedCount: _photos.length,
+                          ),
+                          const SizedBox(height: 12),
+                          RentalPickupPhotoGrid(
+                            sectionTitle: '반납 사진',
+                            guideLine:
+                                '전면·후면·좌측면·우측면·실내·계기판 순으로 최소 6장, 최대 10장 등록해 주세요.',
+                            photos: _photos,
+                            onBulkGallery: _pickFromGallery,
+                            onCamera: _takePhoto,
+                            onRemove: _removePhotoAt,
+                          ),
+                        ],
                       ),
                     ),
                     const SizedBox(height: 16),

@@ -21,6 +21,7 @@ import '../theme/danji_theme.dart';
 import '../utils/network_retry.dart';
 import 'booking_screen.dart';
 import 'my_reservations_screen.dart';
+import 'notice_list_screen.dart';
 import 'notification_list_screen.dart';
 import '../utils/accident_emergency_flow.dart';
 import '../utils/rental_extension_flow.dart';
@@ -79,7 +80,7 @@ class HomeScreenState extends State<HomeScreen> {
     setState(() {
       _future = _load();
       _bannerFuture = _bannerService.fetchActiveBanner();
-      _noticesFuture = _noticeService.fetchActiveNotices();
+      _noticesFuture = _noticeService.fetchActiveNotices(limit: 20);
       _unreadCountFuture = _inboxService.fetchUnreadCount();
     });
   }
@@ -89,7 +90,7 @@ class HomeScreenState extends State<HomeScreen> {
     setState(() {
       _future = next;
       _bannerFuture = _bannerService.fetchActiveBanner();
-      _noticesFuture = _noticeService.fetchActiveNotices();
+      _noticesFuture = _noticeService.fetchActiveNotices(limit: 20);
       _unreadCountFuture = _inboxService.fetchUnreadCount();
     });
     await next;
@@ -811,6 +812,8 @@ class _HomeNoticesSection extends StatelessWidget {
 
   const _HomeNoticesSection({required this.future});
 
+  static final _dateFormat = DateFormat('yyyy.MM.dd');
+
   @override
   Widget build(BuildContext context) {
     return FutureBuilder<List<Notice>>(
@@ -821,6 +824,9 @@ class _HomeNoticesSection extends StatelessWidget {
         }
         final notices = snap.data ?? [];
         if (notices.isEmpty) return const SizedBox.shrink();
+
+        final preview = notices.take(3).toList();
+        final hasMore = notices.length > 3;
 
         return Container(
           width: double.infinity,
@@ -847,12 +853,36 @@ class _HomeNoticesSection extends StatelessWidget {
                 ],
               ),
               const SizedBox(height: 10),
-              ...notices.take(3).map((notice) {
+              ...preview.map((notice) {
+                final dateLabel = notice.createdAt != null
+                    ? _dateFormat.format(notice.createdAt!)
+                    : null;
                 return Padding(
                   padding: const EdgeInsets.only(bottom: 8),
-                  child: _NoticeRow(notice: notice),
+                  child: _NoticeRow(notice: notice, dateLabel: dateLabel),
                 );
               }),
+              if (hasMore)
+                Align(
+                  alignment: Alignment.centerRight,
+                  child: TextButton(
+                    onPressed: () {
+                      Navigator.of(context).push(
+                        MaterialPageRoute(
+                          builder: (_) => const NoticeListScreen(),
+                        ),
+                      );
+                    },
+                    style: TextButton.styleFrom(
+                      foregroundColor: DanjiColors.buttonBlue,
+                      padding: const EdgeInsets.symmetric(horizontal: 8),
+                    ),
+                    child: const Text(
+                      '더보기',
+                      style: TextStyle(fontWeight: FontWeight.w700),
+                    ),
+                  ),
+                ),
             ],
           ),
         );
@@ -863,8 +893,9 @@ class _HomeNoticesSection extends StatelessWidget {
 
 class _NoticeRow extends StatefulWidget {
   final Notice notice;
+  final String? dateLabel;
 
-  const _NoticeRow({required this.notice});
+  const _NoticeRow({required this.notice, this.dateLabel});
 
   @override
   State<_NoticeRow> createState() => _NoticeRowState();
@@ -910,13 +941,28 @@ class _NoticeRowState extends State<_NoticeRow> {
                       ),
                     ),
                   Expanded(
-                    child: Text(
-                      notice.title,
-                      style: const TextStyle(
-                        fontWeight: FontWeight.w700,
-                        fontSize: 14,
-                        color: DanjiColors.textPrimary,
-                      ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          notice.title,
+                          style: const TextStyle(
+                            fontWeight: FontWeight.w700,
+                            fontSize: 14,
+                            color: DanjiColors.textPrimary,
+                          ),
+                        ),
+                        if (widget.dateLabel != null) ...[
+                          const SizedBox(height: 3),
+                          Text(
+                            widget.dateLabel!,
+                            style: const TextStyle(
+                              fontSize: 11,
+                              color: DanjiColors.textMuted,
+                            ),
+                          ),
+                        ],
+                      ],
                     ),
                   ),
                   Icon(

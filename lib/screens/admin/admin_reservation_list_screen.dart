@@ -5,14 +5,20 @@ import '../../models/staff_profile.dart';
 import '../../services/admin_service.dart';
 import '../../utils/admin_conflict.dart' as conflict;
 import '../../utils/reservation_display.dart';
+import '../../utils/reservation_status_badge.dart';
 import '../../theme/danji_colors.dart';
 import '../../utils/danji_snackbar.dart';
 import '../../widgets/admin_scaffold.dart';
 import '../../widgets/danji_app_bar.dart';
 import '../../widgets/admin_reservation_card_extras.dart';
+import '../../widgets/admin_reservation_timeline_view.dart';
+import '../../widgets/reservation_times_panel.dart';
 import '../../widgets/section_card.dart';
+import '../../models/admin_timeline.dart';
 
 enum _ReservationFilter { all, inUse, waiting, conflict, completed }
+
+enum _AdminReservationViewMode { list, timeline }
 
 class _AdminReservationLists {
   final List<Map<String, dynamic>> active;
@@ -28,12 +34,14 @@ class AdminReservationListScreen extends StatefulWidget {
   final bool openConflictTab;
   final bool openInUseTab;
   final bool openWaitingTab;
+  final bool openTodayDayFilter;
 
   const AdminReservationListScreen({
     super.key,
     this.openConflictTab = false,
     this.openInUseTab = false,
     this.openWaitingTab = false,
+    this.openTodayDayFilter = false,
   });
 
   @override
@@ -49,7 +57,9 @@ class _AdminReservationListScreenState
   final _won = NumberFormat('#,###');
 
   _ReservationFilter _filter = _ReservationFilter.all;
+  _AdminReservationViewMode _viewMode = _AdminReservationViewMode.list;
   Future<_AdminReservationLists>? _future;
+  Future<AdminReservationTimelineData>? _timelineFuture;
 
   late int _year = DateTime.now().year;
   late int _month = DateTime.now().month;
@@ -59,7 +69,13 @@ class _AdminReservationListScreenState
   @override
   void initState() {
     super.initState();
-    if (widget.openInUseTab) {
+    if (widget.openTodayDayFilter) {
+      final now = DateTime.now();
+      _year = now.year;
+      _month = now.month;
+      _filterDay = DateTime(now.year, now.month, now.day);
+      _filter = _ReservationFilter.all;
+    } else if (widget.openInUseTab) {
       _filter = _ReservationFilter.inUse;
     } else if (widget.openWaitingTab) {
       _filter = _ReservationFilter.waiting;
@@ -72,7 +88,18 @@ class _AdminReservationListScreenState
   void _reload() {
     setState(() {
       _future = _load();
+      _timelineFuture = _loadTimeline();
     });
+  }
+
+  Future<AdminReservationTimelineData> _loadTimeline() {
+    return _admin.fetchReservationTimeline(year: _year, month: _month);
+  }
+
+  bool get _canGoNextMonth {
+    final now = DateTime.now();
+    return _year < now.year ||
+        (_year == now.year && _month < now.month);
   }
 
   Future<_AdminReservationLists> _load() async {
@@ -109,6 +136,7 @@ class _AdminReservationListScreenState
       _year = y;
       _month = m;
       _syncFilterDayWithMonth();
+      _timelineFuture = _loadTimeline();
     });
   }
 
@@ -352,6 +380,34 @@ class _AdminReservationListScreenState
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               Padding(
+                padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: _ViewModeChip(
+                        label: '목록',
+                        selected: _viewMode == _AdminReservationViewMode.list,
+                        onTap: () => setState(
+                          () => _viewMode = _AdminReservationViewMode.list,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: _ViewModeChip(
+                        label: '타임라인',
+                        selected:
+                            _viewMode == _AdminReservationViewMode.timeline,
+                        onTap: () => setState(
+                          () => _viewMode = _AdminReservationViewMode.timeline,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              if (_viewMode == _AdminReservationViewMode.list) ...[
+              Padding(
                 padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
                 child: SingleChildScrollView(
                   scrollDirection: Axis.horizontal,
@@ -404,17 +460,57 @@ class _AdminReservationListScreenState
                 ),
               ),
               _buildPeriodFilterBar(),
+              ],
               Expanded(
                 child: RefreshIndicator(
                   color: DanjiColors.buttonBlue,
                   onRefresh: () async => _reload(),
-                  child: _buildReservationList(snap),
+                  child: _viewMode == _AdminReservationViewMode.list
+                      ? _buildReservationList(snap)
+                      : _buildTimelineView(),
                 ),
               ),
             ],
           );
         },
       ),
+    );
+  }
+
+  Widget _buildTimelineView() {
+    return FutureBuilder<AdminReservationTimelineData>(
+      future: _timelineFuture,
+      builder: (context, snap) {
+        if (snap.connectionState == ConnectionState.waiting) {
+          return ListView(
+            physics: const AlwaysScrollableScrollPhysics(),
+            children: const [
+              SizedBox(height: 120),
+              Center(child: CircularProgressIndicator()),
+            ],
+          );
+        }
+        if (snap.hasError) {
+          return ListView(
+            physics: const AlwaysScrollableScrollPhysics(),
+            padding: const EdgeInsets.all(20),
+            children: [Text(friendlyAdminError(snap.error!))],
+          );
+        }
+
+        return AdminReservationTimelineView(
+          data: snap.data ??
+              const AdminReservationTimelineData(
+                vehicles: [],
+                reservations: [],
+              ),
+          year: _year,
+          month: _month,
+          canGoNextMonth: _canGoNextMonth,
+          onPreviousMonth: () => _shiftMonth(-1),
+          onNextMonth: _canGoNextMonth ? () => _shiftMonth(1) : null,
+        );
+      },
     );
   }
 
@@ -492,6 +588,47 @@ class _AdminReservationListScreenState
                   : null,
         );
       },
+    );
+  }
+}
+
+class _ViewModeChip extends StatelessWidget {
+  final String label;
+  final bool selected;
+  final VoidCallback onTap;
+
+  const _ViewModeChip({
+    required this.label,
+    required this.selected,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: selected ? DanjiColors.buttonBlue : DanjiColors.surface,
+      borderRadius: BorderRadius.circular(12),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(12),
+        child: Container(
+          padding: const EdgeInsets.symmetric(vertical: 12),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(
+              color: selected ? DanjiColors.buttonBlue : DanjiColors.border,
+            ),
+          ),
+          alignment: Alignment.center,
+          child: Text(
+            label,
+            style: TextStyle(
+              fontWeight: FontWeight.w800,
+              color: selected ? Colors.white : DanjiColors.textPrimary,
+            ),
+          ),
+        ),
+      ),
     );
   }
 }
@@ -597,8 +734,6 @@ class _CompletedReservationCard extends StatelessWidget {
     final renterName = AdminReservationRow.resolveRenterDisplayName(
       directRenterName: _str(row, 'renter_name'),
     );
-    final start = displayRentalStartFromMap(row);
-    final end = displayRentalEndFromMap(row);
     final totalPrice = (row['total_price'] as num?)?.toInt() ?? 0;
     final reservationId = _reservationId(row);
     final secondDriverName = _str(row, 'second_driver_name');
@@ -675,13 +810,10 @@ class _CompletedReservationCard extends StatelessWidget {
             padding: const EdgeInsets.only(top: 6),
           ),
           const SizedBox(height: 6),
-          Text(
-            '${_formatOptionalDateTime(dateTime, start)} ~ '
-            '${_formatOptionalDateTime(dateTime, end)}',
-            style: const TextStyle(
-              color: DanjiColors.textSecondary,
-              height: 1.4,
-            ),
+          ReservationTimesPanel.fromMap(
+            row: row,
+            formatter: dateTime,
+            mode: ReservationTimesMode.admin,
           ),
           if (reservationId != null) ...[
             const SizedBox(height: 8),
@@ -754,8 +886,6 @@ class _ReservationCardState extends State<_ReservationCard> {
     final vehicleName = _str(row, 'vehicle_name') ?? '차량';
     final carNumber = _str(row, 'car_number');
     final status = _status(row);
-    final start = displayRentalStartFromMap(row);
-    final end = displayRentalEndFromMap(row);
     final nextStart = _parseDate(row['next_start_at']);
     final secondDriverName = _str(row, 'second_driver_name');
     final secondDriverLicense = _str(row, 'second_driver_license');
@@ -777,8 +907,6 @@ class _ReservationCardState extends State<_ReservationCard> {
               status: status,
               row: row,
               won: widget.won,
-              start: start,
-              end: end,
               nextStart: nextStart,
               dateTime: widget.dateTime,
               timeOnly: widget.timeOnly,
@@ -906,8 +1034,6 @@ class _CurrentReservationPanel extends StatelessWidget {
   final String status;
   final Map<String, dynamic> row;
   final NumberFormat won;
-  final DateTime? start;
-  final DateTime? end;
   final DateTime? nextStart;
   final DateFormat dateTime;
   final DateFormat timeOnly;
@@ -926,8 +1052,6 @@ class _CurrentReservationPanel extends StatelessWidget {
     required this.status,
     required this.row,
     required this.won,
-    required this.start,
-    required this.end,
     required this.nextStart,
     required this.dateTime,
     required this.timeOnly,
@@ -1000,13 +1124,10 @@ class _CurrentReservationPanel extends StatelessWidget {
           padding: const EdgeInsets.only(top: 6),
         ),
         const SizedBox(height: 6),
-        Text(
-          '${_formatOptionalDateTime(dateTime, start)} ~ '
-          '${_formatOptionalDateTime(dateTime, end)}',
-          style: const TextStyle(
-            color: DanjiColors.textSecondary,
-            height: 1.4,
-          ),
+        ReservationTimesPanel.fromMap(
+          row: row,
+          formatter: dateTime,
+          mode: ReservationTimesMode.admin,
         ),
         if (_reservationId(row) != null) ...[
           const SizedBox(height: 8),
@@ -1197,24 +1318,7 @@ class _CompletedTabStatusBadge extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     if (_isNoShowCompleted(row)) {
-      return Container(
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-        decoration: BoxDecoration(
-          color: const Color(0xFFFFF3E0),
-          borderRadius: BorderRadius.circular(8),
-          border: Border.all(
-            color: const Color(0xFFFF6D00).withValues(alpha: 0.45),
-          ),
-        ),
-        child: const Text(
-          '노쇼완료',
-          style: TextStyle(
-            color: Color(0xFFE65100),
-            fontWeight: FontWeight.w700,
-            fontSize: 12,
-          ),
-        ),
-      );
+      return const _StatusBadge(status: 'completed', isNoShow: true);
     }
 
     return const _StatusBadge(status: 'completed');
@@ -1223,48 +1327,13 @@ class _CompletedTabStatusBadge extends StatelessWidget {
 
 class _StatusBadge extends StatelessWidget {
   final String status;
+  final bool isNoShow;
 
-  const _StatusBadge({required this.status});
+  const _StatusBadge({required this.status, this.isNoShow = false});
 
   @override
   Widget build(BuildContext context) {
-    final (label, bg, fg) = _style(status);
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-      decoration: BoxDecoration(
-        color: bg,
-        borderRadius: BorderRadius.circular(8),
-      ),
-      child: Text(
-        label,
-        style: TextStyle(
-          color: fg,
-          fontWeight: FontWeight.w700,
-          fontSize: 12,
-        ),
-      ),
-    );
-  }
-
-  (String, Color, Color) _style(String status) {
-    switch (status) {
-      case 'in_use':
-        return ('대여중', const Color(0xFFFFF3E0), const Color(0xFFFB8C00));
-      case 'returning':
-        return ('반납중', const Color(0xFFFFF8E1), const Color(0xFFF9A825));
-      case 'returned':
-        return ('반납완료', const Color(0xFFE8F5E9), const Color(0xFF43A047));
-      case 'confirmed':
-        return ('이용대기', DanjiColors.skyLight, DanjiColors.buttonBlue);
-      case 'pending':
-        return ('대기', const Color(0xFFF2F4F6), DanjiColors.textSecondary);
-      case 'completed':
-        return ('완료', const Color(0xFFE8F5E9), const Color(0xFF2E7D32));
-      case 'cancelled':
-        return ('취소', const Color(0xFFF2F4F6), DanjiColors.textSecondary);
-      default:
-        return (status, const Color(0xFFF2F4F6), DanjiColors.textSecondary);
-    }
+    return ReservationStatusBadge(status: status, isNoShow: isNoShow);
   }
 }
 

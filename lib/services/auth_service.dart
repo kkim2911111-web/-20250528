@@ -86,6 +86,7 @@ class AuthService {
 
   Future<void> signOut({bool toSignUp = false}) async {
     if (toSignUp) pendingSignUpOnNextAuthGate = true;
+    // signOut 전 현재 기기 FCM 토큰을 fcm_tokens에서 제거
     await FcmService.instance.clearForSignOut();
     await supabase.auth.signOut();
     onSignedOut?.call(toSignUp);

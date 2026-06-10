@@ -64,6 +64,28 @@ function fmtDateTime(iso?: string | null): string {
   }
 }
 
+function resolvePushScreen(scenario: PushScenario): string {
+  if (scenario === 'staff_no_show_auto_completed') return 'no_show';
+  if (
+    scenario === 'staff_billing_payment_failed' ||
+    scenario === 'staff_deductible_payment_exhausted' ||
+    scenario === 'staff_extension_payment_exhausted' ||
+    scenario === 'customer_billing_payment_failed'
+  ) {
+    return 'payment';
+  }
+  if (
+    scenario === 'staff_new_signup' ||
+    scenario === 'staff_license_review_request' ||
+    scenario === 'staff_resident_review_request'
+  ) {
+    return 'notice';
+  }
+  if (scenario.startsWith('customer_')) return 'reservation';
+  if (scenario.startsWith('staff_')) return 'reservation';
+  return 'notice';
+}
+
 export function buildPushMessage(
   scenario: PushScenario,
   payload: Record<string, string> = {},
@@ -75,8 +97,12 @@ export function buildPushMessage(
   const points = payload.pointsEarned?.trim();
 
   const data: FcmPushData = { type: scenario };
-  if (payload.reservationId) data.reservation_id = payload.reservationId;
+  if (payload.reservationId) {
+    data.reservation_id = payload.reservationId;
+    data.reservationId = payload.reservationId;
+  }
   if (payload.userId) data.user_id = payload.userId;
+  data.screen = resolvePushScreen(scenario);
 
   switch (scenario) {
     case 'customer_signup_complete':
@@ -447,7 +473,23 @@ export async function dispatchPushScenario(params: {
       complexId,
     );
     const superAdminUserIds = await fetchSuperAdminUserIds(params.admin);
-    const staffSet = new Set(staffUserIds);
+
+    let superAdminPushSent = 0;
+    const staffSetForPush = new Set(staffUserIds);
+    for (const superAdminId of superAdminUserIds) {
+      if (staffSetForPush.has(superAdminId)) continue;
+      const superResult = await sendPushToUser({
+        admin: params.admin,
+        userId: superAdminId,
+        title: message.title,
+        body: message.body,
+        data: message.data,
+      });
+      superAdminPushSent += superResult.sent;
+    }
+    staffSent += superAdminPushSent;
+
+    const staffSet = staffSetForPush;
     const inAppRecipients = [
       ...staffUserIds,
       ...superAdminUserIds.filter((id) => !staffSet.has(id)),

@@ -3,22 +3,51 @@ import 'package:intl/intl.dart';
 
 import '../models/super_admin_models.dart';
 import '../theme/danji_colors.dart';
+import 'rental_type_badge.dart';
 
 final _won = NumberFormat('#,###');
 final _dateTime = DateFormat('yyyy-MM-dd HH:mm');
+
+enum SettlementDetailTab { rental, payment, cancel }
+
+extension SettlementDetailTabX on SettlementDetailTab {
+  String title(int year, int month) {
+    switch (this) {
+      case SettlementDetailTab.rental:
+        return '완료 예약 상세 · $year년 $month월';
+      case SettlementDetailTab.payment:
+        return '결제 내역 · $year년 $month월';
+      case SettlementDetailTab.cancel:
+        return '취소 내역 · $year년 $month월';
+    }
+  }
+
+  String emptyMessage() {
+    switch (this) {
+      case SettlementDetailTab.rental:
+        return '해당 월 완료 예약 내역이 없습니다.';
+      case SettlementDetailTab.payment:
+        return '해당 월 결제 내역이 없습니다.';
+      case SettlementDetailTab.cancel:
+        return '해당 월 취소 내역이 없습니다.';
+    }
+  }
+}
 
 class SettlementCountRow extends StatelessWidget {
   final int paymentCount;
   final int cancelCount;
   final int rentalCount;
-  final String? paymentSublabel;
+  final SettlementDetailTab selectedTab;
+  final ValueChanged<SettlementDetailTab> onTabSelected;
 
   const SettlementCountRow({
     super.key,
     required this.paymentCount,
     required this.cancelCount,
     required this.rentalCount,
-    this.paymentSublabel,
+    required this.selectedTab,
+    required this.onTabSelected,
   });
 
   @override
@@ -28,13 +57,20 @@ class SettlementCountRow extends StatelessWidget {
         Expanded(
           child: _CountChip(
             label: '결제건수',
-            sublabel: paymentSublabel,
+            sublabel: '결제일',
             value: paymentCount,
+            selected: selectedTab == SettlementDetailTab.payment,
+            onTap: () => onTabSelected(SettlementDetailTab.payment),
           ),
         ),
         const SizedBox(width: 8),
         Expanded(
-          child: _CountChip(label: '취소건수', value: cancelCount),
+          child: _CountChip(
+            label: '취소건수',
+            value: cancelCount,
+            selected: selectedTab == SettlementDetailTab.cancel,
+            onTap: () => onTabSelected(SettlementDetailTab.cancel),
+          ),
         ),
         const SizedBox(width: 8),
         Expanded(
@@ -42,6 +78,8 @@ class SettlementCountRow extends StatelessWidget {
             label: '대여건수',
             sublabel: '정산기준',
             value: rentalCount,
+            selected: selectedTab == SettlementDetailTab.rental,
+            onTap: () => onTabSelected(SettlementDetailTab.rental),
           ),
         ),
       ],
@@ -53,41 +91,66 @@ class _CountChip extends StatelessWidget {
   final String label;
   final String? sublabel;
   final int value;
+  final bool selected;
+  final VoidCallback onTap;
 
   const _CountChip({
     required this.label,
     this.sublabel,
     required this.value,
+    required this.selected,
+    required this.onTap,
   });
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
-      decoration: BoxDecoration(
-        color: DanjiColors.pageBackground,
+    final borderColor =
+        selected ? DanjiColors.buttonBlue : DanjiColors.border;
+    final background =
+        selected ? const Color(0xFFEFF6FF) : DanjiColors.pageBackground;
+
+    return Material(
+      color: background,
+      borderRadius: BorderRadius.circular(10),
+      child: InkWell(
+        onTap: onTap,
         borderRadius: BorderRadius.circular(10),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            sublabel == null ? label : '$label($sublabel)',
-            style: const TextStyle(
-              color: DanjiColors.textSecondary,
-              fontSize: 11,
-              fontWeight: FontWeight.w600,
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(
+              color: borderColor,
+              width: selected ? 1.5 : 1,
             ),
           ),
-          const SizedBox(height: 4),
-          Text(
-            '$value건',
-            style: const TextStyle(
-              fontWeight: FontWeight.w800,
-              fontSize: 15,
-            ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                sublabel == null ? label : '$label($sublabel)',
+                style: TextStyle(
+                  color: selected
+                      ? DanjiColors.buttonBlue
+                      : DanjiColors.textSecondary,
+                  fontSize: 11,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                '$value건',
+                style: TextStyle(
+                  fontWeight: FontWeight.w800,
+                  fontSize: 15,
+                  color: selected
+                      ? DanjiColors.buttonBlue
+                      : DanjiColors.textPrimary,
+                ),
+              ),
+            ],
           ),
-        ],
+        ),
       ),
     );
   }
@@ -143,6 +206,55 @@ class SettlementAmountRow extends StatelessWidget {
   }
 }
 
+class SettlementDetailList extends StatelessWidget {
+  final SuperAdminSettlementSheet sheet;
+  final SettlementDetailTab tab;
+  final int year;
+  final int month;
+
+  const SettlementDetailList({
+    super.key,
+    required this.sheet,
+    required this.tab,
+    required this.year,
+    required this.month,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Text(
+          tab.title(year, month),
+          style: const TextStyle(
+            fontWeight: FontWeight.w700,
+            fontSize: 14,
+          ),
+        ),
+        const SizedBox(height: 8),
+        Expanded(
+          child: switch (tab) {
+            SettlementDetailTab.rental => _RentalList(
+                items: sheet.items,
+                emptyMessage: tab.emptyMessage(),
+              ),
+            SettlementDetailTab.payment => _PaymentList(
+                items: sheet.paymentItems,
+                emptyMessage: tab.emptyMessage(),
+              ),
+            SettlementDetailTab.cancel => _CancelList(
+                items: sheet.cancelItems,
+                emptyMessage: tab.emptyMessage(),
+              ),
+          },
+        ),
+      ],
+    );
+  }
+}
+
+@Deprecated('Use SettlementDetailList')
 class SettlementReservationList extends StatelessWidget {
   final List<SuperAdminSettlementReservation> items;
   final int year;
@@ -157,58 +269,177 @@ class SettlementReservationList extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        Text(
-          '완료 예약 상세 · $year년 $month월',
-          style: const TextStyle(
-            fontWeight: FontWeight.w700,
-            fontSize: 14,
-          ),
+    return SettlementDetailList(
+      sheet: SuperAdminSettlementSheet(items: items),
+      tab: SettlementDetailTab.rental,
+      year: year,
+      month: month,
+    );
+  }
+}
+
+class _RentalList extends StatelessWidget {
+  final List<SuperAdminSettlementReservation> items;
+  final String emptyMessage;
+
+  const _RentalList({
+    required this.items,
+    required this.emptyMessage,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    if (items.isEmpty) {
+      return Center(
+        child: Text(
+          emptyMessage,
+          style: const TextStyle(color: DanjiColors.textSecondary),
         ),
-        const SizedBox(height: 8),
-        Expanded(
-          child: items.isEmpty
-              ? const Center(
-                  child: Text(
-                    '해당 월 완료 예약 내역이 없습니다.',
-                    style: TextStyle(color: DanjiColors.textSecondary),
+      );
+    }
+
+    return ListView.separated(
+      itemCount: items.length,
+      separatorBuilder: (_, __) => const Divider(height: 1),
+      itemBuilder: (_, i) {
+        final item = items[i];
+        final period =
+            '${item.displayRentalStartAt != null ? _dateTime.format(item.displayRentalStartAt!.toLocal()) : '-'} ~ '
+            '${item.displayRentalEndAt != null ? _dateTime.format(item.displayRentalEndAt!.toLocal()) : '-'}';
+        return ListTile(
+          contentPadding: EdgeInsets.zero,
+          title: Row(
+            children: [
+              Expanded(
+                child: Text(
+                  item.reservationNumberLabel,
+                  style: const TextStyle(
+                    fontWeight: FontWeight.w700,
+                    fontSize: 14,
                   ),
-                )
-              : ListView.separated(
-                  itemCount: items.length,
-                  separatorBuilder: (_, __) => const Divider(height: 1),
-                  itemBuilder: (_, i) {
-                    final item = items[i];
-                    final period =
-                        '${item.displayRentalStartAt != null ? _dateTime.format(item.displayRentalStartAt!.toLocal()) : '-'} ~ '
-                        '${item.displayRentalEndAt != null ? _dateTime.format(item.displayRentalEndAt!.toLocal()) : '-'}';
-                    return ListTile(
-                      contentPadding: EdgeInsets.zero,
-                      title: Text(
-                        item.reservationNumberLabel,
-                        style: const TextStyle(
-                          fontWeight: FontWeight.w700,
-                          fontSize: 14,
-                        ),
-                      ),
-                      subtitle: Text(
-                        '${item.renterName} · $period',
-                        style: const TextStyle(fontSize: 13),
-                      ),
-                      trailing: Text(
-                        '₩${_won.format(item.totalPrice)}',
-                        style: const TextStyle(
-                          fontWeight: FontWeight.w700,
-                          color: DanjiColors.buttonBlue,
-                        ),
-                      ),
-                    );
-                  },
                 ),
+              ),
+              RentalTypeBadge(rentalType: item.rentalType),
+            ],
+          ),
+          subtitle: Text(
+            '${item.renterName} · $period',
+            style: const TextStyle(fontSize: 13),
+          ),
+          trailing: Text(
+            '₩${_won.format(item.totalPrice)}',
+            style: const TextStyle(
+              fontWeight: FontWeight.w700,
+              color: DanjiColors.buttonBlue,
+            ),
+          ),
+        );
+      },
+    );
+  }
+}
+
+class _PaymentList extends StatelessWidget {
+  final List<SuperAdminSettlementPaymentItem> items;
+  final String emptyMessage;
+
+  const _PaymentList({
+    required this.items,
+    required this.emptyMessage,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    if (items.isEmpty) {
+      return Center(
+        child: Text(
+          emptyMessage,
+          style: const TextStyle(color: DanjiColors.textSecondary),
         ),
-      ],
+      );
+    }
+
+    return ListView.separated(
+      itemCount: items.length,
+      separatorBuilder: (_, __) => const Divider(height: 1),
+      itemBuilder: (_, i) {
+        final item = items[i];
+        final paidAt = item.paidAt != null
+            ? _dateTime.format(item.paidAt!.toLocal())
+            : '-';
+        return ListTile(
+          contentPadding: EdgeInsets.zero,
+          title: Text(
+            item.reservationNumberLabel,
+            style: const TextStyle(
+              fontWeight: FontWeight.w700,
+              fontSize: 14,
+            ),
+          ),
+          subtitle: Text(
+            '${item.renterName} · $paidAt',
+            style: const TextStyle(fontSize: 13),
+          ),
+          trailing: Text(
+            '₩${_won.format(item.paymentAmount)}',
+            style: const TextStyle(
+              fontWeight: FontWeight.w700,
+              color: DanjiColors.buttonBlue,
+            ),
+          ),
+        );
+      },
+    );
+  }
+}
+
+class _CancelList extends StatelessWidget {
+  final List<SuperAdminSettlementCancelItem> items;
+  final String emptyMessage;
+
+  const _CancelList({
+    required this.items,
+    required this.emptyMessage,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    if (items.isEmpty) {
+      return Center(
+        child: Text(
+          emptyMessage,
+          style: const TextStyle(color: DanjiColors.textSecondary),
+        ),
+      );
+    }
+
+    return ListView.separated(
+      itemCount: items.length,
+      separatorBuilder: (_, __) => const Divider(height: 1),
+      itemBuilder: (_, i) {
+        final item = items[i];
+        final cancelledAt = item.cancelledAt != null
+            ? _dateTime.format(item.cancelledAt!.toLocal())
+            : '-';
+        return ListTile(
+          contentPadding: EdgeInsets.zero,
+          title: Text(
+            item.reservationNumberLabel,
+            style: const TextStyle(
+              fontWeight: FontWeight.w700,
+              fontSize: 14,
+            ),
+          ),
+          subtitle: Text(
+            '${item.renterName} · $cancelledAt\n'
+            '결제 ₩${_won.format(item.paidAmount)} · '
+            '환불 ₩${_won.format(item.refundAmount)} · '
+            '${item.cancelReason}',
+            style: const TextStyle(fontSize: 13, height: 1.35),
+          ),
+          isThreeLine: true,
+        );
+      },
     );
   }
 }

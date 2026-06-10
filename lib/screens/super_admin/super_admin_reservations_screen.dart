@@ -5,8 +5,11 @@ import '../../models/super_admin_models.dart';
 import '../../services/super_admin_service.dart';
 import '../../theme/danji_colors.dart';
 import '../../utils/danji_snackbar.dart';
+import '../../utils/reservation_status_badge.dart';
 import '../../widgets/admin_scaffold.dart';
 import '../../widgets/danji_app_bar.dart';
+import '../../widgets/inspection_photo_compare_panel.dart';
+import '../../widgets/rental_type_badge.dart';
 import '../../widgets/section_card.dart';
 import 'super_admin_common.dart';
 
@@ -131,112 +134,56 @@ class _SuperAdminReservationsScreenState
   }
 
   Future<void> _openDetail(SuperAdminReservation r) async {
-    final status = r.status.trim().toLowerCase();
-    final canForceReturn = status == 'in_use';
-    final canPaymentCancel = status == 'confirmed' || status == 'in_use';
-
     await showSuperAdminBottomSheet<void>(
       context,
       title: r.vehicleName,
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Text(
-            r.reservationNumberLabel,
-            style: const TextStyle(color: DanjiColors.textMuted, fontSize: 12),
-          ),
-          const SizedBox(height: 6),
-          Text('${r.complexName} · ${r.renterName}',
-              style: const TextStyle(color: DanjiColors.textSecondary)),
-          const SizedBox(height: 8),
-          Wrap(
-            spacing: 6,
-            children: [
-              SuperAdminChip(label: r.status, color: DanjiColors.buttonBlue),
-              SuperAdminChip(
-                label: '₩${superAdminWon.format(r.totalPrice)}',
-                color: SuperAdminUiColors.revenueSky,
-              ),
-            ],
-          ),
-          if (r.displayRentalStartAt != null || r.displayRentalEndAt != null) ...[
-            const SizedBox(height: 8),
-            Text(
-              '${r.displayRentalStartAt != null ? superAdminDateTime.format(r.displayRentalStartAt!) : '-'} ~ '
-              '${r.displayRentalEndAt != null ? superAdminDateTime.format(r.displayRentalEndAt!) : '-'}',
-              style: const TextStyle(color: DanjiColors.textSecondary),
-            ),
-          ],
-          const SizedBox(height: 16),
-          OutlinedButton(
-            onPressed: canForceReturn
-                ? () async {
-                    Navigator.pop(context);
-                    final confirmed = await _confirmAction(
-                      title: '강제 반납',
-                      message:
-                          '대여 중인 예약을 반납 처리하여 반납 검수 화면으로 이동합니다.\n'
-                          '계속하시겠습니까?',
-                      confirmLabel: '강제 반납',
-                    );
-                    if (!confirmed || !mounted) return;
-                    try {
-                      await widget.service.forceReturnReservation(r.id);
-                      if (!mounted) return;
-                      DanjiSnackBar.show(context, '반납 검수 대기로 이동했습니다');
-                      await _reload();
-                    } catch (e) {
-                      if (mounted) {
-                        DanjiSnackBar.show(context, friendlySuperAdminError(e));
-                      }
-                    }
-                  }
-                : null,
-            style: OutlinedButton.styleFrom(
-              foregroundColor: const Color(0xFFE65100),
-              side: const BorderSide(color: Color(0xFFE65100)),
-              disabledForegroundColor: DanjiColors.textMuted,
-              disabledBackgroundColor: DanjiColors.surface,
-            ),
-            child: const Text('강제 반납'),
-          ),
-          const SizedBox(height: 8),
-          OutlinedButton(
-            onPressed: canPaymentCancel
-                ? () async {
-                    Navigator.pop(context);
-                    final confirmed = await _confirmAction(
-                      title: '결제취소',
-                      message:
-                          '결제를 환불하고 예약을 취소 상태로 변경합니다.\n'
-                          '차량은 즉시 이용 가능으로 전환됩니다.\n'
-                          '계속하시겠습니까?',
-                      confirmLabel: '결제취소',
-                      confirmColor: DanjiColors.accentRed,
-                    );
-                    if (!confirmed || !mounted) return;
-                    try {
-                      await widget.service.forcePaymentCancelReservation(r.id);
-                      if (!mounted) return;
-                      DanjiSnackBar.show(context, '결제 취소 및 환불 처리되었습니다');
-                      await _reload();
-                    } catch (e) {
-                      if (mounted) {
-                        DanjiSnackBar.show(context, friendlySuperAdminError(e));
-                      }
-                    }
-                  }
-                : null,
-            style: OutlinedButton.styleFrom(
-              foregroundColor: DanjiColors.accentRed,
-              side: const BorderSide(color: DanjiColors.accentRed),
-              disabledForegroundColor: DanjiColors.textMuted,
-              disabledBackgroundColor: DanjiColors.surface,
-            ),
-            child: const Text('결제취소'),
-          ),
-        ],
+      child: _SuperAdminReservationDetailSheet(
+        reservation: r,
+        service: widget.service,
+        onForceReturn: () async {
+          Navigator.pop(context);
+          final confirmed = await _confirmAction(
+            title: '강제 반납',
+            message:
+                '대여 중인 예약을 반납 처리하여 반납 검수 화면으로 이동합니다.\n'
+                '계속하시겠습니까?',
+            confirmLabel: '강제 반납',
+          );
+          if (!confirmed || !mounted) return;
+          try {
+            await widget.service.forceReturnReservation(r.id);
+            if (!mounted) return;
+            DanjiSnackBar.show(context, '반납 검수 대기로 이동했습니다');
+            await _reload();
+          } catch (e) {
+            if (mounted) {
+              DanjiSnackBar.show(context, friendlySuperAdminError(e));
+            }
+          }
+        },
+        onPaymentCancel: () async {
+          Navigator.pop(context);
+          final confirmed = await _confirmAction(
+            title: '결제취소',
+            message:
+                '결제를 환불하고 예약을 취소 상태로 변경합니다.\n'
+                '차량은 즉시 이용 가능으로 전환됩니다.\n'
+                '계속하시겠습니까?',
+            confirmLabel: '결제취소',
+            confirmColor: DanjiColors.accentRed,
+          );
+          if (!confirmed || !mounted) return;
+          try {
+            await widget.service.forcePaymentCancelReservation(r.id);
+            if (!mounted) return;
+            DanjiSnackBar.show(context, '결제 취소 및 환불 처리되었습니다');
+            await _reload();
+          } catch (e) {
+            if (mounted) {
+              DanjiSnackBar.show(context, friendlySuperAdminError(e));
+            }
+          }
+        },
       ),
     );
   }
@@ -261,10 +208,14 @@ class _SuperAdminReservationsScreenState
       separatorBuilder: (_, __) => const SizedBox(height: 10),
       itemBuilder: (_, i) {
         final r = filtered[i];
+        final statusLabel = resolveReservationStatusStyle(
+          status: r.status,
+          isNoShow: r.isNoShow,
+        ).label;
         return SuperAdminListCard(
           icon: Icons.event_note_outlined,
           title: '${r.vehicleName} · ${r.renterName}',
-          subtitle: '${r.complexName} · ${r.status} · '
+          subtitle: '${r.complexName} · $statusLabel · '
               '₩${superAdminWon.format(r.totalPrice)}',
           onTap: () => _openDetail(r),
         );
@@ -377,6 +328,150 @@ class _SuperAdminReservationsScreenState
           ),
         ],
       ),
+    );
+  }
+}
+
+class _SuperAdminReservationDetailSheet extends StatefulWidget {
+  final SuperAdminReservation reservation;
+  final SuperAdminService service;
+  final VoidCallback onForceReturn;
+  final VoidCallback onPaymentCancel;
+
+  const _SuperAdminReservationDetailSheet({
+    required this.reservation,
+    required this.service,
+    required this.onForceReturn,
+    required this.onPaymentCancel,
+  });
+
+  @override
+  State<_SuperAdminReservationDetailSheet> createState() =>
+      _SuperAdminReservationDetailSheetState();
+}
+
+class _SuperAdminReservationDetailSheetState
+    extends State<_SuperAdminReservationDetailSheet> {
+  late Future<SuperAdminRenterUsageStats> _usageFuture;
+
+  @override
+  void initState() {
+    super.initState();
+    _usageFuture = widget.service.fetchRenterUsageStats(
+      reservationId: widget.reservation.id,
+    );
+  }
+
+  Widget _timeLine(String label, String value) {
+    return Padding(
+      padding: const EdgeInsets.only(top: 4),
+      child: Text(
+        '$label: $value',
+        style: const TextStyle(
+          color: DanjiColors.textSecondary,
+          fontSize: 13,
+        ),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final r = widget.reservation;
+    final hasReservationTime = r.startAt != null || r.endAt != null;
+    final actualPickup = r.rentalStartedAt;
+    final actualReturn = r.actualReturnAt;
+
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Text(
+          r.reservationNumberLabel,
+          style: const TextStyle(color: DanjiColors.textMuted, fontSize: 12),
+        ),
+        const SizedBox(height: 6),
+        Text(
+          r.complexName,
+          style: const TextStyle(color: DanjiColors.textSecondary),
+        ),
+        const SizedBox(height: 4),
+        FutureBuilder<SuperAdminRenterUsageStats>(
+          future: _usageFuture,
+          builder: (context, snap) {
+            final stats = snap.data ?? SuperAdminRenterUsageStats.empty;
+            final renterLine = snap.connectionState == ConnectionState.waiting
+                ? r.renterName
+                : stats.formatLine(r.renterName);
+            return Text(
+              renterLine,
+              style: const TextStyle(
+                color: DanjiColors.textSecondary,
+                fontWeight: FontWeight.w600,
+              ),
+            );
+          },
+        ),
+        const SizedBox(height: 8),
+        Wrap(
+          spacing: 6,
+          runSpacing: 6,
+          children: [
+            ReservationStatusBadge(
+              status: r.status,
+              isNoShow: r.isNoShow,
+            ),
+            RentalTypeBadge(rentalType: r.rentalType),
+            SuperAdminChip(
+              label: '₩${superAdminWon.format(r.totalPrice)}',
+              color: SuperAdminUiColors.revenueSky,
+            ),
+          ],
+        ),
+        if (hasReservationTime)
+          _timeLine(
+            '예약 시간',
+            '${r.startAt != null ? superAdminDateTime.format(r.startAt!) : '-'} ~ '
+            '${r.endAt != null ? superAdminDateTime.format(r.endAt!) : '-'}',
+          ),
+        if (actualPickup != null)
+          _timeLine(
+            '실제 출고',
+            superAdminDateTime.format(actualPickup),
+          ),
+        if (actualReturn != null)
+          _timeLine(
+            '실제 반납',
+            superAdminDateTime.format(actualReturn),
+          ),
+        const SizedBox(height: 12),
+        InspectionPhotoComparePanel(
+          future: widget.service.fetchInspectionPhotoSet(r),
+        ),
+        if (r.showForceActionButtons) ...[
+          const SizedBox(height: 16),
+          if (r.canShowForceReturnButton) ...[
+            OutlinedButton(
+              onPressed: widget.onForceReturn,
+              style: OutlinedButton.styleFrom(
+                foregroundColor: const Color(0xFFE65100),
+                side: const BorderSide(color: Color(0xFFE65100)),
+              ),
+              child: const Text('강제 반납'),
+            ),
+            if (r.canShowPaymentCancelButton) const SizedBox(height: 8),
+          ],
+          if (r.canShowPaymentCancelButton)
+            OutlinedButton(
+              onPressed: widget.onPaymentCancel,
+              style: OutlinedButton.styleFrom(
+                foregroundColor: DanjiColors.accentRed,
+                side: const BorderSide(color: DanjiColors.accentRed),
+              ),
+              child: const Text('결제취소'),
+            ),
+        ],
+      ],
     );
   }
 }

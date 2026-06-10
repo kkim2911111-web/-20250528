@@ -57,7 +57,17 @@ Deno.serve(async (req) => {
 
     const data: Record<string, string> = {};
     if (type) data.type = type;
-    if (reservationId) data.reservation_id = reservationId;
+    if (reservationId) {
+      data.reservation_id = reservationId;
+      data.reservationId = reservationId;
+    }
+    data.screen = type?.includes('billing') || type?.includes('payment')
+      ? 'payment'
+      : type?.includes('no_show')
+        ? 'no_show'
+        : reservationId
+          ? 'reservation'
+          : 'notice';
 
     const result = await sendPushToUser({
       admin,

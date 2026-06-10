@@ -211,20 +211,33 @@ class FcmService {
     }
   }
 
-  /// 로그아웃 시 서버·기기 토큰 정리
+  /// 로그아웃 직전 — fcm_tokens에서 본인·현재 기기 토큰 삭제 후 FCM deleteToken
   Future<void> clearForSignOut() async {
     if (!isSupported || !isSupabaseInitialized) return;
     if (supabaseOrNull?.auth.currentUser == null) return;
 
     try {
       final messaging = FirebaseMessaging.instance;
-      final token = await messaging.getToken();
-      if (token != null && token.isNotEmpty) {
-        await supabase.rpc('delete_my_fcm_tokens', params: {
-          'p_token': token,
-        });
+      String? deviceToken;
+      try {
+        deviceToken = await messaging.getToken();
+      } catch (e) {
+        debugPrint('[fcm] getToken before signOut failed: $e');
       }
-      await messaging.deleteToken();
+
+      if (deviceToken != null && deviceToken.isNotEmpty) {
+        await supabase.rpc('delete_my_fcm_tokens', params: {
+          'p_token': deviceToken,
+        });
+      } else {
+        await supabase.rpc('delete_my_fcm_tokens');
+      }
+
+      try {
+        await messaging.deleteToken();
+      } catch (e) {
+        debugPrint('[fcm] deleteToken on signOut failed (non-fatal): $e');
+      }
       debugPrint('[fcm] token cleared on signOut');
     } catch (e) {
       debugPrint('[fcm] clear on signOut failed (non-fatal): $e');

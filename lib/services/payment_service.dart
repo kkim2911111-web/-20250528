@@ -15,6 +15,7 @@ import '../screens/toss_billing_webview_screen.dart';
 import '../screens/toss_payment_webview_screen.dart';
 import '../supabase_client.dart';
 import '../utils/network_retry.dart';
+import '../utils/rental_pricing.dart';
 import 'reservation_service.dart';
 import 'toss_payments.dart';
 
@@ -80,6 +81,10 @@ class PaymentService {
       }
       if (msg.contains('time_overlap')) {
         return '이미 예약된 시간입니다.';
+      }
+      if (msg.contains('price_mismatch') ||
+          msg.contains('original_price_required')) {
+        return '요금 정보가 올바르지 않습니다. 다시 시도해주세요.';
       }
       if (msg.contains('user_blacklisted')) {
         return '서비스 이용이 제한된 계정입니다. 고객센터로 문의해주세요.';
@@ -172,6 +177,7 @@ class PaymentService {
     required Vehicle vehicle,
     required DateTime startTime,
     required DateTime endTime,
+    required RentalType rentalType,
     required int totalPrice,
     required int originalPrice,
     String? userCouponId,
@@ -198,6 +204,7 @@ class PaymentService {
           'p_user_coupon_id': userCouponId,
           'p_points_used': pointsUsed,
           'p_original_price': originalPrice,
+          'p_rental_type': rentalType.dbValue,
         }),
       );
 
@@ -296,6 +303,7 @@ class PaymentService {
     required Vehicle vehicle,
     required DateTime startTime,
     required DateTime endTime,
+    required RentalType rentalType,
     required int totalPrice,
     required int originalPrice,
     String? userCouponId,
@@ -319,6 +327,7 @@ class PaymentService {
       vehicle: vehicle,
       startTime: startTime,
       endTime: endTime,
+      rentalType: rentalType,
       totalPrice: totalPrice,
       originalPrice: originalPrice,
       userCouponId: userCouponId,

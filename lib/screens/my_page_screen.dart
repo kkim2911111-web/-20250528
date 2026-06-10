@@ -15,6 +15,7 @@ import 'my_reservations_screen.dart';
 import 'point_screen.dart';
 import 'resident_info_readonly_screen.dart';
 import 'support_pages.dart';
+import 'usage_guide_screen.dart';
 
 const _sectionTitle = DanjiColors.brandBlue;
 const _trailingComplete = DanjiColors.brandBlue;
@@ -311,6 +312,18 @@ class _MyPageScreenState extends State<MyPageScreen> {
                 const SizedBox(height: 8),
                 _MenuCard(
                   items: [
+                    _MenuItem(
+                      icon: Icons.menu_book_outlined,
+                      iconColor: DanjiColors.brandBlue,
+                      title: '이용안내',
+                      onTap: () {
+                        Navigator.of(context).push(
+                          MaterialPageRoute(
+                            builder: (_) => const UsageGuideScreen(),
+                          ),
+                        );
+                      },
+                    ),
                     _MenuItem(
                       icon: Icons.headset_mic_outlined,
                       iconColor: DanjiColors.brandBlue,

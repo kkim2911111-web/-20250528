@@ -16,15 +16,24 @@ import 'super_admin_common.dart';
 
 class SuperAdminRevenueScreen extends StatefulWidget {
   final SuperAdminService service;
-  const SuperAdminRevenueScreen({super.key, required this.service});
+  final int? initialYear;
+  final int? initialMonth;
+
+  const SuperAdminRevenueScreen({
+    super.key,
+    required this.service,
+    this.initialYear,
+    this.initialMonth,
+  });
+
   @override
   State<SuperAdminRevenueScreen> createState() =>
       _SuperAdminRevenueScreenState();
 }
 
 class _SuperAdminRevenueScreenState extends State<SuperAdminRevenueScreen> {
-  late int _year = DateTime.now().year;
-  late int _month = DateTime.now().month;
+  late int _year = widget.initialYear ?? DateTime.now().year;
+  late int _month = widget.initialMonth ?? DateTime.now().month;
   Future<List<SuperAdminRevenueRow>>? _future;
 
   @override
@@ -203,6 +212,7 @@ class _SettlementDetailSheet extends StatefulWidget {
 
 class _SettlementDetailSheetState extends State<_SettlementDetailSheet> {
   late Future<SuperAdminSettlementSheet> _sheetFuture;
+  SettlementDetailTab _selectedTab = SettlementDetailTab.rental;
 
   @override
   void initState() {
@@ -266,17 +276,10 @@ class _SettlementDetailSheetState extends State<_SettlementDetailSheet> {
                 paymentCount: sheet.paymentCount,
                 cancelCount: sheet.cancelCount,
                 rentalCount: sheet.rentalCount,
+                selectedTab: _selectedTab,
+                onTabSelected: (tab) => setState(() => _selectedTab = tab),
               ),
               const SizedBox(height: 12),
-              SettlementAmountRow(
-                label: '총 결제금액',
-                amount: sheet.totalPaid,
-              ),
-              SettlementAmountRow(
-                label: '취소 환불금액',
-                amount: sheet.cancelRefund,
-                muted: true,
-              ),
               SettlementAmountRow(
                 label: '순 매출',
                 amount: sheet.netRevenue,
@@ -284,8 +287,9 @@ class _SettlementDetailSheetState extends State<_SettlementDetailSheet> {
               ),
               const SizedBox(height: 12),
               Expanded(
-                child: SettlementReservationList(
-                  items: sheet.items,
+                child: SettlementDetailList(
+                  sheet: sheet,
+                  tab: _selectedTab,
                   year: widget.year,
                   month: widget.month,
                 ),

@@ -12,7 +12,21 @@ class RentalStartService {
   static const bucketName = 'rental-photos';
   static const minPhotos = 6;
   static const maxPhotos = 10;
-  static const pickupSlotLabels = ['앞', '뒤', '좌', '우', '실내', '계기판'];
+  static const guidedPhotoLabels = [
+    '전면',
+    '후면',
+    '좌측면',
+    '우측면',
+    '실내',
+  ];
+  static const pickupSlotLabels = [
+    '전면',
+    '후면',
+    '좌측면',
+    '우측면',
+    '실내',
+    '계기판',
+  ];
 
   static const _select = '''
 id,user_id,vehicle_id,start_at,end_at,start_time,end_time,total_price,status,

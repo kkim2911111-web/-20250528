@@ -26,7 +26,7 @@ class RentalPickupPhotoGrid extends StatelessWidget {
     super.key,
     required this.photos,
     this.sectionTitle = '차량 사진',
-    this.guideLine = '앞·뒤·좌·우·실내·계기판 순으로 최소 6장, 최대 10장 등록해 주세요.',
+    this.guideLine = '전면·후면·좌측면·우측면·실내·계기판 순으로 최소 6장, 최대 10장 등록해 주세요.',
     this.locked = false,
     this.uploading = false,
     this.uploadProgress = 0,

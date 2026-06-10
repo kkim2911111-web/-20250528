@@ -1,8 +1,10 @@
 import 'package:flutter/foundation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../models/inspection_photo.dart';
 import '../models/super_admin_models.dart';
 import '../supabase_client.dart';
+import '../utils/inspection_photo_resolver.dart';
 
 class SuperAdminException implements Exception {
   final String message;
@@ -145,6 +147,148 @@ class SuperAdminService {
         parse: (d) => _list(d, SuperAdminReservation.fromMap),
       );
 
+  /// 임차인 이용·노쇼 건수 — 전 기간 count RPC (바텀시트 열 때 1회)
+  Future<SuperAdminRenterUsageStats> fetchRenterUsageStats({
+    required String reservationId,
+  }) async {
+    final id = reservationId.trim();
+    if (id.isEmpty) return SuperAdminRenterUsageStats.empty;
+
+    return _rpc(
+      'get_super_admin_renter_usage_stats',
+      params: {'p_reservation_id': id},
+      parse: (d) {
+        if (d is List && d.isNotEmpty) {
+          final row = Map<String, dynamic>.from(d.first as Map);
+          return SuperAdminRenterUsageStats(
+            usageCount: (row['usage_count'] as num?)?.toInt() ?? 0,
+            noShowCount: (row['no_show_count'] as num?)?.toInt() ?? 0,
+          );
+        }
+        if (d is Map) {
+          final row = Map<String, dynamic>.from(d);
+          return SuperAdminRenterUsageStats(
+            usageCount: (row['usage_count'] as num?)?.toInt() ?? 0,
+            noShowCount: (row['no_show_count'] as num?)?.toInt() ?? 0,
+          );
+        }
+        return SuperAdminRenterUsageStats.empty;
+      },
+    );
+  }
+
+  bool canDeleteStaff(
+    SuperAdminStaff staff, {
+    required List<SuperAdminStaff> allStaff,
+  }) {
+    final peers = allStaff.where((s) => s.complexId == staff.complexId).length;
+    return peers > 1;
+  }
+
+  /// 검수 사진 — get_super_admin_reservations RPC 결과 최우선
+  Future<InspectionPhotoSet> fetchInspectionPhotoSet(
+    SuperAdminReservation reservation,
+  ) async {
+    var before = normalizeInspectionPhotoUrls(reservation.pickupPhotos);
+    var after = normalizeInspectionPhotoUrls(reservation.returnPhotos);
+
+    var rentalStartedAt = reservation.rentalStartedAt;
+    var returnedAt = reservation.returnedAt;
+    var actualEndAt = reservation.actualEndAt;
+    var status = reservation.status;
+    DateTime? updatedAt;
+
+    if (before.isEmpty || after.isEmpty) {
+      try {
+        final row = await supabase
+            .from('reservations')
+            .select(
+              'pickup_photos, return_photos, rental_started_at, returned_at, '
+              'actual_end_at, status, updated_at',
+            )
+            .eq('id', reservation.id)
+            .maybeSingle();
+
+        if (row != null) {
+          if (before.isEmpty) {
+            before = normalizeInspectionPhotoUrls(
+              _photoUrlsFromValue(row['pickup_photos']),
+            );
+          }
+          if (after.isEmpty) {
+            after = normalizeInspectionPhotoUrls(
+              _photoUrlsFromValue(row['return_photos']),
+            );
+          }
+          rentalStartedAt =
+              _parseDate(row['rental_started_at']) ?? rentalStartedAt;
+          returnedAt = _parseDate(row['returned_at']) ?? returnedAt;
+          actualEndAt = _parseDate(row['actual_end_at']) ?? actualEndAt;
+          status = row['status']?.toString() ?? status;
+          updatedAt = _parseDate(row['updated_at']);
+        }
+      } catch (_) {
+        // RLS 미허용 시 ride_photos 폴백으로 진행
+      }
+    }
+
+    if (before.isEmpty) {
+      before = await _fetchRidePhotosForSuperAdmin(
+        reservationId: reservation.id,
+        photoType: 'before',
+      );
+    }
+    if (after.isEmpty) {
+      after = await _fetchRidePhotosForSuperAdmin(
+        reservationId: reservation.id,
+        photoType: 'after',
+      );
+    }
+
+    return buildInspectionPhotoSet(
+      beforeUrls: before,
+      afterUrls: after,
+      rentalStartedAt: rentalStartedAt,
+      returnedAt: returnedAt,
+      actualEndAt: actualEndAt,
+      status: status,
+      updatedAt: updatedAt,
+    );
+  }
+
+  Future<List<String>> _fetchRidePhotosForSuperAdmin({
+    required String reservationId,
+    required String photoType,
+  }) async {
+    try {
+      final data = await supabase.rpc('get_ride_photos_for_staff', params: {
+        'p_reservation_id': reservationId,
+        'p_photo_type': photoType,
+      });
+      if (data is! List) return const [];
+      return normalizeInspectionPhotoUrls(
+        data.map((row) {
+          if (row is Map) {
+            return row['photo_url']?.toString() ?? '';
+          }
+          return row?.toString() ?? '';
+        }),
+      );
+    } catch (_) {
+      return const [];
+    }
+  }
+
+  static List<String> _photoUrlsFromValue(Object? raw) {
+    if (raw is! List) return const [];
+    return raw.map((e) => e.toString()).toList();
+  }
+
+  static DateTime? _parseDate(Object? raw) {
+    if (raw == null) return null;
+    return DateTime.tryParse(raw.toString())?.toLocal();
+  }
+
   Future<List<SuperAdminRevenueRow>> fetchRevenue({
     int? year,
     int? month,
@@ -229,6 +373,9 @@ class SuperAdminService {
     int pricePerHour = 0,
     String? carNumber,
     bool isAvailable = true,
+    int? dailyPrice,
+    int? monthlyPrice,
+    List<String>? rentalTypes,
   }) =>
       _rpc(
         'upsert_super_admin_vehicle',
@@ -241,6 +388,9 @@ class SuperAdminService {
           'p_price_per_hour': pricePerHour,
           if (carNumber != null) 'p_car_number': carNumber,
           'p_is_available': isAvailable,
+          'p_daily_price': dailyPrice,
+          'p_monthly_price': monthlyPrice,
+          if (rentalTypes != null) 'p_rental_types': rentalTypes,
         },
         parse: (d) => d?.toString() ?? '',
       );
@@ -634,6 +784,10 @@ class SuperAdminService {
     if (m.contains('not_authenticated')) return '로그인이 필요합니다.';
     if (m.contains('reservation_not_found')) return '예약을 찾을 수 없습니다.';
     if (m.contains('invalid_status')) return '처리할 수 없는 예약 상태입니다.';
+    if (m.contains('staff_has_assigned_complex')) {
+      return '담당 단지가 있어 삭제할 수 없습니다. 단지 변경으로 인계 후 삭제하세요.';
+    }
+    if (m.contains('staff_not_found')) return '스태프를 찾을 수 없습니다.';
     return e.message;
   }
 }

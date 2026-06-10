@@ -7,6 +7,7 @@ import '../../theme/danji_colors.dart';
 import '../../theme/danji_theme.dart';
 import '../../utils/danji_snackbar.dart';
 import '../../utils/rental_contract_parser.dart';
+import '../../utils/resident_display.dart';
 import '../../widgets/admin_scaffold.dart';
 import '../../widgets/admin_reservation_card_extras.dart';
 import '../../widgets/danji_app_bar.dart';
@@ -161,18 +162,33 @@ class _SuperAdminResidentDetailScreenState
     );
   }
 
-  Widget _section(String title, List<Widget> children) {
+  Widget _section(
+    String title,
+    List<Widget> children, {
+    Widget? titleTrailing,
+  }) {
     return SectionCard(
       padding: const EdgeInsets.all(16),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Text(
-            title,
-            style: const TextStyle(
-              fontWeight: FontWeight.w800,
-              fontSize: 15,
-            ),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              Expanded(
+                child: Text(
+                  title,
+                  style: const TextStyle(
+                    fontWeight: FontWeight.w800,
+                    fontSize: 15,
+                  ),
+                ),
+              ),
+              if (titleTrailing != null) ...[
+                const SizedBox(width: 8),
+                titleTrailing,
+              ],
+            ],
           ),
           const SizedBox(height: 12),
           ...children,
@@ -182,60 +198,58 @@ class _SuperAdminResidentDetailScreenState
   }
 
   Widget _buildBody(SuperAdminResidentDetail detail) {
-    final joinLabel = detail.createdAt != null
-        ? DateFormat('yyyy-MM-dd').format(detail.createdAt!.toLocal())
-        : '-';
+    final joinLabel = ResidentDisplay.formatDay(detail.createdAt);
+    final lastRentalLabel = detail.lastRentalAt == null
+        ? '대여 이력 없음'
+        : ResidentDisplay.formatDay(detail.lastRentalAt);
+    final licenseExpiryLabel =
+        ResidentDisplay.formatLicenseExpiry(detail.licenseExpiry) ?? '-';
     final dongHo =
         '${detail.building ?? ''}동 ${detail.unit ?? ''}호'.trim();
 
     return ListView(
       padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
       children: [
-        _section('기본 정보', [
-          _infoRow('이름', detail.fullName),
-          _infoRow('이메일', detail.email),
-          _infoRow('전화번호', detail.phone),
-          _infoRow('단지/동호', '${detail.complexName} $dongHo'),
-          _infoRow('가입일', joinLabel),
-          Wrap(
-            spacing: 6,
-            runSpacing: 6,
-            children: [
-              SuperAdminChip(
-                label: detail.approved ? '승인' : '대기',
-                color: detail.approved
-                    ? SuperAdminUiColors.availableGreen
-                    : DanjiColors.danger,
-              ),
-              if (detail.isBlacklisted)
-                const SuperAdminChip(
-                  label: '블랙리스트',
-                  color: DanjiColors.danger,
+        _section(
+          '기본 정보',
+          [
+            _infoRow('이름', detail.fullName),
+            _infoRow('이메일', detail.email),
+            _infoRow('전화번호', detail.phone),
+            _infoRow('단지/동호', '${detail.complexName} $dongHo'),
+            _infoRow('가입일', joinLabel),
+            _infoRow('최근 대여일', lastRentalLabel),
+            if (detail.isBlacklisted)
+              const Padding(
+                padding: EdgeInsets.only(top: 4),
+                child: Align(
+                  alignment: Alignment.centerLeft,
+                  child: SuperAdminChip(
+                    label: '블랙리스트',
+                    color: DanjiColors.danger,
+                  ),
                 ),
-            ],
+              ),
+          ],
+          titleTrailing: SuperAdminChip(
+            label: detail.approved ? '승인' : '대기',
+            color: detail.approved
+                ? SuperAdminUiColors.availableGreen
+                : DanjiColors.danger,
           ),
-        ]),
+        ),
         const SizedBox(height: 10),
-        _section('면허 정보', [
-          _infoRow('면허번호', detail.licenseNumber),
-          _infoRow('만료일', detail.licenseExpiry),
-          Row(
-            children: [
-              const Text(
-                '승인 상태',
-                style: TextStyle(
-                  color: DanjiColors.textSecondary,
-                  fontSize: 13,
-                ),
-              ),
-              const SizedBox(width: 12),
-              SuperAdminChip(
-                label: _licenseStatusLabel(detail.licenseStatus),
-                color: _licenseStatusColor(detail.licenseStatus),
-              ),
-            ],
+        _section(
+          '면허 정보',
+          [
+            _infoRow('면허번호', detail.licenseNumber),
+            _infoRow('만료일', licenseExpiryLabel),
+          ],
+          titleTrailing: SuperAdminChip(
+            label: _licenseStatusLabel(detail.licenseStatus),
+            color: _licenseStatusColor(detail.licenseStatus),
           ),
-        ]),
+        ),
         const SizedBox(height: 10),
         _section('포인트/쿠폰', [
           _infoRow('보유 포인트', '${superAdminWon.format(detail.points)}P'),

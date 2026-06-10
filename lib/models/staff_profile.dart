@@ -1,4 +1,6 @@
+import '../utils/rental_pricing.dart';
 import '../utils/reservation_display.dart';
+import '../utils/vehicle_exposure_status.dart';
 import '../utils/vehicle_insurance_status.dart';
 
 class StaffProfile {
@@ -67,6 +69,40 @@ class BranchStats {
     todaySales: 0,
     monthSales: 0,
   );
+}
+
+enum AdminVehicleDashboardStatus { available, inUse, waitingPayment }
+
+/// 단지 관리자 홈 — 차량별 스와이프 카드
+class AdminVehicleDashboardCard {
+  final String vehicleId;
+  final String vehicleName;
+  final String? carNumber;
+  final AdminVehicleDashboardStatus status;
+  final String? renterName;
+  final DateTime? periodStart;
+  final DateTime? periodEnd;
+
+  const AdminVehicleDashboardCard({
+    required this.vehicleId,
+    required this.vehicleName,
+    this.carNumber,
+    required this.status,
+    this.renterName,
+    this.periodStart,
+    this.periodEnd,
+  });
+
+  String get statusLabel {
+    switch (status) {
+      case AdminVehicleDashboardStatus.inUse:
+        return '대여중';
+      case AdminVehicleDashboardStatus.waitingPayment:
+        return '이용대기';
+      case AdminVehicleDashboardStatus.available:
+        return '가용';
+    }
+  }
 }
 
 /// 관리자 — 단지 사업자 정보 (complexes)
@@ -153,9 +189,13 @@ class AdminVehicleDetail {
   final String vehicleType;
   final String? fuelType;
   final int pricePerHour;
+  final int? dailyPrice;
+  final int? monthlyPrice;
+  final List<RentalType> rentalTypes;
   final String? parkingLocation;
   final String? carNumber;
   final String? ownerName;
+  final bool isPublished;
   final bool isAvailable;
   final String? insuranceCompany;
   final String? insurancePolicyNumber;
@@ -163,6 +203,9 @@ class AdminVehicleDetail {
   final double? lastLatitude;
   final double? lastLongitude;
   final DateTime? lastLocationUpdatedAt;
+  final int totalMileage;
+  final bool isUnderMaintenance;
+  final String? maintenanceMemo;
 
   const AdminVehicleDetail({
     required this.id,
@@ -172,9 +215,13 @@ class AdminVehicleDetail {
     required this.vehicleType,
     this.fuelType,
     required this.pricePerHour,
+    this.dailyPrice,
+    this.monthlyPrice,
+    this.rentalTypes = const [RentalType.hourly],
     this.parkingLocation,
     this.carNumber,
     this.ownerName,
+    this.isPublished = false,
     required this.isAvailable,
     this.insuranceCompany,
     this.insurancePolicyNumber,
@@ -182,6 +229,9 @@ class AdminVehicleDetail {
     this.lastLatitude,
     this.lastLongitude,
     this.lastLocationUpdatedAt,
+    this.totalMileage = 0,
+    this.isUnderMaintenance = false,
+    this.maintenanceMemo,
   });
 
   factory AdminVehicleDetail.fromMap(Map<String, dynamic> map) {
@@ -194,16 +244,21 @@ class AdminVehicleDetail {
       complexId: map['complex_id']?.toString() ?? '',
       complexName: complexMap?['name']?.toString(),
       name: map['model_name']?.toString() ?? '차량',
-      vehicleType: map['vehicle_type']?.toString() ??
-          map['car_type']?.toString() ??
-          '기타',
+      vehicleType: RentalPricing.parseCarCategory(map) ?? '기타',
       fuelType: map['fuel_type']?.toString(),
       pricePerHour: (map['price_per_hour'] as num?)?.toInt() ??
           (map['hourly_rate'] as num?)?.toInt() ??
           0,
+      dailyPrice: (map['daily_price'] as num?)?.toInt(),
+      monthlyPrice: (map['monthly_price'] as num?)?.toInt(),
+      rentalTypes: RentalPricing.parseRentalTypes(map['rental_types']),
       parkingLocation: map['parking_location']?.toString(),
       carNumber: map['car_number']?.toString(),
       ownerName: map['owner_name']?.toString(),
+      isPublished: map['is_published'] as bool? ??
+          map['is_available'] as bool? ??
+          map['is_active'] as bool? ??
+          false,
       isAvailable: map['is_available'] as bool? ??
           map['is_active'] as bool? ??
           true,
@@ -213,6 +268,9 @@ class AdminVehicleDetail {
       lastLatitude: (map['last_latitude'] as num?)?.toDouble(),
       lastLongitude: (map['last_longitude'] as num?)?.toDouble(),
       lastLocationUpdatedAt: _parseDateTime(map['last_location_updated_at']),
+      totalMileage: (map['total_mileage'] as num?)?.toInt() ?? 0,
+      isUnderMaintenance: map['is_under_maintenance'] == true,
+      maintenanceMemo: map['maintenance_memo']?.toString(),
     );
   }
 
@@ -220,15 +278,18 @@ class AdminVehicleDetail {
     return {
       'complex_id': complexId,
       'model_name': name,
-      'vehicle_type': vehicleType,
+      'car_type': vehicleType,
+      'vehicle_type': RentalPricing.serviceTypeFromRentalTypes(rentalTypes.toSet()),
       'fuel_type': fuelType,
       'price_per_hour': pricePerHour,
       'hourly_rate': pricePerHour,
+      'daily_price': dailyPrice,
+      'monthly_price': monthlyPrice,
+      'rental_types': RentalPricing.rentalTypesToDb(rentalTypes),
       'parking_location': parkingLocation,
       'car_number': carNumber,
       'owner_name': ownerName,
-      'is_available': isAvailable,
-      'is_active': isAvailable,
+      'is_published': isPublished,
       'insurance_company': insuranceCompany,
       'insurance_policy_number': insurancePolicyNumber,
       'insurance_expires_at':
@@ -240,15 +301,17 @@ class AdminVehicleDetail {
     return {
       'complex_id': complexId.isNotEmpty ? complexId : null,
       'model_name': name,
-      'vehicle_type': vehicleType,
+      'car_type': vehicleType,
+      'vehicle_type': RentalPricing.serviceTypeFromRentalTypes(rentalTypes.toSet()),
       'fuel_type': fuelType,
       'price_per_hour': pricePerHour,
       'hourly_rate': pricePerHour,
+      'daily_price': dailyPrice,
+      'monthly_price': monthlyPrice,
+      'rental_types': RentalPricing.rentalTypesToDb(rentalTypes),
       'parking_location': parkingLocation,
       'car_number': carNumber,
       'owner_name': ownerName,
-      'is_available': isAvailable,
-      'is_active': isAvailable,
       'insurance_company': insuranceCompany,
       'insurance_policy_number': insurancePolicyNumber,
       'insurance_expires_at':
@@ -266,13 +329,26 @@ class AdminVehicleDetail {
     return DateTime.tryParse(value.toString())?.toLocal();
   }
 
-  bool get isInsuranceExpired =>
-      VehicleInsuranceStatus.badgeKind(insuranceExpiresAt) ==
-      VehicleInsuranceBadgeKind.expired;
+  bool get isInsuranceExpired => VehicleInsuranceStatus.isExpired(insuranceExpiresAt);
 
-  bool get isInsuranceExpiringSoon =>
-      VehicleInsuranceStatus.badgeKind(insuranceExpiresAt) ==
-      VehicleInsuranceBadgeKind.expiringSoon;
+  bool get isInsuranceExpiringSoon {
+    final kind = VehicleInsuranceStatus.badgeKind(insuranceExpiresAt);
+    return kind == VehicleInsuranceBadgeKind.expiringWarning ||
+        kind == VehicleInsuranceBadgeKind.expiringUrgent;
+  }
+
+  bool get isResidentBookable => VehicleInsuranceStatus.isResidentBookable(
+        isPublished: isPublished,
+        isUnderMaintenance: isUnderMaintenance,
+        insuranceExpiresAt: insuranceExpiresAt,
+      );
+
+  VehicleExposureStatus get exposureStatus =>
+      VehicleExposureStatusUtil.resolve(
+        isPublished: isPublished,
+        isUnderMaintenance: isUnderMaintenance,
+        insuranceExpiresAt: insuranceExpiresAt,
+      );
 
   bool get hasInsurance =>
       (insuranceCompany?.trim().isNotEmpty ?? false) &&
@@ -287,9 +363,13 @@ class AdminVehicleDetail {
       vehicleType: vehicleType,
       fuelType: fuelType,
       pricePerHour: pricePerHour,
+      dailyPrice: dailyPrice,
+      monthlyPrice: monthlyPrice,
+      rentalTypes: rentalTypes,
       parkingLocation: parkingLocation,
       carNumber: carNumber,
       ownerName: ownerName,
+      isPublished: isPublished,
       isAvailable: isAvailable,
       insuranceCompany: insuranceCompany,
       insurancePolicyNumber: insurancePolicyNumber,
@@ -297,6 +377,9 @@ class AdminVehicleDetail {
       lastLatitude: lastLatitude,
       lastLongitude: lastLongitude,
       lastLocationUpdatedAt: lastLocationUpdatedAt,
+      totalMileage: totalMileage,
+      isUnderMaintenance: isUnderMaintenance,
+      maintenanceMemo: maintenanceMemo,
     );
   }
 }
@@ -330,6 +413,7 @@ class AdminReservationRow {
   final bool deductibleWaived;
   final bool deductibleUnpaid;
   final DateTime? deductibleUnpaidAt;
+  final RentalType? rentalType;
 
   const AdminReservationRow({
     required this.id,
@@ -360,6 +444,7 @@ class AdminReservationRow {
     this.deductibleWaived = false,
     this.deductibleUnpaid = false,
     this.deductibleUnpaidAt,
+    this.rentalType,
   });
 
   static const int defaultDeductibleAmount = 500000;
@@ -386,6 +471,11 @@ class AdminReservationRow {
         returnedAt: returnedAt,
         actualEndAt: actualEndAt,
         scheduledEndAt: endAt,
+      );
+
+  DateTime? get returnCompletedAt => resolveReturnCompletedAt(
+        status: status,
+        updatedAt: updatedAt,
       );
 
   /// UI 표시용 — [renterName] 없으면 '이름 미등록'
@@ -516,6 +606,7 @@ class AdminReservationRow {
       deductibleUnpaidAt: DateTime.tryParse(
         map['deductible_unpaid_at']?.toString() ?? '',
       )?.toLocal(),
+      rentalType: RentalType.fromDb(map['rental_type']?.toString()),
     );
   }
 }
@@ -532,6 +623,7 @@ class SalesSummary {
   final bool isSettled;
   final bool isRequested;
   final List<SalesRow> rows;
+  final List<VehicleUtilizationRow> utilizationRows;
 
   const SalesSummary({
     this.grossRevenue = 0,
@@ -545,6 +637,7 @@ class SalesSummary {
     this.isSettled = false,
     this.isRequested = false,
     required this.rows,
+    this.utilizationRows = const [],
   });
 
   String get settlementBadgeLabel {
@@ -568,6 +661,15 @@ class SalesSummary {
             .toList()
         : <SalesRow>[];
 
+    final utilRaw = m['utilization_rows'];
+    final utilizationRows = utilRaw is List
+        ? utilRaw
+            .map((e) => VehicleUtilizationRow.fromRpc(
+                  Map<String, dynamic>.from(e as Map),
+                ))
+            .toList()
+        : <VehicleUtilizationRow>[];
+
     final gross = (m['gross_revenue'] as num?)?.toInt() ?? 0;
     final extension = (m['extension_revenue'] as num?)?.toInt() ?? 0;
     final total = (m['total_revenue'] as num?)?.toInt() ?? (gross + extension);
@@ -586,6 +688,34 @@ class SalesSummary {
       isSettled: m['is_settled'] == true,
       isRequested: m['is_requested'] == true,
       rows: rows,
+      utilizationRows: utilizationRows,
+    );
+  }
+}
+
+class VehicleUtilizationRow {
+  final String vehicleName;
+  final String? carNumber;
+  final int rentalCount;
+  final int revenue;
+  final double utilizationPercent;
+
+  const VehicleUtilizationRow({
+    required this.vehicleName,
+    this.carNumber,
+    required this.rentalCount,
+    required this.revenue,
+    required this.utilizationPercent,
+  });
+
+  factory VehicleUtilizationRow.fromRpc(Map<String, dynamic> m) {
+    return VehicleUtilizationRow(
+      vehicleName: m['vehicle_name']?.toString() ?? '차량',
+      carNumber: m['car_number']?.toString(),
+      rentalCount: (m['rental_count'] as num?)?.toInt() ?? 0,
+      revenue: (m['revenue'] as num?)?.toInt() ?? 0,
+      utilizationPercent:
+          (m['utilization_percent'] as num?)?.toDouble() ?? 0,
     );
   }
 }

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
+import '../../models/license_review_item.dart';
 import '../../models/staff_profile.dart';
 import '../../services/admin_service.dart';
 import '../../services/auth_service.dart';
@@ -10,8 +11,9 @@ import '../../widgets/admin_scaffold.dart';
 import '../../widgets/notification_bell_button.dart';
 import '../../widgets/section_card.dart';
 import '../notification_list_screen.dart';
+import '../../utils/vehicle_insurance_status.dart';
 import 'admin_complex_info_screen.dart';
-import 'admin_license_review_screen.dart';
+import 'admin_customer_hub_screen.dart';
 import 'admin_management_screens.dart';
 import 'admin_notice_screen.dart';
 import 'admin_reservation_list_screen.dart';
@@ -27,7 +29,6 @@ class AdminDashboardScreen extends StatefulWidget {
 }
 
 abstract final class _DashboardUiColors {
-  static const totalBlue = Color(0xFF3182F6);
   static const availableGreen = Color(0xFF22C55E);
   static const inUseOrange = Color(0xFFF97316);
   static const todayPurple = Color(0xFFA855F7);
@@ -38,9 +39,12 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
   final _auth = AuthService.instance;
   final _won = NumberFormat('#,###');
   final _dateLineFormat = DateFormat('M월 d일 (E)', 'ko_KR');
+  final _dateTimeFormat = DateFormat('M/d HH:mm');
 
   Future<BranchStats>? _statsFuture;
   Future<int>? _conflictFuture;
+  Future<List<AdminVehicleDashboardCard>>? _vehicleCardsFuture;
+  Future<_DashboardBadges>? _badgesFuture;
 
   @override
   void initState() {
@@ -49,10 +53,36 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
   }
 
   void _reload() {
+    final complexId = widget.profile.complexId;
     setState(() {
-      _statsFuture = _admin.fetchBranchStats(widget.profile.complexId);
+      _statsFuture = _admin.fetchBranchStats(complexId);
       _conflictFuture = _admin.fetchConflictRiskCount();
+      _vehicleCardsFuture = _admin.fetchVehicleDashboardCards(complexId);
+      _badgesFuture = _loadBadges(complexId);
     });
+  }
+
+  Future<_DashboardBadges> _loadBadges(String complexId) async {
+    final results = await Future.wait([
+      _admin.fetchLicenseReviews(),
+      _admin.fetchReturnInspections(complexId, status: 'returned'),
+      _admin.fetchVehicles(complexId),
+    ]);
+    final licenses = results[0] as List<LicenseReviewItem>;
+    final inspections = results[1] as List;
+    final vehicles = results[2] as List<AdminVehicleDetail>;
+
+    final licensePending =
+        licenses.where((e) => e.isPendingReview).length;
+    final insuranceLevel = VehicleInsuranceStatus.menuBadgeLevel(
+      vehicles.map((v) => v.insuranceExpiresAt),
+    );
+
+    return _DashboardBadges(
+      licensePending: licensePending,
+      inspectionPending: inspections.length,
+      insuranceLevel: insuranceLevel,
+    );
   }
 
   Future<void> _logout() async {
@@ -152,15 +182,38 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                   return SectionCard(
                     padding:
                         const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                    child: Text(
-                      '$dateLabel  |  오늘 ₩${_won.format(stats.todaySales)}  |  '
-                      '이번달 ₩${_won.format(stats.monthSales)}',
-                      style: const TextStyle(
-                        color: DanjiColors.textPrimary,
-                        fontWeight: FontWeight.w700,
-                        fontSize: 13,
-                        height: 1.35,
-                      ),
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            '$dateLabel  |  오늘 ₩${_won.format(stats.todaySales)}',
+                            style: const TextStyle(
+                              color: DanjiColors.textPrimary,
+                              fontWeight: FontWeight.w700,
+                              fontSize: 13,
+                              height: 1.35,
+                            ),
+                          ),
+                        ),
+                        InkWell(
+                          onTap: () => _open(AdminSalesScreen(profile: profile)),
+                          borderRadius: BorderRadius.circular(8),
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 6,
+                              vertical: 2,
+                            ),
+                            child: Text(
+                              '이번달 ₩${_won.format(stats.monthSales)}',
+                              style: const TextStyle(
+                                color: DanjiColors.buttonBlue,
+                                fontWeight: FontWeight.w800,
+                                fontSize: 13,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
                     ),
                   );
                 },
@@ -174,21 +227,15 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                     children: [
                       Expanded(
                         child: _CompactStatCard(
-                          label: '전체',
-                          value: '${stats.totalVehicles}',
-                          icon: Icons.directions_car_outlined,
-                          color: _DashboardUiColors.totalBlue,
-                          onTap: () => _openVehicleManage(),
-                        ),
-                      ),
-                      const SizedBox(width: 6),
-                      Expanded(
-                        child: _CompactStatCard(
-                          label: '가용',
-                          value: '${stats.availableVehicles.clamp(0, 999)}',
-                          icon: Icons.check_circle_outline,
-                          color: _DashboardUiColors.availableGreen,
-                          onTap: () => _openVehicleManage(),
+                          label: '오늘예약',
+                          value: '${stats.todayReservations}',
+                          icon: Icons.calendar_today_outlined,
+                          color: _DashboardUiColors.todayPurple,
+                          onTap: () => _open(
+                            const AdminReservationListScreen(
+                              openTodayDayFilter: true,
+                            ),
+                          ),
                         ),
                       ),
                       const SizedBox(width: 6),
@@ -206,15 +253,11 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                       const SizedBox(width: 6),
                       Expanded(
                         child: _CompactStatCard(
-                          label: '오늘예약',
-                          value: '${stats.todayReservations}',
-                          icon: Icons.calendar_today_outlined,
-                          color: _DashboardUiColors.todayPurple,
-                          onTap: () => _open(
-                            const AdminReservationListScreen(
-                              openWaitingTab: true,
-                            ),
-                          ),
+                          label: '가용',
+                          value: '${stats.availableVehicles.clamp(0, 999)}',
+                          icon: Icons.check_circle_outline,
+                          color: _DashboardUiColors.availableGreen,
+                          onTap: () => _openVehicleManage(),
                         ),
                       ),
                     ],
@@ -239,6 +282,18 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                   );
                 },
               ),
+              const SizedBox(height: 14),
+              FutureBuilder<List<AdminVehicleDashboardCard>>(
+                future: _vehicleCardsFuture,
+                builder: (context, snap) {
+                  final cards = snap.data ?? const [];
+                  if (cards.isEmpty) return const SizedBox.shrink();
+                  return _VehicleSwipeCards(
+                    cards: cards,
+                    dateTimeFormat: _dateTimeFormat,
+                  );
+                },
+              ),
               const SizedBox(height: 20),
             const Text(
               '관리 메뉴',
@@ -249,74 +304,84 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
               ),
             ),
             const SizedBox(height: 8),
-            _MenuTile(
-              icon: Icons.campaign_outlined,
-              title: '공지사항',
-              subtitle: '단지·전체 공지 등록·수정',
-              onTap: () => _open(AdminNoticeScreen(profile: profile)),
-            ),
-            _MenuTile(
-              icon: Icons.apartment_outlined,
-              title: '사업자 정보',
-              subtitle: '업체명·사업자등록번호·주소·대표자',
-              onTap: () => _open(AdminComplexInfoScreen(profile: profile)),
-            ),
-            _MenuTile(
-              icon: Icons.badge_outlined,
-              title: '면허 심사',
-              subtitle: '입주민 면허증 승인·거절',
-              onTap: () => _open(AdminLicenseReviewScreen(profile: profile)),
-            ),
-            _MenuTile(
-              icon: Icons.event_note_outlined,
-              title: '대여 관리',
-              subtitle: '예약 목록, 충돌 위험 확인',
-              onTap: () => _open(const AdminReservationListScreen()),
-            ),
-            _MenuTile(
-              icon: Icons.fact_check_outlined,
-              title: '반납 검수',
-              subtitle: '반납 차량 파손 확인, 면책금 청구',
-              onTap: () => _open(
-                AdminReturnInspectionScreen(profile: profile),
-              ),
-            ),
-            _MenuTile(
-              icon: Icons.map_outlined,
-              title: '차량 위치',
-              subtitle: '대여 중인 차량 실시간 위치 확인',
-              onTap: () => _open(AdminVehicleLocationScreen(profile: profile)),
-            ),
-            _MenuTile(
-              icon: Icons.directions_car_outlined,
-              title: '차량 관리',
-              subtitle: '차량 등록, 상태 변경',
-              onTap: () async {
-                final changed = await Navigator.of(context).push<bool>(
-                  MaterialPageRoute(
-                    builder: (_) => AdminVehicleManageScreen(profile: profile),
-                  ),
+            FutureBuilder<_DashboardBadges>(
+              future: _badgesFuture,
+              builder: (context, badgeSnap) {
+                final badges = badgeSnap.data ?? _DashboardBadges.empty;
+                return Column(
+                  children: [
+                    _MenuTile(
+                      icon: Icons.campaign_outlined,
+                      title: '공지사항',
+                      subtitle: '단지·전체 공지 등록·수정',
+                      onTap: () => _open(AdminNoticeScreen(profile: profile)),
+                    ),
+                    _MenuTile(
+                      icon: Icons.person_outline,
+                      title: '내정보',
+                      subtitle: '업체명·사업자등록번호·주소·대표자',
+                      onTap: () =>
+                          _open(AdminComplexInfoScreen(profile: profile)),
+                    ),
+                    _MenuTile(
+                      icon: Icons.people_outline,
+                      title: '고객관리',
+                      subtitle: '입주민·면허심사·이용이력·블랙리스트',
+                      badgeCount: badges.licensePending,
+                      onTap: () =>
+                          _open(AdminCustomerHubScreen(profile: profile)),
+                    ),
+                    _MenuTile(
+                      icon: Icons.event_note_outlined,
+                      title: '대여관리',
+                      subtitle: '목록/타임라인, 충돌 위험 확인',
+                      onTap: () => _open(const AdminReservationListScreen()),
+                    ),
+                    _MenuTile(
+                      icon: Icons.fact_check_outlined,
+                      title: '반납검수',
+                      subtitle: '반납 차량 파손 확인, 면책금 청구',
+                      badgeCount: badges.inspectionPending,
+                      onTap: () => _open(
+                        AdminReturnInspectionScreen(profile: profile),
+                      ),
+                    ),
+                    _MenuTile(
+                      icon: Icons.directions_car_outlined,
+                      title: '차량관리',
+                      subtitle: '차량·위치·가격·보험 통합 관리',
+                      badgeLabel: VehicleInsuranceStatus.menuBadgeLabel(
+                        badges.insuranceLevel,
+                      ).isEmpty
+                          ? null
+                          : VehicleInsuranceStatus.menuBadgeLabel(
+                              badges.insuranceLevel,
+                            ),
+                      badgeColor: badges.insuranceLevel ==
+                              VehicleInsuranceMenuBadgeLevel.none
+                          ? null
+                          : VehicleInsuranceStatus.menuBadgeColor(
+                              badges.insuranceLevel,
+                            ),
+                      onTap: () async {
+                        final changed = await Navigator.of(context).push<bool>(
+                          MaterialPageRoute(
+                            builder: (_) =>
+                                AdminVehicleManageScreen(profile: profile),
+                          ),
+                        );
+                        if (changed == true) _reload();
+                      },
+                    ),
+                    _MenuTile(
+                      icon: Icons.bar_chart_outlined,
+                      title: '매출관리',
+                      subtitle: '등록 차량별 매출·예약 현황',
+                      onTap: () => _open(AdminSalesScreen(profile: profile)),
+                    ),
+                  ],
                 );
-                if (changed == true) _reload();
               },
-            ),
-            _MenuTile(
-              icon: Icons.verified_user_outlined,
-              title: '보험 관리',
-              subtitle: '차량별 보험 등록, 만료 현황',
-              onTap: () => _open(AdminInsuranceScreen(profile: profile)),
-            ),
-            _MenuTile(
-              icon: Icons.sell_outlined,
-              title: '가격 관리',
-              subtitle: '차량별 시간당 가격 설정',
-              onTap: () => _open(AdminPriceScreen(profile: profile)),
-            ),
-            _MenuTile(
-              icon: Icons.bar_chart_outlined,
-              title: '매출 관리',
-              subtitle: '등록 차량별 매출·예약 현황',
-              onTap: () => _open(AdminSalesScreen(profile: profile)),
             ),
             const SizedBox(height: 12),
             FilledButton.icon(
@@ -352,6 +417,156 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
       ),
     );
     if (changed == true) _reload();
+  }
+}
+
+class _VehicleSwipeCards extends StatelessWidget {
+  final List<AdminVehicleDashboardCard> cards;
+  final DateFormat dateTimeFormat;
+
+  const _VehicleSwipeCards({
+    required this.cards,
+    required this.dateTimeFormat,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Padding(
+          padding: EdgeInsets.only(left: 4, bottom: 8),
+          child: Text(
+            '차량 현황',
+            style: TextStyle(
+              color: DanjiColors.textPrimary,
+              fontWeight: FontWeight.w800,
+              fontSize: 16,
+            ),
+          ),
+        ),
+        SizedBox(
+          height: 148,
+          child: PageView.builder(
+            controller: PageController(viewportFraction: 0.88),
+            itemCount: cards.length,
+            itemBuilder: (context, index) {
+              final card = cards[index];
+              return Padding(
+                padding: const EdgeInsets.only(right: 10),
+                child: _VehicleStatusCard(
+                  card: card,
+                  dateTimeFormat: dateTimeFormat,
+                ),
+              );
+            },
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _VehicleStatusCard extends StatelessWidget {
+  final AdminVehicleDashboardCard card;
+  final DateFormat dateTimeFormat;
+
+  const _VehicleStatusCard({
+    required this.card,
+    required this.dateTimeFormat,
+  });
+
+  Color get _statusColor {
+    switch (card.status) {
+      case AdminVehicleDashboardStatus.inUse:
+        return _DashboardUiColors.inUseOrange;
+      case AdminVehicleDashboardStatus.waitingPayment:
+        return _DashboardUiColors.todayPurple;
+      case AdminVehicleDashboardStatus.available:
+        return _DashboardUiColors.availableGreen;
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final plate = card.carNumber?.trim().isNotEmpty == true
+        ? card.carNumber!.trim()
+        : '번호 미등록';
+
+    return SectionCard(
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  card.vehicleName,
+                  style: const TextStyle(
+                    fontWeight: FontWeight.w800,
+                    fontSize: 16,
+                  ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+              Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                decoration: BoxDecoration(
+                  color: _statusColor.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Text(
+                  card.statusLabel,
+                  style: TextStyle(
+                    color: _statusColor,
+                    fontWeight: FontWeight.w800,
+                    fontSize: 12,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 4),
+          Text(
+            plate,
+            style: const TextStyle(
+              color: DanjiColors.textSecondary,
+              fontSize: 13,
+            ),
+          ),
+          const Spacer(),
+          if (card.status == AdminVehicleDashboardStatus.available)
+            const Text(
+              '현재 대여 가능',
+              style: TextStyle(
+                color: DanjiColors.textSecondary,
+                fontSize: 13,
+              ),
+            )
+          else ...[
+            Text(
+              '임차인: ${card.renterName ?? '—'}',
+              style: const TextStyle(fontSize: 13),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              card.status == AdminVehicleDashboardStatus.inUse
+                  ? '대여 ${card.periodStart != null ? dateTimeFormat.format(card.periodStart!) : '-'}'
+                    ' · 반납예정 ${card.periodEnd != null ? dateTimeFormat.format(card.periodEnd!) : '-'}'
+                  : '시작예정 ${card.periodStart != null ? dateTimeFormat.format(card.periodStart!) : '-'}',
+              style: const TextStyle(
+                color: DanjiColors.textSecondary,
+                fontSize: 12,
+                height: 1.35,
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
   }
 }
 
@@ -458,21 +673,50 @@ class _CompactStatCard extends StatelessWidget {
   }
 }
 
+class _DashboardBadges {
+  final int licensePending;
+  final int inspectionPending;
+  final VehicleInsuranceMenuBadgeLevel insuranceLevel;
+
+  const _DashboardBadges({
+    required this.licensePending,
+    required this.inspectionPending,
+    required this.insuranceLevel,
+  });
+
+  static const empty = _DashboardBadges(
+    licensePending: 0,
+    inspectionPending: 0,
+    insuranceLevel: VehicleInsuranceMenuBadgeLevel.none,
+  );
+}
+
 class _MenuTile extends StatelessWidget {
   final IconData icon;
   final String title;
   final String subtitle;
   final VoidCallback onTap;
+  final int? badgeCount;
+  final String? badgeLabel;
+  final Color? badgeColor;
 
   const _MenuTile({
     required this.icon,
     required this.title,
     required this.subtitle,
     required this.onTap,
+    this.badgeCount,
+    this.badgeLabel,
+    this.badgeColor,
   });
 
   @override
   Widget build(BuildContext context) {
+    final count = badgeCount ?? 0;
+    final showCountBadge = count > 0;
+    final showLabelBadge =
+        badgeLabel != null && badgeLabel!.trim().isNotEmpty;
+
     return Padding(
       padding: const EdgeInsets.only(bottom: 10),
       child: SectionCard(
@@ -491,7 +735,51 @@ class _MenuTile extends StatelessWidget {
             subtitle,
             style: const TextStyle(color: DanjiColors.textSecondary),
           ),
-          trailing: const Icon(Icons.chevron_right, color: DanjiColors.textMuted),
+          trailing: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (showCountBadge)
+                Container(
+                  margin: const EdgeInsets.only(right: 6),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: DanjiColors.danger,
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Text(
+                    '$count',
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.w800,
+                      fontSize: 12,
+                    ),
+                  ),
+                ),
+              if (showLabelBadge)
+                Container(
+                  margin: const EdgeInsets.only(right: 6),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: (badgeColor ??
+                            VehicleInsuranceStatus.expiringWarningColor)
+                        .withValues(alpha: 0.15),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Text(
+                    badgeLabel!,
+                    style: TextStyle(
+                      color: badgeColor ??
+                          VehicleInsuranceStatus.expiringWarningColor,
+                      fontWeight: FontWeight.w800,
+                      fontSize: 11,
+                    ),
+                  ),
+                ),
+              const Icon(Icons.chevron_right, color: DanjiColors.textMuted),
+            ],
+          ),
           onTap: onTap,
         ),
       ),

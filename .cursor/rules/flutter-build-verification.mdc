@@ -1,0 +1,13 @@
+---
+description: Flutter 변경 후 빌드 검증 시 analyze → build 순서 필수
+alwaysApply: true
+---
+
+# Flutter 빌드 검증
+
+코드 변경 후 빌드·컴파일 성공을 보고할 때는 반드시 아래 순서로 실행하고, **두 명령의 결과를 보고에 포함**한다.
+
+1. `flutter analyze` — **No issues found** 확인
+2. `flutter build apk --debug` — **성공(exit 0)** 확인
+
+`analyze`만 돌리거나, 빌드 없이 성공을 주장하지 않는다. `analyze` 실패 시 `build`는 실행하지 않고 원인을 먼저 수정한다.

@@ -5,8 +5,9 @@ import '../widgets/smart_key_nav_icon.dart';
 import 'home_screen.dart';
 import 'my_page_screen.dart';
 import 'smart_key_screen.dart';
+import 'usage_guide_screen.dart';
 
-/// 하단 탭바 메인 셸 (홈 · 스마트키 · 마이페이지)
+/// 하단 탭바 메인 셸 (홈 · 스마트키 · 이용안내 · 마이페이지)
 class MainShell extends StatefulWidget {
   const MainShell({super.key});
 
@@ -28,12 +29,13 @@ class _MainShellState extends State<MainShell> {
         children: [
           HomeScreen(
             key: _homeKey,
-            onGoMyPage: () => setState(() => _index = 2),
+            onGoMyPage: () => setState(() => _index = 3),
           ),
           SmartKeyScreen(
             key: _smartKeyKey,
             isActive: _index == 1,
           ),
+          const UsageGuideScreen(embedded: true),
           const MyPageScreen(embedded: true),
         ],
       ),
@@ -58,14 +60,14 @@ class _MainShellState extends State<MainShell> {
             });
           },
           labelBehavior: NavigationDestinationLabelBehavior.alwaysShow,
-          destinations: [
+          destinations: const [
             NavigationDestination(
-              icon: const _ShellNavIcon(
+              icon: _ShellNavIcon(
                 outlinedIcon: Icons.home_outlined,
                 filledIcon: Icons.home,
                 selected: false,
               ),
-              selectedIcon: const _ShellNavIcon(
+              selectedIcon: _ShellNavIcon(
                 outlinedIcon: Icons.home_outlined,
                 filledIcon: Icons.home,
                 selected: true,
@@ -73,17 +75,30 @@ class _MainShellState extends State<MainShell> {
               label: '홈',
             ),
             NavigationDestination(
-              icon: const SmartKeyNavIcon(selected: false),
-              selectedIcon: const SmartKeyNavIcon(selected: true),
+              icon: SmartKeyNavIcon(selected: false),
+              selectedIcon: SmartKeyNavIcon(selected: true),
               label: '스마트키',
             ),
             NavigationDestination(
-              icon: const _ShellNavIcon(
+              icon: _ShellNavIcon(
+                outlinedIcon: Icons.menu_book_outlined,
+                filledIcon: Icons.menu_book,
+                selected: false,
+              ),
+              selectedIcon: _ShellNavIcon(
+                outlinedIcon: Icons.menu_book_outlined,
+                filledIcon: Icons.menu_book,
+                selected: true,
+              ),
+              label: '이용안내',
+            ),
+            NavigationDestination(
+              icon: _ShellNavIcon(
                 outlinedIcon: Icons.person_outline,
                 filledIcon: Icons.person,
                 selected: false,
               ),
-              selectedIcon: const _ShellNavIcon(
+              selectedIcon: _ShellNavIcon(
                 outlinedIcon: Icons.person_outline,
                 filledIcon: Icons.person,
                 selected: true,

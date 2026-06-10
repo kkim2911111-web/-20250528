@@ -13,11 +13,13 @@ import '../widgets/danji_app_bar.dart';
 class ReservationScreen extends StatefulWidget {
   final Vehicle vehicle;
   final Reservation? existingReservation;
+  final DateTime? initialDay;
 
   const ReservationScreen({
     super.key,
     required this.vehicle,
     this.existingReservation,
+    this.initialDay,
   });
 
   bool get isEditMode => existingReservation != null;
@@ -53,8 +55,10 @@ class _ReservationScreenState extends State<ReservationScreen> {
       _startTime = TimeOfDay(hour: start.hour, minute: start.minute);
       _endTime = TimeOfDay(hour: end.hour, minute: end.minute);
     } else {
-      _selectedDay = _dateOnly(DateTime.now());
-      _focusedDay = _selectedDay!;
+      final initial = widget.initialDay;
+      final day = initial != null ? _dateOnly(initial) : _dateOnly(DateTime.now());
+      _selectedDay = day;
+      _focusedDay = day;
       _startTime = const TimeOfDay(hour: 9, minute: 0);
       _endTime = const TimeOfDay(hour: 11, minute: 0);
     }
@@ -217,7 +221,7 @@ class _ReservationScreenState extends State<ReservationScreen> {
               focusedDay: _focusedDay,
               selectedDayPredicate: (day) => isSameDay(_selectedDay, day),
               locale: 'ko_KR',
-              startingDayOfWeek: StartingDayOfWeek.monday,
+              startingDayOfWeek: StartingDayOfWeek.sunday,
               calendarFormat: CalendarFormat.month,
               availableCalendarFormats: const {
                 CalendarFormat.month: '월',

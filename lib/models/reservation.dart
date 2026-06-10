@@ -1,5 +1,6 @@
 import 'package:intl/intl.dart';
 
+import '../utils/rental_pricing.dart';
 import '../utils/reservation_display.dart';
 import 'vehicle.dart';
 
@@ -36,6 +37,7 @@ class Reservation {
   final String? secondDriverLicense;
   final bool isNoShow;
   final String? reservationNumber;
+  final RentalType? rentalType;
 
   const Reservation({
     required this.id,
@@ -69,6 +71,7 @@ class Reservation {
     this.secondDriverLicense,
     this.isNoShow = false,
     this.reservationNumber,
+    this.rentalType,
   });
 
   bool get hasSecondDriver {
@@ -115,6 +118,7 @@ class Reservation {
       secondDriverLicense: map['second_driver_license']?.toString(),
       isNoShow: map['is_no_show'] == true,
       reservationNumber: map['reservation_number']?.toString(),
+      rentalType: RentalType.fromDb(map['rental_type']?.toString()),
     );
   }
 

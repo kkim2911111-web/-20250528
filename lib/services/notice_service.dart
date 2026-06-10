@@ -6,7 +6,7 @@ import '../utils/network_retry.dart';
 
 class NoticeService {
   /// 활성 공지 (전체 + 본인 단지). RLS가 필터링합니다.
-  Future<List<Notice>> fetchActiveNotices() async {
+  Future<List<Notice>> fetchActiveNotices({int limit = 10}) async {
     if (!isSupabaseInitialized) return [];
 
     final user = supabase.auth.currentUser;
@@ -19,7 +19,7 @@ class NoticeService {
             .select('id, complex_id, title, content, is_active, created_at')
             .eq('is_active', true)
             .order('created_at', ascending: false)
-            .limit(10),
+            .limit(limit),
       );
 
       return (rows as List)

@@ -10,6 +10,7 @@ class DanjiAppBar extends StatelessWidget implements PreferredSizeWidget {
   final bool showHome;
   final bool light;
   final VoidCallback? onHome;
+  final VoidCallback? onBack;
 
   const DanjiAppBar({
     super.key,
@@ -19,6 +20,7 @@ class DanjiAppBar extends StatelessWidget implements PreferredSizeWidget {
     this.showHome = true,
     this.light = true,
     this.onHome,
+    this.onBack,
   });
 
   void _goHome(BuildContext context) {
@@ -44,7 +46,7 @@ class DanjiAppBar extends StatelessWidget implements PreferredSizeWidget {
           ? IconButton(
               icon: const Icon(Icons.arrow_back),
               tooltip: '뒤로가기',
-              onPressed: () => Navigator.of(context).pop(),
+              onPressed: onBack ?? () => Navigator.of(context).pop(),
             )
           : null,
       title: Text(

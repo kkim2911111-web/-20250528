@@ -87,12 +87,56 @@ Future<bool> openRentalExtension(
     return false;
   }
 
+  if (check.reason == 'next_reservation_exists') {
+    await _showNextReservationBlockedDialog(context, check);
+    return false;
+  }
+
   ScaffoldMessenger.of(context).showSnackBar(
     SnackBar(
       content: Text(_messageForExtensionCheck(check)),
     ),
   );
   return false;
+}
+
+Future<void> _showNextReservationBlockedDialog(
+  BuildContext context,
+  RentalExtensionCheckResult check,
+) async {
+  final dateFormat = DateFormat('yyyy-MM-dd HH:mm');
+  final startLabel = check.blockingStartAt != null
+      ? dateFormat.format(check.blockingStartAt!.toLocal())
+      : '확인 불가';
+
+  await showDialog<void>(
+    context: context,
+    builder: (ctx) => AlertDialog(
+      backgroundColor: DanjiColors.surface,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      title: const Text(
+        '연장 불가',
+        style: TextStyle(
+          color: DanjiColors.textPrimary,
+          fontWeight: FontWeight.w800,
+        ),
+      ),
+      content: Text(
+        '해당 차량에 뒷 예약이 있어 연장할 수 없습니다.\n\n'
+        '뒷 예약 시작: $startLabel',
+        style: const TextStyle(
+          color: DanjiColors.textSecondary,
+          height: 1.5,
+        ),
+      ),
+      actions: [
+        FilledButton(
+          onPressed: () => Navigator.of(ctx).pop(),
+          child: const Text('확인'),
+        ),
+      ],
+    ),
+  );
 }
 
 String _messageForExtensionCheck(RentalExtensionCheckResult check) {

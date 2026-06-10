@@ -5,8 +5,10 @@ import '../models/booking_contract_consent.dart';
 import '../models/reservation.dart';
 import '../models/reservation_payment_pricing.dart';
 import '../supabase_client.dart';
+import '../utils/vehicle_insurance_status.dart';
 import '../constants/payment_order_status.dart';
 import '../utils/booking_eligibility.dart';
+import '../utils/rental_pricing.dart';
 import 'my_page_service.dart';
 import 'push_notification_service.dart';
 import 'rental_service.dart';
@@ -21,6 +23,9 @@ class ReservationOverlapException implements Exception {
 /// 예약 화면 — 차량 선택 불가 사유
 enum VehicleBookingBlockReason {
   inUse,
+  underMaintenance,
+  unpublished,
+  insuranceExpired,
   timeOverlap,
 }
 
@@ -79,13 +84,19 @@ class ReservationService {
 
     final vehicle = await supabase
         .from('vehicles')
-        .select('id, complex_id, model_name')
+        .select('id, complex_id, model_name, is_under_maintenance')
         .eq('id', vehicleId)
         .maybeSingle();
 
     if (vehicle == null) {
       throw const ReservationPermissionException(
         '차량 정보를 불러올 수 없습니다. 차량이 내 단지에 등록되어 있는지 확인해주세요.',
+      );
+    }
+
+    if (vehicle['is_under_maintenance'] == true) {
+      throw const ReservationPermissionException(
+        '점검 중인 차량입니다. 예약할 수 없습니다.',
       );
     }
 
@@ -113,7 +124,36 @@ class ReservationService {
     required String vehicleId,
     required DateTime startAt,
     required DateTime endAt,
+    bool? isUnderMaintenance,
   }) async {
+    if (isUnderMaintenance == true) {
+      return VehicleBookingBlockReason.underMaintenance;
+    }
+
+    final row = await supabase
+        .from('vehicles')
+        .select(
+          'is_under_maintenance, is_published, insurance_expires_at',
+        )
+        .eq('id', vehicleId)
+        .maybeSingle();
+
+    if (isUnderMaintenance != false && row?['is_under_maintenance'] == true) {
+      return VehicleBookingBlockReason.underMaintenance;
+    }
+
+    if (row?['is_published'] != true) {
+      return VehicleBookingBlockReason.unpublished;
+    }
+
+    final expiresRaw = row?['insurance_expires_at'];
+    final expiresAt = expiresRaw == null
+        ? null
+        : DateTime.tryParse(expiresRaw.toString());
+    if (VehicleInsuranceStatus.isExpired(expiresAt)) {
+      return VehicleBookingBlockReason.insuranceExpired;
+    }
+
     final overlaps = await _hasConfirmedOrPendingTimeOverlap(
       vehicleId: vehicleId,
       startAt: startAt,
@@ -329,6 +369,7 @@ class ReservationService {
     required DateTime startTime,
     required DateTime endTime,
     required int totalPrice,
+    RentalType rentalType = RentalType.hourly,
   }) async {
     if (!endTime.isAfter(startTime)) {
       throw ArgumentError('종료 시간은 시작 시간보다 뒤여야 합니다.');
@@ -358,6 +399,7 @@ class ReservationService {
         'p_start_time': startUtc.toIso8601String(),
         'p_end_time': endUtc.toIso8601String(),
         'p_total_price': totalPrice,
+        'p_rental_type': rentalType.dbValue,
       });
       final reservationId = _parseCreatedReservationId(data);
       if (reservationId != null) {
@@ -389,6 +431,11 @@ class ReservationService {
       if (msg.contains('time_overlap')) {
         throw const ReservationOverlapException();
       }
+      if (msg.contains('price_mismatch')) {
+        throw const ReservationPermissionException(
+          '요금 정보가 올바르지 않습니다. 다시 시도해주세요.',
+        );
+      }
       if (msg.contains('could not find the function') ||
           msg.contains('create_reservation_for_me')) {
         // RPC 미설치 → direct insert fallback
@@ -405,6 +452,7 @@ class ReservationService {
       'start_at': startUtc.toIso8601String(),
       'end_at': endUtc.toIso8601String(),
       'total_price': totalPrice,
+      'rental_type': rentalType.dbValue,
       'status': 'pending',
     });
     if (reservationId != null) {
@@ -422,12 +470,14 @@ class ReservationService {
     required DateTime startAt,
     required DateTime endAt,
     int totalPrice = 0,
+    RentalType rentalType = RentalType.hourly,
   }) async {
     await createBooking(
       vehicleId: vehicleId,
       startTime: startAt,
       endTime: endAt,
       totalPrice: totalPrice,
+      rentalType: rentalType,
     );
   }
 

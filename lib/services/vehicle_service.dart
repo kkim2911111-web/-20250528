@@ -6,7 +6,7 @@ import '../supabase_client.dart';
 import '../utils/network_retry.dart';
 
 /// 입주민 단지 차량 목록 — DB RLS(`vehicles_resident_select_own_complex`)가
-/// complex_id 격리를 강제하므로 클라이언트 `.eq('complex_id')` 필터는 사용하지 않음.
+/// complex_id·is_published·점검중·보험만료를 강제하므로 클라이언트 필터는 보조용.
 class VehicleService {
   Future<VehicleQueryResult> fetchVehiclesForMyComplex() async {
     return withNetworkRetry(_fetchVehiclesForMyComplex);
@@ -63,7 +63,10 @@ class VehicleService {
     }
 
     final rows = await _selectVehiclesVisibleByRls();
-    final vehicles = rows.map(Vehicle.fromMap).toList();
+    final vehicles = rows
+        .map(Vehicle.fromMap)
+        .where((v) => v.isResidentBookable)
+        .toList();
 
     return VehicleQueryResult(
       vehicles: vehicles,

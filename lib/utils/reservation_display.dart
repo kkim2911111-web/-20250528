@@ -117,3 +117,50 @@ String formatRentalPeriod({
   final e = end != null ? formatter.format(end) : '-';
   return '$s ~ $e';
 }
+
+DateTime? scheduledStartFromMap(Map<String, dynamic> row) {
+  return parseReservationDate(row['start_at'] ?? row['start_time']);
+}
+
+DateTime? scheduledEndFromMap(Map<String, dynamic> row) {
+  return parseReservationDate(row['end_at'] ?? row['end_time']);
+}
+
+/// 관리자 검수 완료 시각 — DB 컬럼 없으면 completed 시 updated_at
+DateTime? resolveReturnCompletedAt({
+  required String? status,
+  DateTime? returnCompletedAt,
+  DateTime? updatedAt,
+}) {
+  if (returnCompletedAt != null) return returnCompletedAt;
+  if (status == 'completed') return updatedAt;
+  return null;
+}
+
+String formatOptionalDateTime(DateFormat formatter, DateTime? value) {
+  if (value == null) return '-';
+  return formatter.format(value.toLocal());
+}
+
+String formatScheduledPeriod({
+  required DateFormat formatter,
+  DateTime? startAt,
+  DateTime? endAt,
+}) {
+  return formatRentalPeriod(formatter: formatter, start: startAt, end: endAt);
+}
+
+/// 예약/대여/반납/검수 시각 표시 모드
+enum ReservationTimesMode {
+  /// 이용자 상세 — 대여 시작·반납은 값이 있을 때만
+  residentDetail,
+
+  /// 관리자 목록/상세 — 대여 시작·반납은 값이 있을 때만
+  admin,
+
+  /// 반납 검수 대기 — 세 항목 항상 표시, 노쇼는 미대여
+  inspectionPending,
+
+  /// 반납 검수 완료 — 검수 완료 시각 포함
+  inspectionCompleted,
+}

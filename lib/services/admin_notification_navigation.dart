@@ -2,13 +2,14 @@ import 'package:flutter/material.dart';
 
 import '../models/inbox_notification.dart';
 import '../models/staff_profile.dart';
-import '../screens/admin/admin_license_review_screen.dart';
+import '../screens/admin/admin_customer_hub_screen.dart';
 import '../screens/admin/admin_management_screens.dart';
 import '../screens/admin/admin_reservation_list_screen.dart';
 import '../screens/super_admin/super_admin_entity_screens.dart';
 import '../screens/super_admin/super_admin_reservations_screen.dart';
 import '../screens/super_admin/super_admin_revenue_screen.dart';
 import '../services/super_admin_service.dart';
+import '../utils/super_admin_settlement_dashboard.dart';
 
 /// 관리자 알림함 탭 시 화면 이동
 class AdminNotificationNavigation {
@@ -55,7 +56,10 @@ class AdminNotificationNavigation {
       case 'admin_license':
         Navigator.of(context).push(
           MaterialPageRoute<void>(
-            builder: (_) => AdminLicenseReviewScreen(profile: profile),
+            builder: (_) => AdminCustomerHubScreen(
+              profile: profile,
+              initialTab: AdminCustomerHubTab.license,
+            ),
           ),
         );
         return;
@@ -63,7 +67,7 @@ class AdminNotificationNavigation {
       case 'admin':
         Navigator.of(context).push(
           MaterialPageRoute<void>(
-            builder: (_) => AdminLicenseReviewScreen(profile: profile),
+            builder: (_) => AdminCustomerHubScreen(profile: profile),
           ),
         );
         return;
@@ -125,9 +129,14 @@ class AdminNotificationNavigation {
         );
         return;
       case 'admin_settlement_request':
+        final period = superAdminSettlementDashboardPeriod();
         Navigator.of(context).push(
           MaterialPageRoute<void>(
-            builder: (_) => SuperAdminRevenueScreen(service: service),
+            builder: (_) => SuperAdminRevenueScreen(
+              service: service,
+              initialYear: period.year,
+              initialMonth: period.month,
+            ),
           ),
         );
         return;

@@ -16,6 +16,7 @@ import '../supabase_client.dart';
 import '../theme/danji_colors.dart';
 import '../theme/danji_typography.dart';
 import '../utils/rental_inquiry_flow.dart';
+import '../utils/rental_pricing.dart';
 import '../widgets/danji_app_bar.dart';
 import '../widgets/payment_method_sheet.dart';
 
@@ -84,6 +85,9 @@ class _BookingScreenState extends State<BookingScreen> {
   int _startHour = 9;
   int _endHour = 10;
   bool _endHourManuallySet = false;
+  RentalType _rentalType = RentalType.hourly;
+  int _durationDays = 1;
+  int _durationMonths = 1;
   bool _loading = false;
   String? _error;
   bool _autoBumpedEmptyList = false;
@@ -171,19 +175,45 @@ class _BookingScreenState extends State<BookingScreen> {
     _lastResult = result;
     _allVehicles = result.vehicles;
 
+    if (!_availableRentalTypes.contains(_rentalType)) {
+      _rentalType = _availableRentalTypes.first;
+    }
     _refreshAvailability();
     return result;
   }
 
+  Set<RentalType> get _availableRentalTypes {
+    if (_selected != null) return _selected!.rentalTypes.toSet();
+    final types = <RentalType>{};
+    for (final vehicle in _allVehicles) {
+      types.addAll(vehicle.rentalTypes);
+    }
+    return types.isEmpty ? {RentalType.hourly} : types;
+  }
+
+  bool get _hasValidDuration => RentalPricing.isValidDuration(
+        _rentalType,
+        hours: _durationHours,
+        days: _durationDays,
+        months: _durationMonths,
+      );
+
+  String get _durationSummary => RentalPricing.durationSummary(
+        _rentalType,
+        hours: _durationHours,
+        days: _durationDays,
+        months: _durationMonths,
+      );
+
   int get _activeStep {
     if (_selected == null) return 1;
-    if (_durationHours >= 1 && _originalPrice != null) return 3;
+    if (_hasValidDuration && _originalPrice != null) return 3;
     return 2;
   }
 
   /// 3단계 확인/결제 — 차량 선택 후 쿠폰·포인트 패널 표시
   bool get _showCheckoutDiscounts =>
-      _selected != null && _durationHours >= 1 && _originalPrice != null;
+      _selected != null && _hasValidDuration && _originalPrice != null;
 
   int get _durationHours {
     final start = _buildStartDateTime(_selectedDay, _startHour);
@@ -252,7 +282,7 @@ class _BookingScreenState extends State<BookingScreen> {
     if (day == null) return const [];
 
     final ordered = <int>[
-      for (var i = 1; i <= 24; i++) (_startHour + i) % 24,
+      for (var i = 1; i <= RentalPricing.maxHourlyHours; i++) (_startHour + i) % 24,
     ];
     return [
       for (final h in ordered)
@@ -264,7 +294,22 @@ class _BookingScreenState extends State<BookingScreen> {
     final start = _buildStartDateTime(day, _startHour);
     final end = _buildEndDateTime(day, endHour);
     if (start == null || end == null) return false;
-    return end.difference(start).inHours >= 1;
+    final hours = end.difference(start).inHours;
+    return hours >= 1 && hours <= RentalPricing.maxHourlyHours;
+  }
+
+  DateTime? get _rentalStartTime => _buildStartDateTime(_selectedDay, _startHour);
+
+  DateTime? get _rentalEndTime {
+    final start = _rentalStartTime;
+    if (start == null) return null;
+    return RentalPricing.buildEndTime(
+      start,
+      _rentalType,
+      endHour: _endHour,
+      days: _durationDays,
+      months: _durationMonths,
+    );
   }
 
   /// 종료 시각 = 시작 + 1시간 (유효한 종료 시각 목록 기준)
@@ -351,8 +396,26 @@ class _BookingScreenState extends State<BookingScreen> {
 
   int? get _originalPrice {
     final vehicle = _selected;
-    if (vehicle == null || _durationHours < 1) return null;
-    return _durationHours * vehicle.pricePerHour;
+    if (vehicle == null || !_hasValidDuration) return null;
+    return RentalPricing.calculatePrice(
+      vehicle,
+      _rentalType,
+      hours: _durationHours,
+      days: _durationDays,
+      months: _durationMonths,
+    );
+  }
+
+  int? get _compareStrikethroughPrice {
+    final vehicle = _selected;
+    if (vehicle == null || !_hasValidDuration) return null;
+    return RentalPricing.comparisonStrikethroughPrice(
+      vehicle,
+      _rentalType,
+      hours: _durationHours,
+      days: _durationDays,
+      months: _durationMonths,
+    );
   }
 
   int get _couponDiscount {
@@ -403,7 +466,7 @@ class _BookingScreenState extends State<BookingScreen> {
 
   bool get _canSubmit {
     if (_loading || _selected == null || _originalPrice == null) return false;
-    if (_durationHours < 1) return false;
+    if (!_hasValidDuration) return false;
     if (_pointsInputInvalid) return false;
     final start = _buildStartDateTime(_selectedDay, _startHour);
     if (start == null) return false;
@@ -521,12 +584,12 @@ class _BookingScreenState extends State<BookingScreen> {
     final complexId = _lastResult?.complexId;
     final day = _selectedDay;
 
-    if (day == null || _durationHours < 1) {
+    if (day == null || !_hasValidDuration) {
       return [];
     }
 
-    final startTime = _buildStartDateTime(day, _startHour);
-    final endTime = _buildEndDateTime(day, _endHour);
+    final startTime = _rentalStartTime;
+    final endTime = _rentalEndTime;
     if (startTime == null || endTime == null) {
       return [];
     }
@@ -539,7 +602,8 @@ class _BookingScreenState extends State<BookingScreen> {
     final entries = <_BookingVehicleListEntry>[];
 
     for (final vehicle in vehicles) {
-      if (!vehicle.isAvailable) {
+      if (!vehicle.isResidentBookable ||
+          !vehicle.supportsRentalType(_rentalType)) {
         continue;
       }
 
@@ -554,6 +618,7 @@ class _BookingScreenState extends State<BookingScreen> {
         vehicleId: vehicle.id,
         startAt: startTime,
         endAt: endTime,
+        isUnderMaintenance: vehicle.isUnderMaintenance,
       );
       entries.add(
         _BookingVehicleListEntry(
@@ -577,7 +642,8 @@ class _BookingScreenState extends State<BookingScreen> {
     if (!mounted) return;
 
     if (entries.isEmpty &&
-        _durationHours >= 1 &&
+        _hasValidDuration &&
+        _rentalType == RentalType.hourly &&
         !_autoBumpedEmptyList &&
         !_isTomorrowMidnightSlot) {
       _autoBumpedEmptyList = true;
@@ -590,7 +656,7 @@ class _BookingScreenState extends State<BookingScreen> {
       return;
     }
 
-    if (entries.isEmpty && _durationHours >= 1) {
+    if (entries.isEmpty && _hasValidDuration) {
       _autoBumpedEmptyList = true;
     }
 
@@ -618,11 +684,124 @@ class _BookingScreenState extends State<BookingScreen> {
   void _selectVehicle(Vehicle vehicle) {
     setState(() {
       _selected = vehicle;
+      if (!vehicle.supportsRentalType(_rentalType)) {
+        _rentalType = vehicle.rentalTypes.first;
+      }
       _error = null;
       _validateCouponForCurrentPrice();
       _clampPointsToUse();
     });
     _scheduleCheckoutExtrasLoad();
+  }
+
+  void _onRentalTypeChanged(RentalType type) {
+    if (!_availableRentalTypes.contains(type)) return;
+    setState(() {
+      _rentalType = type;
+      _selected = null;
+      _error = null;
+      _resetCheckoutSelection();
+    });
+    _refreshAvailability();
+  }
+
+  Future<void> _openDurationCountPicker({
+    required String title,
+    required int min,
+    required int max,
+    required int current,
+    required ValueChanged<int> onSelected,
+    required String Function(int value) labelBuilder,
+    String? inquiryLabel,
+    String? inquiryMessage,
+  }) async {
+    final values = [
+      for (var i = min; i <= max; i++) i,
+      if (inquiryLabel != null) -1,
+    ];
+
+    await showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: DanjiColors.surface,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (sheetContext) {
+        return SafeArea(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Padding(
+                padding: const EdgeInsets.fromLTRB(20, 16, 20, 8),
+                child: Text(
+                  title,
+                  style: const TextStyle(
+                    fontSize: 17,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ),
+              ConstrainedBox(
+                constraints: BoxConstraints(
+                  maxHeight: MediaQuery.sizeOf(sheetContext).height * 0.45,
+                ),
+                child: ListView.builder(
+                  shrinkWrap: true,
+                  itemCount: values.length,
+                  itemBuilder: (context, index) {
+                    final value = values[index];
+                    if (value == -1) {
+                      return ListTile(
+                        title: Text(
+                          inquiryLabel!,
+                          style: const TextStyle(
+                            color: DanjiColors.buttonBlue,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                        onTap: () async {
+                          Navigator.pop(sheetContext);
+                          if (inquiryMessage != null) {
+                            await showExtendedRentalInquiryDialog(
+                              context,
+                              message: inquiryMessage,
+                            );
+                          }
+                        },
+                      );
+                    }
+                    final selected = value == current;
+                    return ListTile(
+                      title: Text(
+                        labelBuilder(value),
+                        style: TextStyle(
+                          fontWeight:
+                              selected ? FontWeight.w700 : FontWeight.w500,
+                          color: selected
+                              ? DanjiColors.buttonBlue
+                              : DanjiColors.textPrimary,
+                        ),
+                      ),
+                      trailing: selected
+                          ? const Icon(
+                              Icons.check,
+                              color: DanjiColors.buttonBlue,
+                            )
+                          : null,
+                      onTap: () {
+                        Navigator.pop(sheetContext);
+                        onSelected(value);
+                      },
+                    );
+                  },
+                ),
+              ),
+              const SizedBox(height: 8),
+            ],
+          ),
+        );
+      },
+    );
   }
 
   Future<void> _openDatePicker() async {
@@ -665,7 +844,7 @@ class _BookingScreenState extends State<BookingScreen> {
                       selectedDayPredicate: (d) =>
                           _selectedDay != null && isSameDay(d, _selectedDay!),
                       locale: 'ko_KR',
-                      startingDayOfWeek: StartingDayOfWeek.monday,
+                      startingDayOfWeek: StartingDayOfWeek.sunday,
                       headerStyle: const HeaderStyle(
                         formatButtonVisible: false,
                         titleCentered: true,
@@ -827,13 +1006,13 @@ class _BookingScreenState extends State<BookingScreen> {
       setState(() => _error = '예약 날짜를 선택해주세요.');
       return;
     }
-    if (_durationHours < 1) {
-      setState(() => _error = '최소 1시간 이상 선택해주세요.');
+    if (!_hasValidDuration) {
+      setState(() => _error = '대여 기간을 올바르게 선택해주세요.');
       return;
     }
 
-    final startTime = _buildStartDateTime(day, _startHour);
-    final endTime = _buildEndDateTime(day, _endHour);
+    final startTime = _rentalStartTime;
+    final endTime = _rentalEndTime;
     final originalPrice = _originalPrice;
     final totalPrice = _finalPrice;
     if (startTime == null || endTime == null || originalPrice == null || totalPrice == null) {
@@ -888,6 +1067,7 @@ class _BookingScreenState extends State<BookingScreen> {
         vehicle: vehicle,
         startTime: startTime,
         endTime: endTime,
+        rentalType: _rentalType,
         totalPrice: totalPrice,
         originalPrice: originalPrice,
         userCouponId: _selectedUserCouponId,
@@ -989,59 +1169,175 @@ class _BookingScreenState extends State<BookingScreen> {
                     children: [
                       _BookingStepIndicator(activeStep: _activeStep),
                       const SizedBox(height: 20),
+                      if (_selected?.isRentalService == true) ...[
+                        const _BookingRentalDeliveryNotice(),
+                        const SizedBox(height: 12),
+                      ],
+                      if (_availableRentalTypes.length > 1) ...[
+                        _BookingRentalTypeTabs(
+                          availableTypes: _availableRentalTypes,
+                          selected: _rentalType,
+                          onChanged: _onRentalTypeChanged,
+                        ),
+                        const SizedBox(height: 16),
+                      ],
                       _DateSelectCard(
                         label: _selectedDateLabel ?? '날짜를 선택해주세요',
                         onTap: _openDatePicker,
                       ),
                       const SizedBox(height: 12),
-                      Row(
-                        children: [
-                          Expanded(
-                            child: _TimeSelectCard(
-                              title: '시작 시간',
-                              time: _formatHourLabel(_startHour),
-                              subtitle: '1시간 단위',
-                              onTap: () => _openHourPicker(
+                      if (_rentalType == RentalType.hourly) ...[
+                        Row(
+                          children: [
+                            Expanded(
+                              child: _TimeSelectCard(
                                 title: '시작 시간',
-                                hours: _startHourOptions,
-                                current: _startHour,
-                                labelBuilder: _formatHourLabel,
-                                onSelected: (hour) {
-                                  setState(() {
-                                    _startHour = hour;
-                                    _syncEndHourFromStart();
-                                  });
-                                  _onDateTimeChanged();
-                                },
+                                time: _formatHourLabel(_startHour),
+                                subtitle: '1시간 단위',
+                                onTap: () => _openHourPicker(
+                                  title: '시작 시간',
+                                  hours: _startHourOptions,
+                                  current: _startHour,
+                                  labelBuilder: _formatHourLabel,
+                                  onSelected: (hour) {
+                                    setState(() {
+                                      _startHour = hour;
+                                      _syncEndHourFromStart();
+                                    });
+                                    _onDateTimeChanged();
+                                  },
+                                ),
                               ),
                             ),
-                          ),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            child: _TimeSelectCard(
-                              title: '종료 시간',
-                              time: _formatEndHourLabel(_endHour),
-                              subtitle: _durationHours >= 1
-                                  ? '${_durationHours}시간 선택됨'
-                                  : '1시간 이상 선택',
-                              subtitleHighlight: _durationHours >= 1,
-                              onTap: () => _openHourPicker(
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: _TimeSelectCard(
                                 title: '종료 시간',
-                                hours: _endHourOptions,
-                                current: _endHour,
-                                labelBuilder: _formatEndHourLabel,
-                                onSelected: (hour) {
-                                  setState(() {
-                                    _endHour = hour;
-                                    _endHourManuallySet = true;
-                                  });
-                                  _onDateTimeChanged();
-                                },
+                                time: _formatEndHourLabel(_endHour),
+                                subtitle: _durationHours >= 1
+                                    ? '${_durationHours}시간 선택됨'
+                                    : '1시간 이상 선택',
+                                subtitleHighlight: _durationHours >= 1,
+                                onTap: () => _openHourPicker(
+                                  title: '종료 시간',
+                                  hours: _endHourOptions,
+                                  current: _endHour,
+                                  labelBuilder: _formatEndHourLabel,
+                                  onSelected: (hour) {
+                                    setState(() {
+                                      _endHour = hour;
+                                      _endHourManuallySet = true;
+                                    });
+                                    _onDateTimeChanged();
+                                  },
+                                ),
                               ),
                             ),
-                          ),
-                        ],
-                      ),
+                          ],
+                        ),
+                      ] else if (_rentalType == RentalType.daily) ...[
+                        Row(
+                          children: [
+                            Expanded(
+                              child: _TimeSelectCard(
+                                title: '시작 시간',
+                                time: _formatHourLabel(_startHour),
+                                subtitle: '대여 시작 시각',
+                                onTap: () => _openHourPicker(
+                                  title: '시작 시간',
+                                  hours: _startHourOptions,
+                                  current: _startHour,
+                                  labelBuilder: _formatHourLabel,
+                                  onSelected: (hour) {
+                                    setState(() => _startHour = hour);
+                                    _onDateTimeChanged();
+                                  },
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: _TimeSelectCard(
+                                title: '대여 일수',
+                                time: '${_durationDays}일',
+                                subtitle: '최대 ${RentalPricing.maxDailyDays}일',
+                                subtitleHighlight: _durationDays >= 1,
+                                onTap: () => _openDurationCountPicker(
+                                  title: '대여 일수',
+                                  min: 1,
+                                  max: RentalPricing.maxDailyDays,
+                                  current: _durationDays,
+                                  inquiryLabel: '30일 이상 전화 문의',
+                                  inquiryMessage:
+                                      '30일 이상 대여는 전화로 문의해주세요.',
+                                  labelBuilder: (value) => '$value일',
+                                  onSelected: (value) {
+                                    setState(() => _durationDays = value);
+                                    _onDateTimeChanged();
+                                  },
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ] else ...[
+                        Row(
+                          children: [
+                            Expanded(
+                              child: _TimeSelectCard(
+                                title: '시작 시간',
+                                time: _formatHourLabel(_startHour),
+                                subtitle: '대여 시작 시각',
+                                onTap: () => _openHourPicker(
+                                  title: '시작 시간',
+                                  hours: _startHourOptions,
+                                  current: _startHour,
+                                  labelBuilder: _formatHourLabel,
+                                  onSelected: (hour) {
+                                    setState(() => _startHour = hour);
+                                    _onDateTimeChanged();
+                                  },
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: _TimeSelectCard(
+                                title: '대여 개월',
+                                time: '${_durationMonths}개월',
+                                subtitle:
+                                    '최대 ${RentalPricing.maxMonthlyMonths}개월',
+                                subtitleHighlight: _durationMonths >= 1,
+                                onTap: () => _openDurationCountPicker(
+                                  title: '대여 개월',
+                                  min: 1,
+                                  max: RentalPricing.maxMonthlyMonths,
+                                  current: _durationMonths,
+                                  inquiryLabel: '12개월 이상 전화 문의',
+                                  inquiryMessage:
+                                      '12개월 이상 대여는 전화로 문의해주세요.',
+                                  labelBuilder: (value) => '$value개월',
+                                  onSelected: (value) {
+                                    setState(() => _durationMonths = value);
+                                    _onDateTimeChanged();
+                                  },
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+                      if (_selected != null &&
+                          _compareStrikethroughPrice != null &&
+                          _originalPrice != null) ...[
+                        const SizedBox(height: 12),
+                        _BookingRentalDiscountBanner(
+                          rentalType: _rentalType,
+                          comparePrice: _compareStrikethroughPrice!,
+                          finalPrice: _originalPrice!,
+                          formatWon: _formatWon,
+                        ),
+                      ],
                       const SizedBox(height: 24),
                       Text(
                         '이 시간에 예약 가능한 차량',
@@ -1067,12 +1363,14 @@ class _BookingScreenState extends State<BookingScreen> {
 
                           final entries = availSnapshot.data ?? [];
                           if (entries.isEmpty) {
-                            if (_durationHours < 1) {
+                            if (!_hasValidDuration) {
                               return Padding(
                                 padding:
                                     const EdgeInsets.symmetric(vertical: 24),
                                 child: Text(
-                                  '종료 시간을 시작 시간보다 1시간 이상 뒤로 설정해주세요.',
+                                  _rentalType == RentalType.hourly
+                                      ? '종료 시간을 시작 시간보다 1시간 이상 뒤로 설정해주세요.'
+                                      : '대여 기간을 선택해주세요.',
                                   textAlign: TextAlign.center,
                                   style: const TextStyle(
                                     color: DanjiColors.textSecondary,
@@ -1094,7 +1392,10 @@ class _BookingScreenState extends State<BookingScreen> {
                                     blockReason: entry.blockReason,
                                     selected: !entry.isBlocked &&
                                         _selected?.id == entry.vehicle.id,
+                                    rentalType: _rentalType,
                                     durationHours: _durationHours,
+                                    durationDays: _durationDays,
+                                    durationMonths: _durationMonths,
                                     onTap: entry.isBlocked
                                         ? null
                                         : () =>
@@ -1138,13 +1439,9 @@ class _BookingScreenState extends State<BookingScreen> {
                     extrasLoaded: _checkoutExtrasLoaded,
                   ),
                 ),
-              const Padding(
-                padding: EdgeInsets.fromLTRB(16, 4, 16, 8),
-                child: _BookingLongTermRentalInquiryLink(),
-              ),
               _BookingBottomBar(
                 vehicleName: _selected?.name,
-                durationHours: _durationHours,
+                durationLabel: _hasValidDuration ? _durationSummary : null,
                 originalPrice: _originalPrice,
                 couponDiscount: _couponDiscount,
                 pointsDiscount: _pointsDiscount,
@@ -1444,6 +1741,140 @@ class _BookingVehicleListEntry {
   bool get isBlocked => blockReason != null;
 }
 
+class _BookingRentalDeliveryNotice extends StatelessWidget {
+  const _BookingRentalDeliveryNotice();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF0F6FF),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: const Color(0xFFD6E8FF)),
+      ),
+      child: const Text(
+        '원하시는 장소로 차량을 배달해 드립니다',
+        style: TextStyle(
+          color: DanjiColors.buttonBlue,
+          fontSize: 14,
+          fontWeight: FontWeight.w600,
+          height: 1.4,
+        ),
+      ),
+    );
+  }
+}
+
+class _BookingRentalTypeTabs extends StatelessWidget {
+  final Set<RentalType> availableTypes;
+  final RentalType selected;
+  final ValueChanged<RentalType> onChanged;
+
+  const _BookingRentalTypeTabs({
+    required this.availableTypes,
+    required this.selected,
+    required this.onChanged,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final types = RentalType.values
+        .where((type) => availableTypes.contains(type))
+        .toList();
+    return SegmentedButton<RentalType>(
+      segments: [
+        for (final type in types)
+          ButtonSegment(value: type, label: Text(type.label)),
+      ],
+      selected: {selected},
+      onSelectionChanged: (value) {
+        if (value.isNotEmpty) onChanged(value.first);
+      },
+      style: ButtonStyle(
+        visualDensity: VisualDensity.compact,
+        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+      ),
+    );
+  }
+}
+
+class _BookingRentalDiscountBanner extends StatelessWidget {
+  final RentalType rentalType;
+  final int comparePrice;
+  final int finalPrice;
+  final String Function(int) formatWon;
+
+  const _BookingRentalDiscountBanner({
+    required this.rentalType,
+    required this.comparePrice,
+    required this.finalPrice,
+    required this.formatWon,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final badgeLabel = rentalType == RentalType.daily
+        ? '일 요금 할인'
+        : '월 요금 할인';
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF0F6FF),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: const Color(0xFFD6E8FF)),
+      ),
+      child: Row(
+        children: [
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+            decoration: BoxDecoration(
+              color: DanjiColors.buttonBlue,
+              borderRadius: BorderRadius.circular(6),
+            ),
+            child: Text(
+              badgeLabel,
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 11,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text.rich(
+              TextSpan(
+                style: const TextStyle(fontSize: 13, height: 1.35),
+                children: [
+                  TextSpan(
+                    text: '₩${formatWon(comparePrice)}',
+                    style: const TextStyle(
+                      color: DanjiColors.textMuted,
+                      decoration: TextDecoration.lineThrough,
+                    ),
+                  ),
+                  const TextSpan(text: '  '),
+                  TextSpan(
+                    text: '₩${formatWon(finalPrice)}',
+                    style: const TextStyle(
+                      color: DanjiColors.buttonBlue,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 class _BookingVehicleCard extends StatelessWidget {
   static const _disabledBg = Color(0xFFF8F8F8);
   static const _disabledText = Color(0xFFAAAAAA);
@@ -1453,14 +1884,20 @@ class _BookingVehicleCard extends StatelessWidget {
   final Vehicle vehicle;
   final VehicleBookingBlockReason? blockReason;
   final bool selected;
+  final RentalType rentalType;
   final int durationHours;
+  final int durationDays;
+  final int durationMonths;
   final VoidCallback? onTap;
 
   const _BookingVehicleCard({
     required this.vehicle,
     this.blockReason,
     required this.selected,
+    required this.rentalType,
     required this.durationHours,
+    required this.durationDays,
+    required this.durationMonths,
     this.onTap,
   });
 
@@ -1470,6 +1907,12 @@ class _BookingVehicleCard extends StatelessWidget {
     switch (blockReason) {
       case VehicleBookingBlockReason.inUse:
         return '대여중인 차량입니다';
+      case VehicleBookingBlockReason.underMaintenance:
+        return '점검 중인 차량입니다';
+      case VehicleBookingBlockReason.unpublished:
+        return '현재 예약을 받지 않는 차량입니다';
+      case VehicleBookingBlockReason.insuranceExpired:
+        return '보험이 만료된 차량입니다';
       case VehicleBookingBlockReason.timeOverlap:
         return '이 시간에 예약된 차량입니다';
       case null:
@@ -1479,8 +1922,20 @@ class _BookingVehicleCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final hours = durationHours < 1 ? 1 : durationHours;
-    final lineTotal = hours * vehicle.pricePerHour;
+    final lineTotal = RentalPricing.calculatePrice(
+      vehicle,
+      rentalType,
+      hours: durationHours < 1 ? 1 : durationHours,
+      days: durationDays,
+      months: durationMonths,
+    );
+    final comparePrice = RentalPricing.comparisonStrikethroughPrice(
+      vehicle,
+      rentalType,
+      hours: durationHours < 1 ? 1 : durationHours,
+      days: durationDays,
+      months: durationMonths,
+    );
     final isElectric = _isElectricVehicleType(vehicle.vehicleType);
     final plate = vehicle.carNumber?.trim();
     final nameColor =
@@ -1538,6 +1993,29 @@ class _BookingVehicleCard extends StatelessWidget {
                                   height: 1.25,
                                 ),
                               ),
+                              if (vehicle.isUnderMaintenance)
+                                _BookingVehicleBadge(
+                                  label: '차량 점검중',
+                                  background: _isBlocked
+                                      ? const Color(0xFFEEEEEE)
+                                      : const Color(0xFFFFF3E8),
+                                  textColor: _isBlocked
+                                      ? _disabledText
+                                      : const Color(0xFFF97316),
+                                ),
+                              _BookingVehicleBadge(
+                                label: vehicle.isRentalService ? '배달' : '단지 픽업',
+                                background: _isBlocked
+                                    ? const Color(0xFFEEEEEE)
+                                    : (vehicle.isRentalService
+                                        ? const Color(0xFFE8F1FF)
+                                        : const Color(0xFFF3F3F3)),
+                                textColor: _isBlocked
+                                    ? _disabledText
+                                    : (vehicle.isRentalService
+                                        ? DanjiColors.buttonBlue
+                                        : const Color(0xFF888888)),
+                              ),
                               if (isElectric)
                                 _BookingVehicleBadge(
                                   label: '전기',
@@ -1574,13 +2052,33 @@ class _BookingVehicleCard extends StatelessWidget {
                             ),
                           ),
                           const SizedBox(height: 6),
-                          Text(
-                            '${vehicle.priceLabel} · ₩${NumberFormat('#,###').format(lineTotal)}',
-                            style: TextStyle(
-                              fontSize: 13,
-                              fontWeight: FontWeight.w500,
-                              color: priceColor,
-                              height: 1.3,
+                          Text.rich(
+                            TextSpan(
+                              style: TextStyle(
+                                fontSize: 13,
+                                fontWeight: FontWeight.w500,
+                                color: priceColor,
+                                height: 1.3,
+                              ),
+                              children: [
+                                if (comparePrice != null) ...[
+                                  TextSpan(
+                                    text:
+                                        '₩${NumberFormat('#,###').format(comparePrice)}',
+                                    style: TextStyle(
+                                      color: _isBlocked
+                                          ? _disabledPrice
+                                          : DanjiColors.textMuted,
+                                      decoration: TextDecoration.lineThrough,
+                                    ),
+                                  ),
+                                  const TextSpan(text: '  '),
+                                ],
+                                TextSpan(
+                                  text:
+                                      '₩${NumberFormat('#,###').format(lineTotal)}',
+                                ),
+                              ],
                             ),
                           ),
                         ],
@@ -1811,100 +2309,6 @@ class _BookingNoAvailableVehiclesEmpty extends StatelessWidget {
             ),
           ],
         ),
-      ),
-    );
-  }
-}
-
-/// 24시간 이상 장기 대여 — 일반렌트 문의 전화
-class _BookingLongTermRentalInquiryLink extends StatelessWidget {
-  const _BookingLongTermRentalInquiryLink();
-
-  Future<void> _showLongTermRentalDialog(BuildContext context) async {
-    final call = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        backgroundColor: DanjiColors.surface,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        titlePadding: const EdgeInsets.fromLTRB(24, 24, 24, 8),
-        contentPadding: const EdgeInsets.fromLTRB(24, 0, 24, 16),
-        actionsPadding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-        actionsAlignment: MainAxisAlignment.center,
-        title: SizedBox(
-          width: double.infinity,
-          child: Text(
-            '1일이상 대여문의',
-            textAlign: TextAlign.center,
-            style: DanjiTypography.subtitleLarge.copyWith(
-              fontWeight: FontWeight.w700,
-            ),
-          ),
-        ),
-        content: SizedBox(
-          width: double.infinity,
-          child: Text(
-            '24시간 이상은 일반렌트로 문의해주세요.',
-            textAlign: TextAlign.center,
-            style: DanjiTypography.bodyRegular.copyWith(
-              color: DanjiColors.textSecondary,
-            ),
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop(false),
-            style: TextButton.styleFrom(
-              foregroundColor: DanjiColors.textSecondary,
-              textStyle: DanjiTypography.body.copyWith(
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-            child: const Text('취소'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.of(ctx).pop(true),
-            style: FilledButton.styleFrom(
-              backgroundColor: DanjiColors.primaryBlue,
-              foregroundColor: Colors.white,
-              textStyle: DanjiTypography.body.copyWith(
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-            child: const Text('대여 문의'),
-          ),
-        ],
-      ),
-    );
-
-    if (call != true || !context.mounted) return;
-    await launchRentalInquiryPhone(context);
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: () => _showLongTermRentalDialog(context),
-      behavior: HitTestBehavior.opaque,
-      child: const Text.rich(
-        TextSpan(
-          style: TextStyle(
-            fontSize: 13,
-            color: Color(0xFF888888),
-            height: 1.45,
-          ),
-          children: [
-            TextSpan(text: '24시간 이상 대여가 필요하신가요?  '),
-            TextSpan(
-              text: '전화 문의',
-              style: TextStyle(
-                color: Color(0xFF3182F6),
-                decoration: TextDecoration.underline,
-                decorationColor: Color(0xFF3182F6),
-              ),
-            ),
-          ],
-        ),
-        textAlign: TextAlign.center,
       ),
     );
   }
@@ -2260,7 +2664,7 @@ class _BookingCheckoutDiscountsState extends State<_BookingCheckoutDiscounts> {
 
 class _BookingBottomBar extends StatelessWidget {
   final String? vehicleName;
-  final int durationHours;
+  final String? durationLabel;
   final int? originalPrice;
   final int couponDiscount;
   final int pointsDiscount;
@@ -2273,7 +2677,7 @@ class _BookingBottomBar extends StatelessWidget {
 
   const _BookingBottomBar({
     required this.vehicleName,
-    required this.durationHours,
+    required this.durationLabel,
     required this.originalPrice,
     required this.couponDiscount,
     required this.pointsDiscount,
@@ -2289,8 +2693,8 @@ class _BookingBottomBar extends StatelessWidget {
   Widget build(BuildContext context) {
     final hasSelection = vehicleName != null && finalPrice != null;
     final summaryLine = hasSelection
-        ? '$vehicleName · ${durationHours}시간'
-        : '차량과 시간을 선택해주세요';
+        ? '$vehicleName · ${durationLabel ?? ''}'
+        : '차량과 기간을 선택해주세요';
     final hasDiscount = couponDiscount > 0 || pointsDiscount > 0;
 
     return DecoratedBox(

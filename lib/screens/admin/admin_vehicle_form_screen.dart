@@ -6,9 +6,11 @@ import '../../models/staff_profile.dart';
 import '../../services/admin_service.dart';
 import '../../theme/danji_colors.dart';
 import '../../theme/danji_theme.dart';
+import '../../utils/rental_pricing.dart';
 import '../../utils/vehicle_insurance_status.dart';
 import '../../widgets/admin_scaffold.dart';
 import '../../widgets/danji_app_bar.dart';
+import '../../widgets/vehicle_rental_types_section.dart';
 
 class AdminVehicleFormScreen extends StatefulWidget {
   final StaffProfile profile;
@@ -29,7 +31,9 @@ class _AdminVehicleFormScreenState extends State<AdminVehicleFormScreen> {
   final _name = TextEditingController();
   final _ownerName = TextEditingController();
   final _carNumber = TextEditingController();
-  final _price = TextEditingController();
+  final _hourlyPrice = TextEditingController();
+  final _dailyPrice = TextEditingController();
+  final _monthlyPrice = TextEditingController();
   final _parking = TextEditingController();
   final _insuranceCompany = TextEditingController();
   final _insurancePolicy = TextEditingController();
@@ -37,7 +41,7 @@ class _AdminVehicleFormScreenState extends State<AdminVehicleFormScreen> {
 
   String _vehicleType = AdminService.vehicleTypes.first;
   String _fuelType = AdminService.fuelTypes.first;
-  bool _available = true;
+  Set<RentalType> _rentalTypes = {RentalType.hourly};
   bool _loading = false;
   String? _error;
 
@@ -51,7 +55,12 @@ class _AdminVehicleFormScreenState extends State<AdminVehicleFormScreen> {
       _name.text = v.name;
       _ownerName.text = v.ownerName ?? '';
       _carNumber.text = v.carNumber ?? '';
-      _price.text = v.pricePerHour.toString();
+      _hourlyPrice.text = v.pricePerHour.toString();
+      if (v.dailyPrice != null) _dailyPrice.text = v.dailyPrice.toString();
+      if (v.monthlyPrice != null) {
+        _monthlyPrice.text = v.monthlyPrice.toString();
+      }
+      _rentalTypes = v.rentalTypes.toSet();
       _parking.text = v.parkingLocation ?? '';
       _insuranceCompany.text = v.insuranceCompany ?? '';
       _insurancePolicy.text = v.insurancePolicyNumber ?? '';
@@ -60,7 +69,6 @@ class _AdminVehicleFormScreenState extends State<AdminVehicleFormScreen> {
           : '';
       _vehicleType = v.vehicleType;
       _fuelType = v.fuelType ?? AdminService.fuelTypes.first;
-      _available = v.isAvailable;
     }
   }
 
@@ -69,7 +77,9 @@ class _AdminVehicleFormScreenState extends State<AdminVehicleFormScreen> {
     _name.dispose();
     _ownerName.dispose();
     _carNumber.dispose();
-    _price.dispose();
+    _hourlyPrice.dispose();
+    _dailyPrice.dispose();
+    _monthlyPrice.dispose();
     _parking.dispose();
     _insuranceCompany.dispose();
     _insurancePolicy.dispose();
@@ -92,14 +102,30 @@ class _AdminVehicleFormScreenState extends State<AdminVehicleFormScreen> {
 
   Future<void> _submit() async {
     final name = _name.text.trim();
-    final price = int.tryParse(_price.text.trim()) ?? -1;
+    final hourlyPrice = int.tryParse(_hourlyPrice.text.trim()) ?? -1;
+    final dailyText = _dailyPrice.text.trim();
+    final monthlyText = _monthlyPrice.text.trim();
+    final dailyPrice = dailyText.isEmpty ? null : int.tryParse(dailyText);
+    final monthlyPrice = monthlyText.isEmpty ? null : int.tryParse(monthlyText);
 
     if (name.isEmpty) {
       setState(() => _error = '차종(모델명)을 입력해주세요.');
       return;
     }
-    if (price < 0) {
-      setState(() => _error = '가격을 올바르게 입력해주세요.');
+    if (_rentalTypes.isEmpty) {
+      setState(() => _error = '대여 유형을 1개 이상 선택해주세요.');
+      return;
+    }
+    if (_rentalTypes.contains(RentalType.hourly) && hourlyPrice < 0) {
+      setState(() => _error = '시간당 요금을 올바르게 입력해주세요.');
+      return;
+    }
+    if (dailyPrice != null && dailyPrice < 0) {
+      setState(() => _error = '1일 요금을 올바르게 입력해주세요.');
+      return;
+    }
+    if (monthlyPrice != null && monthlyPrice < 0) {
+      setState(() => _error = '월 요금을 올바르게 입력해주세요.');
       return;
     }
 
@@ -116,11 +142,15 @@ class _AdminVehicleFormScreenState extends State<AdminVehicleFormScreen> {
       name: name,
       vehicleType: _vehicleType,
       fuelType: _fuelType,
-      pricePerHour: price,
+      pricePerHour: _rentalTypes.contains(RentalType.hourly) ? hourlyPrice : 0,
+      dailyPrice: dailyPrice,
+      monthlyPrice: monthlyPrice,
+      rentalTypes: _rentalTypes.toList(),
       parkingLocation: _parking.text.trim().isEmpty ? null : _parking.text.trim(),
       ownerName: _ownerName.text.trim().isEmpty ? null : _ownerName.text.trim(),
       carNumber: _carNumber.text.trim().isEmpty ? null : _carNumber.text.trim(),
-      isAvailable: _available,
+      isPublished: widget.initial?.isPublished ?? false,
+      isAvailable: widget.initial?.isAvailable ?? true,
       insuranceCompany: _insuranceCompany.text.trim().isEmpty
           ? null
           : _insuranceCompany.text.trim(),
@@ -176,13 +206,6 @@ class _AdminVehicleFormScreenState extends State<AdminVehicleFormScreen> {
           const SizedBox(height: 12),
           _field('차량번호', _carNumber, hint: '12가 3456'),
           const SizedBox(height: 12),
-          _field(
-            '시간당 가격 (원)',
-            _price,
-            keyboard: TextInputType.number,
-            inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-          ),
-          const SizedBox(height: 12),
           _field('주차 위치', _parking, hint: 'B1-08'),
           const SizedBox(height: 20),
           const Text(
@@ -204,14 +227,24 @@ class _AdminVehicleFormScreenState extends State<AdminVehicleFormScreen> {
             onTap: _pickExpiry,
             decoration: _dec('만료일'),
           ),
-          const SizedBox(height: 16),
-          SwitchListTile(
-            contentPadding: EdgeInsets.zero,
-            title: const Text('예약 가능'),
-            subtitle: const Text('끄면 입주민 예약 목록에서 숨깁니다'),
-            value: _available,
-            activeThumbColor: DanjiColors.buttonBlue,
-            onChanged: (v) => setState(() => _available = v),
+          if (!_isEdit) ...[
+            const SizedBox(height: 8),
+            const Text(
+              '등록 후 차량 상세에서 노출 전환할 수 있습니다. 신규 차량은 대기 상태로 등록됩니다.',
+              style: TextStyle(
+                color: DanjiColors.textMuted,
+                fontSize: 13,
+                height: 1.4,
+              ),
+            ),
+          ],
+          const SizedBox(height: 20),
+          VehicleRentalTypesSection(
+            selectedTypes: _rentalTypes,
+            onTypesChanged: (types) => setState(() => _rentalTypes = types),
+            hourlyPriceController: _hourlyPrice,
+            dailyPriceController: _dailyPrice,
+            monthlyPriceController: _monthlyPrice,
           ),
           if (_error != null) ...[
             const SizedBox(height: 8),

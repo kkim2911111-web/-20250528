@@ -9,7 +9,6 @@ type VehicleRow = {
   complex_id?: string | null;
   insurance_expires_at?: string | null;
   insurance_warn_7d_sent_at?: string | null;
-  is_available?: boolean | null;
 };
 
 function todayKst(): string {
@@ -37,7 +36,7 @@ Deno.serve(async (req) => {
     const { data: vehicles, error } = await admin
       .from('vehicles')
       .select(
-        'id, model_name, car_number, complex_id, insurance_expires_at, insurance_warn_7d_sent_at, is_available',
+        'id, model_name, car_number, complex_id, insurance_expires_at, insurance_warn_7d_sent_at',
       )
       .not('insurance_expires_at', 'is', null);
 
@@ -85,16 +84,8 @@ Deno.serve(async (req) => {
         }
       }
 
-      if (expires <= today && v.is_available !== false) {
+      if (expires <= today) {
         try {
-          await admin
-            .from('vehicles')
-            .update({
-              is_available: false,
-              updated_at: new Date().toISOString(),
-            })
-            .eq('id', v.id);
-
           await dispatchPushScenario({
             admin,
             scenario: 'staff_insurance_expired',

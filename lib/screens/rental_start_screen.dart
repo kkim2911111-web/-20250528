@@ -10,6 +10,7 @@ import '../theme/danji_colors.dart';
 import '../theme/danji_typography.dart';
 import '../widgets/danji_app_bar.dart';
 import '../widgets/license_registration_sheet.dart';
+import '../widgets/rental_photo_capture_guide.dart';
 import '../widgets/rental_pickup_photo_grid.dart';
 import '../widgets/section_card.dart';
 
@@ -217,6 +218,11 @@ class _RentalStartScreenState extends State<RentalStartScreen> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
+                      RentalPhotoCaptureGuide(
+                        capturedCount: _ctrl.localPhotos.length,
+                        locked: _ctrl.photosUploaded,
+                      ),
+                      const SizedBox(height: 12),
                       RentalPickupPhotoGrid(
                         photos: _ctrl.localPhotos,
                         locked: _ctrl.photosUploaded,

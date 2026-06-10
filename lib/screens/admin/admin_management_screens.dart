@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
+import '../../models/inspection_photo.dart';
 import '../../models/staff_profile.dart';
 import '../../models/super_admin_models.dart';
 import '../../services/admin_service.dart';
@@ -15,7 +16,11 @@ import '../../widgets/return_inspection_photo_compare.dart';
 import '../../widgets/section_card.dart';
 import '../../widgets/settlement_detail_sheet.dart';
 import '../../utils/reservation_display.dart';
+import '../../widgets/rental_type_badge.dart';
+import '../../widgets/reservation_times_panel.dart';
+import '../../utils/vehicle_exposure_status.dart';
 import '../../utils/vehicle_insurance_status.dart';
+import 'admin_vehicle_detail_screen.dart';
 import 'admin_vehicle_form_screen.dart';
 
 /// complexes.name 조인값 우선, 없으면 관리자 프로필 단지명
@@ -54,6 +59,132 @@ class _AdminVehicleManageScreenState extends State<AdminVehicleManageScreen> {
     });
   }
 
+  Future<bool> _confirmMaintenanceOn() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('점검중 설정'),
+        content: const Text(
+          '점검중으로 설정하면 입주민 예약이 차단됩니다. 설정할까요?',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('취소'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('설정'),
+          ),
+        ],
+      ),
+    );
+    return confirmed == true;
+  }
+
+  Future<bool> _confirmPublishOn() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('노출 전환'),
+        content: const Text(
+          '입주민에게 노출되어 예약을 받기 시작합니다. 노출할까요?',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('취소'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('노출'),
+          ),
+        ],
+      ),
+    );
+    return confirmed == true;
+  }
+
+  Future<void> _togglePublished(AdminVehicleDetail vehicle, bool on) async {
+    if (on) {
+      final confirmed = await _confirmPublishOn();
+      if (!confirmed) return;
+    }
+
+    try {
+      await _admin.setVehiclePublished(
+        vehicleId: vehicle.id,
+        published: on,
+      );
+      _reload();
+    } catch (e) {
+      if (mounted) DanjiSnackBar.show(context, friendlyAdminError(e));
+    }
+  }
+
+  Future<void> _toggleMaintenance(AdminVehicleDetail vehicle, bool on) async {
+    if (on) {
+      final confirmed = await _confirmMaintenanceOn();
+      if (!confirmed) return;
+
+      final memo = await _showMaintenanceMemoDialog(
+        initial: vehicle.maintenanceMemo,
+      );
+      if (memo == null || memo.trim().isEmpty) return;
+      try {
+        await _admin.setVehicleMaintenance(
+          vehicleId: vehicle.id,
+          underMaintenance: true,
+          memo: memo.trim(),
+        );
+        _reload();
+      } catch (e) {
+        if (mounted) DanjiSnackBar.show(context, friendlyAdminError(e));
+      }
+      return;
+    }
+
+    try {
+      await _admin.setVehicleMaintenance(
+        vehicleId: vehicle.id,
+        underMaintenance: false,
+      );
+      _reload();
+    } catch (e) {
+      if (mounted) DanjiSnackBar.show(context, friendlyAdminError(e));
+    }
+  }
+
+  Future<String?> _showMaintenanceMemoDialog({String? initial}) async {
+    final controller = TextEditingController(text: initial ?? '');
+    final result = await showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('점검 사유 입력'),
+        content: TextField(
+          controller: controller,
+          maxLines: 3,
+          decoration: const InputDecoration(
+            hintText: '예: 엔진오일 교환, 타이어 점검',
+            border: OutlineInputBorder(),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('취소'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, controller.text.trim()),
+            child: const Text('저장'),
+          ),
+        ],
+      ),
+    );
+    controller.dispose();
+    return result;
+  }
+
   @override
   Widget build(BuildContext context) {
     return AdminScaffold(
@@ -90,50 +221,290 @@ class _AdminVehicleManageScreenState extends State<AdminVehicleManageScreen> {
             separatorBuilder: (_, __) => const SizedBox(height: 10),
             itemBuilder: (context, index) {
               final v = list[index];
-              return SectionCard(
-                child: ListTile(
-                  contentPadding: EdgeInsets.zero,
-                  title: Row(
-                    children: [
-                      Expanded(
-                        child: Text(
-                          v.name,
-                          style: const TextStyle(fontWeight: FontWeight.w800),
-                        ),
+              return _AdminVehicleManageCard(
+                vehicle: v,
+                complexLabel: _vehicleComplexLabel(v, widget.profile),
+                priceLabel: '₩${_won.format(v.pricePerHour)}/h',
+                onOpenDetail: () async {
+                  final ok = await Navigator.of(context).push<bool>(
+                    MaterialPageRoute(
+                      builder: (_) => AdminVehicleDetailScreen(
+                        profile: widget.profile,
+                        vehicle: v,
                       ),
-                      VehicleInsuranceBadge(
-                        insuranceExpiresAt: v.insuranceExpiresAt,
-                      ),
-                    ],
-                  ),
-                  subtitle: Text(
-                    '${_vehicleComplexLabel(v, widget.profile)} · '
-                    '${v.vehicleType} · ${v.fuelType ?? '-'} · '
-                    '₩${_won.format(v.pricePerHour)}/h\n'
-                    '${v.carNumber ?? '번호 미등록'} · ${v.parkingLocation ?? '주차 미등록'}',
-                  ),
-                  trailing: Icon(
-                    v.isAvailable ? Icons.check_circle : Icons.pause_circle,
-                    color: v.isAvailable
-                        ? const Color(0xFF43A047)
-                        : DanjiColors.textMuted,
-                  ),
-                  onTap: () async {
-                    final ok = await Navigator.of(context).push<bool>(
-                      MaterialPageRoute(
-                        builder: (_) => AdminVehicleFormScreen(
-                          profile: widget.profile,
-                          initial: v,
-                        ),
-                      ),
-                    );
-                    if (ok == true) _reload();
-                  },
-                ),
+                    ),
+                  );
+                  if (ok == true) _reload();
+                },
+                onPublishedChanged: (value) => _togglePublished(v, value),
+                onMaintenanceChanged: (value) => _toggleMaintenance(v, value),
               );
             },
           );
         },
+      ),
+    );
+  }
+}
+
+class _AdminVehicleManageCard extends StatelessWidget {
+  final AdminVehicleDetail vehicle;
+  final String complexLabel;
+  final String priceLabel;
+  final VoidCallback onOpenDetail;
+  final ValueChanged<bool> onPublishedChanged;
+  final ValueChanged<bool> onMaintenanceChanged;
+
+  const _AdminVehicleManageCard({
+    required this.vehicle,
+    required this.complexLabel,
+    required this.priceLabel,
+    required this.onOpenDetail,
+    required this.onPublishedChanged,
+    required this.onMaintenanceChanged,
+  });
+
+  static const _maintenanceAccent = Color(0xFFF97316);
+  static const _maintenanceBg = Color(0xFFFFF7ED);
+  static const _maintenanceFooterBg = Color(0xFFF9FAFB);
+  static const _publishFooterBg = Color(0xFFF3F4F6);
+
+  @override
+  Widget build(BuildContext context) {
+    final exposure = vehicle.exposureStatus;
+    final underMaintenance = vehicle.isUnderMaintenance;
+    final memo = vehicle.maintenanceMemo?.trim();
+    final hasMemo = memo != null && memo.isNotEmpty;
+    final accentColor = VehicleExposureStatusUtil.color(exposure);
+    final showAccentBar = exposure == VehicleExposureStatus.maintenance ||
+        exposure == VehicleExposureStatus.insuranceExpired;
+
+    return Container(
+      decoration: BoxDecoration(
+        color: SectionCard.cardColor,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: exposure == VehicleExposureStatus.published
+              ? DanjiColors.border
+              : accentColor.withValues(alpha: 0.55),
+          width: exposure == VehicleExposureStatus.published ? 1 : 1.5,
+        ),
+        boxShadow: const [
+          BoxShadow(
+            color: Color(0x0A000000),
+            blurRadius: 8,
+            offset: Offset(0, 2),
+          ),
+        ],
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: IntrinsicHeight(
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            if (showAccentBar)
+              ColoredBox(
+                color: accentColor,
+                child: const SizedBox(width: 4),
+              ),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Material(
+                    color: Colors.transparent,
+                    child: InkWell(
+                      onTap: onOpenDetail,
+                      child: Padding(
+                        padding: const EdgeInsets.fromLTRB(16, 14, 12, 14),
+                        child: Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Row(
+                                    children: [
+                                      Expanded(
+                                        child: Text(
+                                          vehicle.name,
+                                          style: const TextStyle(
+                                            fontWeight: FontWeight.w800,
+                                            fontSize: 16,
+                                          ),
+                                        ),
+                                      ),
+                                      const SizedBox(width: 6),
+                                      VehicleExposureBadge(
+                                        isPublished: vehicle.isPublished,
+                                        isUnderMaintenance:
+                                            vehicle.isUnderMaintenance,
+                                        insuranceExpiresAt:
+                                            vehicle.insuranceExpiresAt,
+                                      ),
+                                      if (exposure ==
+                                              VehicleExposureStatus.published &&
+                                          VehicleInsuranceStatus.badgeKind(
+                                                vehicle.insuranceExpiresAt,
+                                              ) !=
+                                              VehicleInsuranceBadgeKind.none) ...[
+                                        const SizedBox(width: 6),
+                                        VehicleInsuranceBadge(
+                                          insuranceExpiresAt:
+                                              vehicle.insuranceExpiresAt,
+                                        ),
+                                      ],
+                                    ],
+                                  ),
+                                  const SizedBox(height: 6),
+                                  Text(
+                                    '$complexLabel · ${vehicle.vehicleType} · '
+                                    '${vehicle.fuelType ?? '-'} · $priceLabel',
+                                    style: const TextStyle(
+                                      color: DanjiColors.textSecondary,
+                                      height: 1.4,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 2),
+                                  Text(
+                                    '${vehicle.carNumber ?? '번호 미등록'} · '
+                                    '${vehicle.parkingLocation ?? '주차 미등록'}',
+                                    style: const TextStyle(
+                                      color: DanjiColors.textSecondary,
+                                      height: 1.4,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            const SizedBox(width: 4),
+                            const Icon(
+                              Icons.chevron_right,
+                              color: DanjiColors.textMuted,
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                  const Divider(height: 1),
+                  ColoredBox(
+                    color: vehicle.isPublished
+                        ? _publishFooterBg
+                        : const Color(0xFFEFF1F3),
+                    child: Padding(
+                      padding: const EdgeInsets.fromLTRB(16, 10, 8, 10),
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.center,
+                        children: [
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  vehicle.isPublished
+                                      ? '노출중 — 입주민 예약 목록에 표시'
+                                      : '대기 — 입주민에게 미노출',
+                                  style: TextStyle(
+                                    fontWeight: FontWeight.w700,
+                                    fontSize: 13,
+                                    color: vehicle.isPublished
+                                        ? VehicleExposureStatusUtil
+                                            .publishedColor
+                                        : VehicleExposureStatusUtil.waitingColor,
+                                  ),
+                                ),
+                                const SizedBox(height: 2),
+                                Text(
+                                  vehicle.isPublished
+                                      ? '끄면 대기 상태로 전환됩니다'
+                                      : '켜면 입주민에게 노출됩니다',
+                                  style: const TextStyle(
+                                    fontSize: 12,
+                                    color: DanjiColors.textMuted,
+                                    height: 1.35,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          Switch(
+                            value: vehicle.isPublished,
+                            activeThumbColor:
+                                VehicleExposureStatusUtil.publishedColor,
+                            onChanged: onPublishedChanged,
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                  const Divider(height: 1),
+                  ColoredBox(
+                    color: underMaintenance
+                        ? _maintenanceBg
+                        : _maintenanceFooterBg,
+                    child: Padding(
+                      padding: const EdgeInsets.fromLTRB(16, 10, 8, 10),
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.center,
+                        children: [
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  underMaintenance
+                                      ? '점검중 — 입주민 예약 차단됨'
+                                      : '점검중 설정',
+                                  style: TextStyle(
+                                    fontWeight: FontWeight.w700,
+                                    fontSize: 13,
+                                    color: underMaintenance
+                                        ? const Color(0xFFEA580C)
+                                        : DanjiColors.textPrimary,
+                                  ),
+                                ),
+                                if (underMaintenance && hasMemo) ...[
+                                  const SizedBox(height: 2),
+                                  Text(
+                                    memo,
+                                    maxLines: 2,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: const TextStyle(
+                                      fontSize: 12,
+                                      color: DanjiColors.textSecondary,
+                                      height: 1.35,
+                                    ),
+                                  ),
+                                ] else if (!underMaintenance) ...[
+                                  const SizedBox(height: 2),
+                                  const Text(
+                                    '켜면 입주민 예약이 차단됩니다',
+                                    style: TextStyle(
+                                      fontSize: 12,
+                                      color: DanjiColors.textMuted,
+                                      height: 1.35,
+                                    ),
+                                  ),
+                                ],
+                              ],
+                            ),
+                          ),
+                          Switch(
+                            value: underMaintenance,
+                            activeThumbColor: _maintenanceAccent,
+                            onChanged: onMaintenanceChanged,
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -340,6 +711,7 @@ class _AdminPriceScreenState extends State<AdminPriceScreen> {
           parkingLocation: vehicle.parkingLocation,
           carNumber: vehicle.carNumber,
           ownerName: vehicle.ownerName,
+          isPublished: vehicle.isPublished,
           isAvailable: vehicle.isAvailable,
           insuranceCompany: vehicle.insuranceCompany,
           insurancePolicyNumber: vehicle.insurancePolicyNumber,
@@ -866,7 +1238,6 @@ class _CompletedReturnInspectionTabState
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        const _ReturnInspectionNoShowNotice(),
         Expanded(
           child: FutureBuilder<List<AdminReservationRow>>(
             future: widget.future,
@@ -1037,12 +1408,14 @@ class _ReturnInspectionListTab extends StatelessWidget {
 class _DeductibleSection extends StatelessWidget {
   final AdminReservationRow row;
   final bool processing;
+  final bool actionsEnabled;
   final VoidCallback onCharge;
   final VoidCallback onWaive;
 
   const _DeductibleSection({
     required this.row,
     required this.processing,
+    this.actionsEnabled = true,
     required this.onCharge,
     required this.onWaive,
   });
@@ -1154,14 +1527,16 @@ class _DeductibleSection extends StatelessWidget {
             children: [
               Expanded(
                 child: OutlinedButton(
-                  onPressed: processing ? null : onWaive,
+                  onPressed:
+                      !actionsEnabled || processing ? null : onWaive,
                   child: const Text('면제'),
                 ),
               ),
               const SizedBox(width: 8),
               Expanded(
                 child: FilledButton(
-                  onPressed: processing ? null : onCharge,
+                  onPressed:
+                      !actionsEnabled || processing ? null : onCharge,
                   style: DanjiTheme.dangerButton,
                   child: processing
                       ? const SizedBox(
@@ -1179,14 +1554,16 @@ class _DeductibleSection extends StatelessWidget {
             children: [
               Expanded(
                 child: OutlinedButton(
-                  onPressed: processing ? null : onWaive,
+                  onPressed:
+                      !actionsEnabled || processing ? null : onWaive,
                   child: const Text('면제'),
                 ),
               ),
               const SizedBox(width: 8),
               Expanded(
                 child: FilledButton(
-                  onPressed: processing ? null : onCharge,
+                  onPressed:
+                      !actionsEnabled || processing ? null : onCharge,
                   style: DanjiTheme.dangerButton,
                   child: processing
                       ? const SizedBox(
@@ -1210,19 +1587,19 @@ class _DeductibleSection extends StatelessWidget {
 
 /// 검수 대기/완료 공통 — 불투명 사진 비교 영역 (로딩 중에도 플레이스홀더 표시)
 class _ReturnInspectionPhotoSection extends StatelessWidget {
-  final Future<({List<String> before, List<String> after})> future;
+  final Future<InspectionPhotoSet> future;
 
   const _ReturnInspectionPhotoSection({required this.future});
 
   @override
   Widget build(BuildContext context) {
-    return FutureBuilder<({List<String> before, List<String> after})>(
+    return FutureBuilder<InspectionPhotoSet>(
       future: future,
       builder: (context, snap) {
-        final photos = snap.data;
+        final photos = snap.data ?? InspectionPhotoSet.empty;
         return ReturnInspectionPhotoCompare(
-          beforePhotos: photos?.before ?? const [],
-          afterPhotos: photos?.after ?? const [],
+          beforePhotos: photos.before,
+          afterPhotos: photos.after,
         );
       },
     );
@@ -1253,20 +1630,20 @@ class _ReturnInspectionCard extends StatefulWidget {
 }
 
 class _ReturnInspectionCardState extends State<_ReturnInspectionCard> {
-  late Future<({List<String> before, List<String> after})> _photosFuture;
+  late Future<InspectionPhotoSet> _photosFuture;
   bool _deductibleProcessing = false;
 
   @override
   void initState() {
     super.initState();
-    _photosFuture = widget.admin.resolveInspectionPhotos(widget.row);
+    _photosFuture = widget.admin.resolveInspectionPhotoSet(widget.row);
   }
 
   @override
   void didUpdateWidget(covariant _ReturnInspectionCard oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.row.id != widget.row.id) {
-      _photosFuture = widget.admin.resolveInspectionPhotos(widget.row);
+      _photosFuture = widget.admin.resolveInspectionPhotoSet(widget.row);
     }
   }
 
@@ -1369,8 +1746,8 @@ class _ReturnInspectionCardState extends State<_ReturnInspectionCard> {
                 ),
               ),
               if (r.hasSecondDriver) const AdminSecondDriverBadge(),
-              if (widget.showInspectionDate && r.isNoShowReturn)
-                const _NoShowReturnBadge(),
+              RentalTypeBadge(rentalType: r.rentalType),
+              if (r.isNoShow) const _NoShowReturnBadge(),
               if (r.isAccident) ...[
                 const SizedBox(width: 8),
                 Container(
@@ -1396,21 +1773,18 @@ class _ReturnInspectionCardState extends State<_ReturnInspectionCard> {
             ],
           ),
           const SizedBox(height: 4),
-          Text(
-            '${r.displayRentalStartAt != null ? widget.dateFormat.format(r.displayRentalStartAt!) : '-'} ~ '
-            '${r.displayRentalEndAt != null ? widget.dateFormat.format(r.displayRentalEndAt!) : '-'}',
-            style: const TextStyle(color: DanjiColors.textSecondary),
+          ReservationTimesPanel(
+            formatter: widget.dateFormat,
+            mode: widget.showInspectionDate
+                ? ReservationTimesMode.inspectionCompleted
+                : ReservationTimesMode.inspectionPending,
+            scheduledStartAt: r.startAt,
+            scheduledEndAt: r.endAt,
+            rentalStartedAt: r.rentalStartedAt,
+            returnedAt: r.returnedAt,
+            returnCompletedAt: r.returnCompletedAt,
+            isNoShow: r.isNoShow,
           ),
-          if (widget.showInspectionDate) ...[
-            const SizedBox(height: 6),
-            Text(
-              '검수 완료: ${r.updatedAt != null ? widget.dateFormat.format(r.updatedAt!) : '-'}',
-              style: const TextStyle(
-                color: DanjiColors.textPrimary,
-                fontWeight: FontWeight.w700,
-              ),
-            ),
-          ],
           const SizedBox(height: 10),
           Text(
             '예약번호: ${r.reservationNumberLabel}',
@@ -1480,6 +1854,7 @@ class _ReturnInspectionCardState extends State<_ReturnInspectionCard> {
                   _DeductibleSection(
                     row: r,
                     processing: _deductibleProcessing,
+                    actionsEnabled: !r.isNoShow,
                     onCharge: _chargeDeductible,
                     onWaive: _waiveDeductible,
                   ),
@@ -1562,7 +1937,10 @@ class _AdminSalesScreenState extends State<AdminSalesScreen> {
     });
   }
 
-  Future<void> _openSettlementDetail(SalesSummary summary) async {
+  Future<void> _openSettlementDetail(
+    SalesSummary summary, {
+    SettlementDetailTab initialTab = SettlementDetailTab.rental,
+  }) async {
     await showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
@@ -1584,6 +1962,7 @@ class _AdminSalesScreenState extends State<AdminSalesScreen> {
             year: _selectedMonth.year,
             month: _selectedMonth.month,
             summary: summary,
+            initialTab: initialTab,
             onUpdated: () {
               Navigator.pop(ctx);
               _reload();
@@ -1675,11 +2054,21 @@ class _AdminSalesScreenState extends State<AdminSalesScreen> {
           return ListView(
             padding: const EdgeInsets.all(20),
             children: [
-              MonthFilterBar(
-                label: monthLabel,
-                canGoNext: _canGoNextMonth,
-                onPrevious: () => _shiftMonth(-1),
-                onNext: _canGoNextMonth ? () => _shiftMonth(1) : null,
+              GestureDetector(
+                onHorizontalDragEnd: (details) {
+                  final velocity = details.primaryVelocity ?? 0;
+                  if (velocity < -180 && _canGoNextMonth) {
+                    _shiftMonth(1);
+                  } else if (velocity > 180) {
+                    _shiftMonth(-1);
+                  }
+                },
+                child: MonthFilterBar(
+                  label: monthLabel,
+                  canGoNext: _canGoNextMonth,
+                  onPrevious: () => _shiftMonth(-1),
+                  onNext: _canGoNextMonth ? () => _shiftMonth(1) : null,
+                ),
               ),
               const SizedBox(height: 16),
               SectionCard(
@@ -1750,6 +2139,9 @@ class _AdminSalesScreenState extends State<AdminSalesScreen> {
                       paymentCount: summary.paymentCount,
                       cancelCount: summary.cancelCount,
                       rentalCount: summary.rentalCount,
+                      selectedTab: SettlementDetailTab.rental,
+                      onTabSelected: (tab) =>
+                          _openSettlementDetail(summary, initialTab: tab),
                     ),
                     if (summary.extensionRevenue > 0) ...[
                       const SizedBox(height: 8),
@@ -1771,6 +2163,34 @@ class _AdminSalesScreenState extends State<AdminSalesScreen> {
               ),
               const SizedBox(height: 16),
               _buildSettlementSection(summary),
+              const SizedBox(height: 16),
+              const Text(
+                '차량별 가동률/수익률',
+                style: TextStyle(fontWeight: FontWeight.w800, fontSize: 16),
+              ),
+              const SizedBox(height: 4),
+              const Text(
+                '반납 완료 기준 · 가동률 = 실대여시간 합계 ÷ 744시간',
+                style: TextStyle(
+                  color: DanjiColors.textMuted,
+                  fontSize: 12,
+                ),
+              ),
+              const SizedBox(height: 10),
+              if (summary.utilizationRows.isEmpty)
+                SectionCard(
+                  child: Text('$monthLabel 등록 차량이 없습니다.'),
+                )
+              else
+                ...summary.utilizationRows.map(
+                  (row) => Padding(
+                    padding: const EdgeInsets.only(bottom: 10),
+                    child: _VehicleUtilizationCard(
+                      row: row,
+                      won: _won,
+                    ),
+                  ),
+                ),
               const SizedBox(height: 16),
               const Text(
                 '차량별 매출',
@@ -1810,12 +2230,119 @@ class _AdminSalesScreenState extends State<AdminSalesScreen> {
   }
 }
 
+class _VehicleUtilizationCard extends StatelessWidget {
+  final VehicleUtilizationRow row;
+  final NumberFormat won;
+
+  const _VehicleUtilizationCard({
+    required this.row,
+    required this.won,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final carNumber = row.carNumber?.trim();
+    final utilizationLabel = row.utilizationPercent == row.utilizationPercent.roundToDouble()
+        ? '${row.utilizationPercent.round()}%'
+        : '${row.utilizationPercent.toStringAsFixed(1)}%';
+
+    return SectionCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            row.vehicleName,
+            style: const TextStyle(
+              fontWeight: FontWeight.w800,
+              fontSize: 16,
+              color: DanjiColors.textPrimary,
+            ),
+          ),
+          if (carNumber != null && carNumber.isNotEmpty) ...[
+            const SizedBox(height: 4),
+            Text(
+              carNumber,
+              style: const TextStyle(
+                color: DanjiColors.textSecondary,
+                fontSize: 13,
+              ),
+            ),
+          ],
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              Expanded(
+                child: _VehicleUtilizationMetric(
+                  label: '대여 횟수',
+                  value: '${row.rentalCount}회',
+                ),
+              ),
+              Expanded(
+                child: _VehicleUtilizationMetric(
+                  label: '매출',
+                  value: '₩${won.format(row.revenue)}',
+                  emphasize: true,
+                ),
+              ),
+              Expanded(
+                child: _VehicleUtilizationMetric(
+                  label: '가동률',
+                  value: utilizationLabel,
+                  emphasize: true,
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _VehicleUtilizationMetric extends StatelessWidget {
+  final String label;
+  final String value;
+  final bool emphasize;
+
+  const _VehicleUtilizationMetric({
+    required this.label,
+    required this.value,
+    this.emphasize = false,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          label,
+          style: const TextStyle(
+            color: DanjiColors.textMuted,
+            fontSize: 12,
+          ),
+        ),
+        const SizedBox(height: 4),
+        Text(
+          value,
+          style: TextStyle(
+            fontWeight: emphasize ? FontWeight.w800 : FontWeight.w600,
+            fontSize: emphasize ? 15 : 14,
+            color: emphasize ? DanjiColors.buttonBlue : DanjiColors.textPrimary,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
 class _AdminSettlementDetailSheet extends StatefulWidget {
   final AdminService admin;
   final StaffProfile profile;
   final int year;
   final int month;
   final SalesSummary summary;
+  final SettlementDetailTab initialTab;
   final VoidCallback onUpdated;
 
   const _AdminSettlementDetailSheet({
@@ -1824,6 +2351,7 @@ class _AdminSettlementDetailSheet extends StatefulWidget {
     required this.year,
     required this.month,
     required this.summary,
+    this.initialTab = SettlementDetailTab.rental,
     required this.onUpdated,
   });
 
@@ -1835,10 +2363,12 @@ class _AdminSettlementDetailSheet extends StatefulWidget {
 class _AdminSettlementDetailSheetState extends State<_AdminSettlementDetailSheet> {
   late Future<SuperAdminSettlementSheet> _sheetFuture;
   bool _requesting = false;
+  late SettlementDetailTab _selectedTab;
 
   @override
   void initState() {
     super.initState();
+    _selectedTab = widget.initialTab;
     _reloadSheet();
   }
 
@@ -1948,17 +2478,10 @@ class _AdminSettlementDetailSheetState extends State<_AdminSettlementDetailSheet
                       paymentCount: sheet.paymentCount,
                       cancelCount: sheet.cancelCount,
                       rentalCount: sheet.rentalCount,
+                      selectedTab: _selectedTab,
+                      onTabSelected: (tab) => setState(() => _selectedTab = tab),
                     ),
                     const SizedBox(height: 12),
-                    SettlementAmountRow(
-                      label: '총 결제금액',
-                      amount: sheet.totalPaid,
-                    ),
-                    SettlementAmountRow(
-                      label: '취소 환불금액',
-                      amount: sheet.cancelRefund,
-                      muted: true,
-                    ),
                     SettlementAmountRow(
                       label: '순 매출',
                       amount: sheet.netRevenue,
@@ -1966,8 +2489,9 @@ class _AdminSettlementDetailSheetState extends State<_AdminSettlementDetailSheet
                     ),
                     const SizedBox(height: 12),
                     Expanded(
-                      child: SettlementReservationList(
-                        items: sheet.items,
+                      child: SettlementDetailList(
+                        sheet: sheet,
+                        tab: _selectedTab,
                         year: widget.year,
                         month: widget.month,
                       ),

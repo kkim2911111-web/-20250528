@@ -6,8 +6,10 @@ import '../services/rental_service.dart';
 import '../theme/danji_colors.dart';
 import '../theme/danji_theme.dart';
 import '../utils/rental_navigation.dart';
+import '../utils/reservation_display.dart';
 import '../widgets/danji_app_bar.dart';
 import '../widgets/reservation_price_display.dart';
+import '../widgets/reservation_times_panel.dart';
 
 /// FCM 알림 탭 등 — 예약 ID로 상세 진입
 class ReservationDetailScreen extends StatefulWidget {
@@ -79,8 +81,6 @@ class _ReservationDetailScreenState extends State<ReservationDetailScreen> {
 
           final reservation = snap.data!;
           final vehicleName = reservation.vehicle?.name ?? '차량';
-          final start = reservation.displayRentalStartAt;
-          final end = reservation.displayRentalEndAt;
 
           return ListView(
             padding: const EdgeInsets.all(20),
@@ -100,16 +100,15 @@ class _ReservationDetailScreenState extends State<ReservationDetailScreen> {
                 label: '예약 번호',
                 value: reservation.id,
               ),
-              if (start != null)
-                _InfoRow(
-                  label: '시작',
-                  value: _dateFormat.format(start.toLocal()),
-                ),
-              if (end != null)
-                _InfoRow(
-                  label: '종료',
-                  value: _dateFormat.format(end.toLocal()),
-                ),
+              ReservationTimesPanel(
+                formatter: _dateFormat,
+                mode: ReservationTimesMode.residentDetail,
+                layout: ReservationTimesLayout.detail,
+                scheduledStartAt: reservation.startAt,
+                scheduledEndAt: reservation.endAt,
+                rentalStartedAt: reservation.rentalStartedAt,
+                returnedAt: reservation.returnedAt,
+              ),
               const SizedBox(height: 8),
               ReservationPriceDisplay(
                 reservationTotalPrice: reservation.totalPrice,

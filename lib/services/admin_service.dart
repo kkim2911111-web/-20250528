@@ -4,11 +4,17 @@ import 'package:flutter/foundation.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../models/admin_customer.dart';
+import '../models/admin_timeline.dart';
+import '../models/inspection_photo.dart';
 import '../models/license_review_item.dart';
+import '../models/vehicle_maintenance.dart';
 import '../models/notice.dart';
 import '../models/staff_profile.dart';
 import '../models/super_admin_models.dart';
 import '../utils/admin_conflict.dart';
+import '../utils/inspection_photo_resolver.dart';
+import '../utils/vehicle_insurance_status.dart';
 import '../repositories/staff_repository.dart';
 import '../supabase_client.dart';
 import 'push_notification_service.dart';
@@ -177,7 +183,9 @@ class AdminService {
   Future<BranchStats> fetchBranchStats(String complexId) async {
     final vehicles = await supabase
         .from('vehicles')
-        .select('id, is_available')
+        .select(
+          'id, is_published, is_under_maintenance, insurance_expires_at',
+        )
         .eq('complex_id', complexId);
 
     final vehicleIds =
@@ -232,7 +240,15 @@ class AdminService {
 
     var available = 0;
     for (final v in vehicles) {
-      if (v['is_available'] == true) available++;
+      if (VehicleInsuranceStatus.isResidentBookable(
+        isPublished: v['is_published'] == true,
+        isUnderMaintenance: v['is_under_maintenance'] == true,
+        insuranceExpiresAt: v['insurance_expires_at'] == null
+            ? null
+            : DateTime.tryParse(v['insurance_expires_at'].toString()),
+      )) {
+        available++;
+      }
     }
 
     return BranchStats(
@@ -246,6 +262,93 @@ class AdminService {
   }
 
   /// complex 소속 차량 중 status=in_use 예약이 걸린 vehicle_id
+  Future<List<AdminVehicleDashboardCard>> fetchVehicleDashboardCards(
+    String complexId,
+  ) async {
+    final vehicles = await supabase
+        .from('vehicles')
+        .select('id, model_name, car_number, created_at')
+        .eq('complex_id', complexId)
+        .order('created_at', ascending: true);
+
+    final vehicleList = (vehicles as List)
+        .whereType<Map>()
+        .map((v) => Map<String, dynamic>.from(v))
+        .toList();
+    if (vehicleList.isEmpty) return [];
+
+    final ids = vehicleList.map((v) => v['id'].toString()).toList();
+
+    final rows = await supabase
+        .from('reservations')
+        .select(
+          'vehicle_id, status, start_at, start_time, end_at, end_time, '
+          'rental_started_at, user_profiles(full_name)',
+        )
+        .inFilter('vehicle_id', ids)
+        .inFilter('status', ['in_use', 'confirmed']);
+
+    final byVehicle = <String, Map<String, dynamic>>{};
+    for (final raw in rows as List) {
+      final row = Map<String, dynamic>.from(raw as Map);
+      final vid = row['vehicle_id']?.toString();
+      if (vid == null) continue;
+      final existing = byVehicle[vid];
+      if (existing == null) {
+        byVehicle[vid] = row;
+        continue;
+      }
+      if (existing['status'] == 'in_use') continue;
+      if (row['status'] == 'in_use') {
+        byVehicle[vid] = row;
+      }
+    }
+
+    DateTime? parseDt(Object? v) {
+      if (v == null) return null;
+      return DateTime.tryParse(v.toString())?.toLocal();
+    }
+
+    String? renterName(Map<String, dynamic> row) {
+      final profile = row['user_profiles'];
+      if (profile is Map) {
+        final name = profile['full_name']?.toString().trim();
+        if (name != null && name.isNotEmpty) return name;
+      }
+      return null;
+    }
+
+    return vehicleList.map((v) {
+      final vid = v['id'].toString();
+      final active = byVehicle[vid];
+      if (active == null) {
+        return AdminVehicleDashboardCard(
+          vehicleId: vid,
+          vehicleName: v['model_name']?.toString() ?? '차량',
+          carNumber: v['car_number']?.toString(),
+          status: AdminVehicleDashboardStatus.available,
+        );
+      }
+
+      final statusRaw = active['status']?.toString();
+      final isInUse = statusRaw == 'in_use';
+      return AdminVehicleDashboardCard(
+        vehicleId: vid,
+        vehicleName: v['model_name']?.toString() ?? '차량',
+        carNumber: v['car_number']?.toString(),
+        status: isInUse
+            ? AdminVehicleDashboardStatus.inUse
+            : AdminVehicleDashboardStatus.waitingPayment,
+        renterName: renterName(active),
+        periodStart: isInUse
+            ? parseDt(active['rental_started_at']) ??
+                parseDt(active['start_at'] ?? active['start_time'])
+            : parseDt(active['start_at'] ?? active['start_time']),
+        periodEnd: parseDt(active['end_at'] ?? active['end_time']),
+      );
+    }).toList();
+  }
+
   Future<Set<String>> fetchInUseVehicleIds(String complexId) async {
     final vehicles = await supabase
         .from('vehicles')
@@ -357,6 +460,30 @@ class AdminService {
       Map<String, dynamic>.from(row),
       displayName,
     );
+  }
+
+  /// 노출/대기 전환
+  Future<void> setVehiclePublished({
+    required String vehicleId,
+    required bool published,
+  }) async {
+    await _requireStaffComplexId();
+    await supabase.from('vehicles').update({
+      'is_published': published,
+    }).eq('id', vehicleId);
+  }
+
+  /// 점검중 설정/해제 — maintenance_memo 포함
+  Future<void> setVehicleMaintenance({
+    required String vehicleId,
+    required bool underMaintenance,
+    String? memo,
+  }) async {
+    await _requireStaffComplexId();
+    await supabase.from('vehicles').update({
+      'is_under_maintenance': underMaintenance,
+      'maintenance_memo': underMaintenance ? memo?.trim() : null,
+    }).eq('id', vehicleId);
   }
 
   /// 차량 등록·수정 시 staff_users.complex_id 사용
@@ -533,7 +660,7 @@ class AdminService {
       ..remove('is_available');
 
     final withoutOptional = Map<String, dynamic>.from(withoutLegacy)
-      ..remove('vehicle_type')
+      ..remove('car_type')
       ..remove('fuel_type')
       ..remove('owner_name')
       ..remove('insurance_company')
@@ -581,20 +708,37 @@ class AdminService {
 
     Future<List> queryReservations(String select) async {
       try {
-        return await supabase
+        var query = supabase
             .from('reservations')
             .select(select)
-            .inFilter('vehicle_id', ids)
-            .eq('status', status)
-            .order(orderColumn, ascending: orderAscending);
+            .inFilter('vehicle_id', ids);
+        if (status == 'completed') {
+          // 검수 완료 탭 — completed + is_no_show 노쇼 건 명시 포함
+          query = query.or(
+            'and(status.eq.completed,is_no_show.eq.true),'
+            'and(status.eq.completed,is_no_show.eq.false),'
+            'and(status.eq.completed,is_no_show.is.null)',
+          );
+        } else {
+          query = query.eq('status', status);
+        }
+        return await query.order(orderColumn, ascending: orderAscending);
       } on PostgrestException catch (e) {
         if (!_isRetryableVehicleColumnError(e)) rethrow;
-        return await supabase
+        var query = supabase
             .from('reservations')
             .select(select)
-            .inFilter('vehicle_id', ids)
-            .eq('status', status)
-            .order(orderColumn, ascending: orderAscending);
+            .inFilter('vehicle_id', ids);
+        if (status == 'completed') {
+          query = query.or(
+            'and(status.eq.completed,is_no_show.eq.true),'
+            'and(status.eq.completed,is_no_show.eq.false),'
+            'and(status.eq.completed,is_no_show.is.null)',
+          );
+        } else {
+          query = query.eq('status', status);
+        }
+        return await query.order(orderColumn, ascending: orderAscending);
       }
     }
 
@@ -829,8 +973,19 @@ class AdminService {
   Future<({List<String> before, List<String> after})> resolveInspectionPhotos(
     AdminReservationRow row,
   ) async {
-    var before = _normalizePhotoUrls(row.pickupPhotos);
-    var after = _normalizePhotoUrls(row.returnPhotos);
+    final set = await resolveInspectionPhotoSet(row);
+    return (
+      before: set.before.map((e) => e.url).toList(),
+      after: set.after.map((e) => e.url).toList(),
+    );
+  }
+
+  /// 검수 사진 + 촬영 시각(사진별 없으면 대여시작/반납·검수완료 시각)
+  Future<InspectionPhotoSet> resolveInspectionPhotoSet(
+    AdminReservationRow row,
+  ) async {
+    var before = normalizeInspectionPhotoUrls(row.pickupPhotos);
+    var after = normalizeInspectionPhotoUrls(row.returnPhotos);
 
     if (before.isEmpty) {
       before = await _fetchRidePhotosForStaff(
@@ -845,7 +1000,15 @@ class AdminService {
       );
     }
 
-    return (before: before, after: after);
+    return buildInspectionPhotoSet(
+      beforeUrls: before,
+      afterUrls: after,
+      rentalStartedAt: row.rentalStartedAt,
+      returnedAt: row.returnedAt,
+      actualEndAt: row.actualEndAt,
+      status: row.status,
+      updatedAt: row.updatedAt,
+    );
   }
 
   static const int _reservationRpcPageSize = 500;
@@ -925,6 +1088,49 @@ class AdminService {
       }
       throw AdminException(mapAdminPostgrestError(e));
     }
+  }
+
+  Future<AdminReservationTimelineData> fetchReservationTimeline({
+    required int year,
+    required int month,
+  }) async {
+    final complexId = await _requireStaffComplexId();
+    final vehicles = await fetchVehicles(complexId);
+
+    try {
+      final data = await supabase.rpc(
+        'get_admin_reservation_timeline',
+        params: {'p_year': year, 'p_month': month},
+      );
+      final rows = data is List
+          ? data
+              .whereType<Map>()
+              .map((e) => AdminTimelineReservation.fromMap(
+                    Map<String, dynamic>.from(e),
+                  ))
+              .toList()
+          : <AdminTimelineReservation>[];
+
+      return AdminReservationTimelineData(
+        vehicles: vehicles,
+        reservations: rows,
+      );
+    } on PostgrestException catch (e) {
+      if (_isTimelineRpcMissing(e)) {
+        return AdminReservationTimelineData(
+          vehicles: vehicles,
+          reservations: const [],
+        );
+      }
+      throw AdminException(mapAdminPostgrestError(e));
+    }
+  }
+
+  bool _isTimelineRpcMissing(PostgrestException e) {
+    final msg = e.message.toLowerCase();
+    return e.code == 'PGRST202' ||
+        msg.contains('get_admin_reservation_timeline') ||
+        msg.contains('could not find the function');
   }
 
   Future<void> forceCompleteReservation(String reservationId) async {
@@ -1086,6 +1292,91 @@ class AdminService {
           ),
         )
         .toList();
+  }
+
+  Future<List<AdminCustomer>> fetchCustomers() async {
+    try {
+      final rows = await supabase.rpc('get_admin_customers_for_staff');
+      return (rows as List)
+          .map((r) => AdminCustomer.fromMap(Map<String, dynamic>.from(r)))
+          .toList();
+    } on PostgrestException catch (e) {
+      throw AdminException(mapAdminPostgrestError(e));
+    }
+  }
+
+  Future<List<AdminCustomerReservation>> fetchCustomerReservations(
+    String userId,
+  ) async {
+    try {
+      final rows = await supabase.rpc(
+        'get_admin_customer_reservations',
+        params: {'p_user_id': userId},
+      );
+      return (rows as List)
+          .map(
+            (r) => AdminCustomerReservation.fromMap(
+              Map<String, dynamic>.from(r),
+            ),
+          )
+          .toList();
+    } on PostgrestException catch (e) {
+      throw AdminException(mapAdminPostgrestError(e));
+    }
+  }
+
+  Future<void> setCustomerBlacklist({
+    required String userId,
+    required bool blacklisted,
+  }) async {
+    try {
+      await supabase.rpc('set_admin_user_blacklist', params: {
+        'p_user_id': userId,
+        'p_blacklisted': blacklisted,
+      });
+    } on PostgrestException catch (e) {
+      throw AdminException(mapAdminPostgrestError(e));
+    }
+  }
+
+  Future<List<VehicleMaintenanceRecord>> fetchVehicleMaintenanceHistory(
+    String vehicleId,
+  ) async {
+    try {
+      final rows = await supabase.rpc(
+        'get_vehicle_maintenance_history_for_staff',
+        params: {'p_vehicle_id': int.parse(vehicleId)},
+      );
+      return (rows as List)
+          .map(
+            (r) => VehicleMaintenanceRecord.fromMap(
+              Map<String, dynamic>.from(r),
+            ),
+          )
+          .toList();
+    } on PostgrestException catch (e) {
+      throw AdminException(mapAdminPostgrestError(e));
+    }
+  }
+
+  Future<void> insertVehicleMaintenance({
+    required String vehicleId,
+    required VehicleMaintenanceType type,
+    String? description,
+    int cost = 0,
+    int? mileage,
+  }) async {
+    try {
+      await supabase.rpc('insert_vehicle_maintenance_for_staff', params: {
+        'p_vehicle_id': int.parse(vehicleId),
+        'p_maintenance_type': type.dbValue,
+        'p_description': description,
+        'p_cost': cost,
+        'p_mileage': mileage,
+      });
+    } on PostgrestException catch (e) {
+      throw AdminException(mapAdminPostgrestError(e));
+    }
   }
 
   Future<void> reviewLicense({
@@ -1343,6 +1634,15 @@ String mapAdminPostgrestError(PostgrestException error) {
   }
   if (msg.contains('forbidden')) {
     return '관리자 권한이 필요합니다.';
+  }
+  if (msg.contains('resident_not_found')) {
+    return '해당 입주민을 찾을 수 없습니다.';
+  }
+  if (msg.contains('invalid_maintenance_type')) {
+    return '정비 유형이 올바르지 않습니다.';
+  }
+  if (msg.contains('vehicle_not_found')) {
+    return '차량을 찾을 수 없습니다.';
   }
   if (msg.contains('deductible_already_charged')) {
     return '이미 면책금이 청구되었습니다.';

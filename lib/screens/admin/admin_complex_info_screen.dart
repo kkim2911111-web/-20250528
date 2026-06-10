@@ -287,7 +287,7 @@ class _AdminComplexInfoScreenState extends State<AdminComplexInfoScreen> {
             : '단지');
 
     return AdminScaffold(
-      appBar: const DanjiAppBar(title: '사업자 정보'),
+      appBar: const DanjiAppBar(title: '내정보'),
       body: _loadingPage
           ? const Center(child: CircularProgressIndicator(strokeWidth: 2))
           : _loadError != null

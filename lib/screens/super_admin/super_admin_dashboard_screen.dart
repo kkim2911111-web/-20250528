@@ -5,6 +5,7 @@ import '../../services/auth_service.dart';
 import '../../services/super_admin_service.dart';
 import '../../theme/danji_colors.dart';
 import '../../services/admin_notification_navigation.dart';
+import '../../utils/super_admin_settlement_dashboard.dart';
 import '../../widgets/admin_scaffold.dart';
 import '../../widgets/notification_bell_button.dart';
 import '../../widgets/section_card.dart';
@@ -31,6 +32,12 @@ class _SuperAdminDashboardScreenState extends State<SuperAdminDashboardScreen> {
   final _auth = AuthService.instance;
 
   SuperAdminDashboard _dashboard = const SuperAdminDashboard();
+  SuperAdminSettlementDashboardCard _settlementCard =
+      const SuperAdminSettlementDashboardCard(
+    year: 0,
+    month: 0,
+    kind: SuperAdminSettlementDashboardKind.complete,
+  );
   Map<String, int> _vehicleCountByComplexId = {};
   Object? _loadError;
   bool _loading = true;
@@ -43,14 +50,22 @@ class _SuperAdminDashboardScreenState extends State<SuperAdminDashboardScreen> {
 
   Future<void> _reload() async {
     try {
+      final period = superAdminSettlementDashboardPeriod();
       final results = await Future.wait([
         _service.fetchDashboard(),
         _service.fetchComplexes(),
+        _service.fetchRevenue(year: period.year, month: period.month),
       ]);
       if (!mounted) return;
       final complexes = results[1] as List<SuperAdminComplex>;
+      final revenueRows = results[2] as List<SuperAdminRevenueRow>;
       setState(() {
         _dashboard = results[0] as SuperAdminDashboard;
+        _settlementCard = SuperAdminSettlementDashboardCard.fromRevenueRows(
+          revenueRows,
+          year: period.year,
+          month: period.month,
+        );
         _vehicleCountByComplexId = {
           for (final c in complexes) c.id: c.vehicleCount,
         };
@@ -261,11 +276,17 @@ class _SuperAdminDashboardScreenState extends State<SuperAdminDashboardScreen> {
                       const SizedBox(width: 6),
                       Expanded(
                         child: SuperAdminCompactStatCard(
-                          label: '진행',
-                          value: '${_dashboard.reservationActiveCount}',
-                          icon: Icons.play_circle_outline,
-                          color: DanjiColors.danger,
-                          onTap: () => _open(SuperAdminReservationsScreen(service: _service)),
+                          label: _settlementCard.label,
+                          value: _settlementCard.value,
+                          icon: Icons.account_balance_wallet_outlined,
+                          color: _settlementCard.color,
+                          onTap: () => _open(
+                            SuperAdminRevenueScreen(
+                              service: _service,
+                              initialYear: _settlementCard.year,
+                              initialMonth: _settlementCard.month,
+                            ),
+                          ),
                         ),
                       ),
                     ],

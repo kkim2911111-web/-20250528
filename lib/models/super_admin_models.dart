@@ -1,3 +1,4 @@
+import '../utils/rental_pricing.dart';
 import '../utils/reservation_display.dart';
 
 class SuperAdminDashboard {
@@ -107,6 +108,10 @@ class SuperAdminVehicle {
   final String? vehicleType;
   final String? fuelType;
   final int pricePerHour;
+  final int? dailyPrice;
+  final int? monthlyPrice;
+  final List<RentalType> rentalTypes;
+  final String serviceType;
   final bool isAvailable;
   final bool inUse;
   final String? currentStatus;
@@ -121,6 +126,10 @@ class SuperAdminVehicle {
     this.vehicleType,
     this.fuelType,
     this.pricePerHour = 0,
+    this.dailyPrice,
+    this.monthlyPrice,
+    this.rentalTypes = const [RentalType.hourly],
+    this.serviceType = VehicleServiceType.sharing,
     this.isAvailable = true,
     this.inUse = false,
     this.currentStatus,
@@ -134,9 +143,16 @@ class SuperAdminVehicle {
       complexName: m['complex_name']?.toString() ?? '',
       modelName: m['model_name']?.toString() ?? '차량',
       carNumber: m['car_number']?.toString(),
-      vehicleType: m['vehicle_type']?.toString(),
+      vehicleType: m['car_type']?.toString() ?? 'SUV',
+      serviceType: RentalPricing.parseServiceType(
+        m['vehicle_type'],
+        rentalTypes: RentalPricing.parseRentalTypes(m['rental_types']),
+      ),
       fuelType: m['fuel_type']?.toString(),
       pricePerHour: (m['price_per_hour'] as num?)?.toInt() ?? 0,
+      dailyPrice: (m['daily_price'] as num?)?.toInt(),
+      monthlyPrice: (m['monthly_price'] as num?)?.toInt(),
+      rentalTypes: RentalPricing.parseRentalTypes(m['rental_types']),
       isAvailable: m['is_available'] == true,
       inUse: m['in_use'] == true,
       currentStatus: m['current_reservation_status']?.toString(),
@@ -155,6 +171,10 @@ class SuperAdminStaff {
   final bool approved;
   final String? email;
   final DateTime? createdAt;
+  final String? businessName;
+  final String? businessRegistrationNumber;
+  final String? businessAddress;
+  final String? businessRepresentative;
 
   const SuperAdminStaff({
     required this.userId,
@@ -166,7 +186,32 @@ class SuperAdminStaff {
     this.approved = false,
     this.email,
     this.createdAt,
+    this.businessName,
+    this.businessRegistrationNumber,
+    this.businessAddress,
+    this.businessRepresentative,
   });
+
+  String? get listCompanyLabel {
+    for (final value in [businessName, companyName]) {
+      final trimmed = value?.trim();
+      if (trimmed != null && trimmed.isNotEmpty) return trimmed;
+    }
+    return null;
+  }
+
+  bool get hasBusinessInfo {
+    for (final value in [
+      businessName,
+      businessRegistrationNumber,
+      businessAddress,
+      businessRepresentative,
+    ]) {
+      final trimmed = value?.trim();
+      if (trimmed != null && trimmed.isNotEmpty) return true;
+    }
+    return false;
+  }
 
   factory SuperAdminStaff.fromMap(Map<String, dynamic> m) {
     return SuperAdminStaff(
@@ -179,6 +224,11 @@ class SuperAdminStaff {
       approved: m['approved'] == true,
       email: m['email']?.toString(),
       createdAt: _dt(m['created_at']),
+      businessName: m['business_name']?.toString(),
+      businessRegistrationNumber:
+          m['business_registration_number']?.toString(),
+      businessAddress: m['business_address']?.toString(),
+      businessRepresentative: m['business_representative']?.toString(),
     );
   }
 }
@@ -196,6 +246,7 @@ class SuperAdminResident {
   final bool licenseVerified;
   final bool isBlacklisted;
   final DateTime? createdAt;
+  final DateTime? lastRentalAt;
 
   const SuperAdminResident({
     required this.userId,
@@ -210,6 +261,7 @@ class SuperAdminResident {
     this.licenseVerified = false,
     this.isBlacklisted = false,
     this.createdAt,
+    this.lastRentalAt,
   });
 
   factory SuperAdminResident.fromMap(Map<String, dynamic> m) {
@@ -226,6 +278,7 @@ class SuperAdminResident {
       licenseVerified: m['license_verified'] == true,
       isBlacklisted: m['is_blacklisted'] == true,
       createdAt: _dt(m['created_at']),
+      lastRentalAt: _dt(m['last_rental_at']),
     );
   }
 }
@@ -306,6 +359,7 @@ class SuperAdminResidentDetail {
   final int couponCount;
   final int rentalCount;
   final DateTime? createdAt;
+  final DateTime? lastRentalAt;
   final List<SuperAdminResidentRental> rentals;
 
   const SuperAdminResidentDetail({
@@ -327,6 +381,7 @@ class SuperAdminResidentDetail {
     this.couponCount = 0,
     this.rentalCount = 0,
     this.createdAt,
+    this.lastRentalAt,
     this.rentals = const [],
   });
 
@@ -361,8 +416,30 @@ class SuperAdminResidentDetail {
       couponCount: (m['coupon_count'] as num?)?.toInt() ?? 0,
       rentalCount: (m['rental_count'] as num?)?.toInt() ?? 0,
       createdAt: _dt(m['created_at']),
+      lastRentalAt: _dt(m['last_rental_at']),
       rentals: rentals,
     );
+  }
+}
+
+/// 임차인 이용·노쇼 집계 (바텀시트 전용)
+class SuperAdminRenterUsageStats {
+  final int usageCount;
+  final int noShowCount;
+
+  const SuperAdminRenterUsageStats({
+    this.usageCount = 0,
+    this.noShowCount = 0,
+  });
+
+  static const empty = SuperAdminRenterUsageStats();
+
+  String formatLine(String renterName) {
+    final usage = '이용 $usageCount건';
+    if (noShowCount <= 0) {
+      return '$renterName · $usage';
+    }
+    return '$renterName · $usage · 노쇼 $noShowCount건';
   }
 }
 
@@ -377,6 +454,7 @@ class SuperAdminReservation {
   final String renterName;
   final String renterPhone;
   final String status;
+  final bool isNoShow;
   final DateTime? startAt;
   final DateTime? endAt;
   final DateTime? rentalStartedAt;
@@ -384,6 +462,9 @@ class SuperAdminReservation {
   final DateTime? actualEndAt;
   final int totalPrice;
   final DateTime? createdAt;
+  final List<String> pickupPhotos;
+  final List<String> returnPhotos;
+  final RentalType? rentalType;
 
   const SuperAdminReservation({
     required this.id,
@@ -396,6 +477,7 @@ class SuperAdminReservation {
     required this.renterName,
     required this.renterPhone,
     required this.status,
+    this.isNoShow = false,
     this.startAt,
     this.endAt,
     this.rentalStartedAt,
@@ -403,12 +485,32 @@ class SuperAdminReservation {
     this.actualEndAt,
     this.totalPrice = 0,
     this.createdAt,
+    this.pickupPhotos = const [],
+    this.returnPhotos = const [],
+    this.rentalType,
   });
 
   DateTime? get displayRentalStartAt => rentalStartedAt ?? startAt;
 
   DateTime? get displayRentalEndAt =>
       returnedAt ?? actualEndAt ?? endAt;
+
+  /// 실제 반납 시각 (returned_at 우선, 없으면 actual_end_at)
+  DateTime? get actualReturnAt => returnedAt ?? actualEndAt;
+
+  bool get canShowForceReturnButton {
+    if (isNoShow) return false;
+    return status.trim().toLowerCase() == 'in_use';
+  }
+
+  bool get canShowPaymentCancelButton {
+    if (isNoShow) return false;
+    final s = status.trim().toLowerCase();
+    return s == 'confirmed' || s == 'in_use';
+  }
+
+  bool get showForceActionButtons =>
+      canShowForceReturnButton || canShowPaymentCancelButton;
 
   String get reservationNumberLabel {
     final number = reservationNumber?.trim();
@@ -429,6 +531,7 @@ class SuperAdminReservation {
       renterName: m['renter_name']?.toString() ?? '',
       renterPhone: m['renter_phone']?.toString() ?? '',
       status: m['status']?.toString() ?? '',
+      isNoShow: m['is_no_show'] == true,
       startAt: _dt(m['start_at']),
       endAt: _dt(m['end_at']),
       rentalStartedAt: _dt(m['rental_started_at']),
@@ -436,8 +539,16 @@ class SuperAdminReservation {
       actualEndAt: _dt(m['actual_end_at']),
       totalPrice: (m['total_price'] as num?)?.toInt() ?? 0,
       createdAt: _dt(m['created_at']),
+      pickupPhotos: _stringList(m['pickup_photos']),
+      returnPhotos: _stringList(m['return_photos']),
+      rentalType: RentalType.fromDb(m['rental_type']?.toString()),
     );
   }
+}
+
+List<String> _stringList(Object? raw) {
+  if (raw is! List) return const [];
+  return raw.map((e) => e.toString()).toList();
 }
 
 class SuperAdminRevenueRow {
@@ -508,6 +619,8 @@ class SuperAdminSettlementSheet {
   final bool isSettled;
   final bool isRequested;
   final List<SuperAdminSettlementReservation> items;
+  final List<SuperAdminSettlementPaymentItem> paymentItems;
+  final List<SuperAdminSettlementCancelItem> cancelItems;
 
   const SuperAdminSettlementSheet({
     this.totalPaid = 0,
@@ -519,6 +632,8 @@ class SuperAdminSettlementSheet {
     this.isSettled = false,
     this.isRequested = false,
     this.items = const [],
+    this.paymentItems = const [],
+    this.cancelItems = const [],
   });
 
   factory SuperAdminSettlementSheet.fromRpc(dynamic data) {
@@ -526,18 +641,22 @@ class SuperAdminSettlementSheet {
       return const SuperAdminSettlementSheet();
     }
     final m = Map<String, dynamic>.from(data);
-    final itemsRaw = m['items'];
-    final items = itemsRaw is List
-        ? itemsRaw
-            .map((e) => SuperAdminSettlementReservation.fromMap(
-                  Map<String, dynamic>.from(e as Map),
-                ))
-            .toList()
-        : <SuperAdminSettlementReservation>[];
+    final items = _parseSettlementList(
+      m['items'],
+      SuperAdminSettlementReservation.fromMap,
+    );
+    final paymentItems = _parseSettlementList(
+      m['payment_items'],
+      SuperAdminSettlementPaymentItem.fromMap,
+    );
+    final cancelItems = _parseSettlementList(
+      m['cancel_items'],
+      SuperAdminSettlementCancelItem.fromMap,
+    );
 
     final totalPaid = (m['total_paid'] as num?)?.toInt() ?? 0;
     final cancelRefund = (m['cancel_refund'] as num?)?.toInt() ?? 0;
-    final net = (m['net_revenue'] as num?)?.toInt() ?? (totalPaid - cancelRefund);
+    final net = (m['net_revenue'] as num?)?.toInt() ?? totalPaid;
 
     return SuperAdminSettlementSheet(
       totalPaid: totalPaid,
@@ -549,8 +668,20 @@ class SuperAdminSettlementSheet {
       isSettled: m['is_settled'] == true,
       isRequested: m['is_requested'] == true,
       items: items,
+      paymentItems: paymentItems,
+      cancelItems: cancelItems,
     );
   }
+}
+
+List<T> _parseSettlementList<T>(
+  Object? raw,
+  T Function(Map<String, dynamic> m) fromMap,
+) {
+  if (raw is! List) return [];
+  return raw
+      .map((e) => fromMap(Map<String, dynamic>.from(e as Map)))
+      .toList();
 }
 
 class SuperAdminSettlementReservation {
@@ -563,6 +694,7 @@ class SuperAdminSettlementReservation {
   final DateTime? rentalStartedAt;
   final DateTime? returnedAt;
   final DateTime? actualEndAt;
+  final RentalType? rentalType;
 
   String get reservationNumberLabel {
     final number = reservationNumber?.trim();
@@ -581,6 +713,7 @@ class SuperAdminSettlementReservation {
     this.rentalStartedAt,
     this.returnedAt,
     this.actualEndAt,
+    this.rentalType,
   });
 
   DateTime? get displayRentalStartAt => rentalStartedAt ?? startAt;
@@ -599,6 +732,82 @@ class SuperAdminSettlementReservation {
       rentalStartedAt: _dt(m['rental_started_at']),
       returnedAt: _dt(m['returned_at']),
       actualEndAt: _dt(m['actual_end_at']),
+      rentalType: RentalType.fromDb(m['rental_type']?.toString()),
+    );
+  }
+}
+
+class SuperAdminSettlementPaymentItem {
+  final String orderId;
+  final String reservationId;
+  final String? reservationNumber;
+  final String renterName;
+  final DateTime? paidAt;
+  final int paymentAmount;
+
+  const SuperAdminSettlementPaymentItem({
+    required this.orderId,
+    required this.reservationId,
+    this.reservationNumber,
+    required this.renterName,
+    this.paidAt,
+    this.paymentAmount = 0,
+  });
+
+  String get reservationNumberLabel {
+    final number = reservationNumber?.trim();
+    if (number != null && number.isNotEmpty) return number;
+    final raw = reservationId.trim();
+    return raw.isEmpty ? '—' : '#$raw';
+  }
+
+  factory SuperAdminSettlementPaymentItem.fromMap(Map<String, dynamic> m) {
+    return SuperAdminSettlementPaymentItem(
+      orderId: m['order_id']?.toString() ?? '',
+      reservationId: m['reservation_id']?.toString() ?? '',
+      reservationNumber: m['reservation_number']?.toString(),
+      renterName: m['renter_name']?.toString() ?? '',
+      paidAt: _dt(m['paid_at']),
+      paymentAmount: (m['payment_amount'] as num?)?.toInt() ?? 0,
+    );
+  }
+}
+
+class SuperAdminSettlementCancelItem {
+  final String reservationId;
+  final String? reservationNumber;
+  final String renterName;
+  final DateTime? cancelledAt;
+  final int paidAmount;
+  final int refundAmount;
+  final String cancelReason;
+
+  const SuperAdminSettlementCancelItem({
+    required this.reservationId,
+    this.reservationNumber,
+    required this.renterName,
+    this.cancelledAt,
+    this.paidAmount = 0,
+    this.refundAmount = 0,
+    this.cancelReason = '취소',
+  });
+
+  String get reservationNumberLabel {
+    final number = reservationNumber?.trim();
+    if (number != null && number.isNotEmpty) return number;
+    final raw = reservationId.trim();
+    return raw.isEmpty ? '—' : '#$raw';
+  }
+
+  factory SuperAdminSettlementCancelItem.fromMap(Map<String, dynamic> m) {
+    return SuperAdminSettlementCancelItem(
+      reservationId: m['reservation_id']?.toString() ?? '',
+      reservationNumber: m['reservation_number']?.toString(),
+      renterName: m['renter_name']?.toString() ?? '',
+      cancelledAt: _dt(m['cancelled_at']),
+      paidAmount: (m['paid_amount'] as num?)?.toInt() ?? 0,
+      refundAmount: (m['refund_amount'] as num?)?.toInt() ?? 0,
+      cancelReason: m['cancel_reason']?.toString() ?? '취소',
     );
   }
 }

@@ -5,7 +5,10 @@ import '../../services/super_admin_service.dart';
 import '../../theme/danji_colors.dart';
 import '../../theme/danji_theme.dart';
 import '../../utils/danji_snackbar.dart';
+import '../../utils/resident_display.dart';
+import '../../utils/rental_pricing.dart';
 import '../../widgets/admin_scaffold.dart';
+import '../../widgets/vehicle_rental_types_section.dart';
 import '../../widgets/danji_app_bar.dart';
 import '../../widgets/section_card.dart';
 import 'super_admin_common.dart';
@@ -357,61 +360,93 @@ class _SuperAdminVehiclesScreenState extends State<SuperAdminVehiclesScreen> {
   Future<void> _editor(List<SuperAdminComplex> complexes, [SuperAdminVehicle? v]) async {
     final name = TextEditingController(text: v?.modelName ?? '');
     final carNo = TextEditingController(text: v?.carNumber ?? '');
-    final price = TextEditingController(text: '${v?.pricePerHour ?? 0}');
+    final hourlyPrice = TextEditingController(text: '${v?.pricePerHour ?? 0}');
+    final dailyPrice = TextEditingController(
+      text: v?.dailyPrice?.toString() ?? '',
+    );
+    final monthlyPrice = TextEditingController(
+      text: v?.monthlyPrice?.toString() ?? '',
+    );
     var complexId = v?.complexId ?? (complexes.isNotEmpty ? complexes.first.id : '');
     var available = v?.isAvailable ?? true;
+    var rentalTypes = v?.rentalTypes.toSet() ?? {RentalType.hourly};
 
     final ok = await showSuperAdminBottomSheet<bool>(
       context,
       title: v == null ? '차량 등록' : '차량 수정',
       child: StatefulBuilder(
-        builder: (ctx, setLocal) => Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            DropdownButtonFormField<String>(
-              initialValue: complexId.isEmpty ? null : complexId,
-              decoration: const InputDecoration(labelText: '단지'),
-              items: complexes
-                  .map((c) => DropdownMenuItem(value: c.id, child: Text(c.name)))
-                  .toList(),
-              onChanged: (val) => setLocal(() => complexId = val ?? complexId),
-            ),
-            TextField(controller: name, decoration: const InputDecoration(labelText: '차량명')),
-            TextField(controller: carNo, decoration: const InputDecoration(labelText: '차량번호')),
-            TextField(
-              controller: price,
-              keyboardType: TextInputType.number,
-              decoration: const InputDecoration(labelText: '시간당 가격'),
-            ),
-            SwitchListTile(
-              contentPadding: EdgeInsets.zero,
-              title: const Text('가용'),
-              value: available,
-              onChanged: (val) => setLocal(() => available = val),
-            ),
-            const SizedBox(height: 12),
-            FilledButton(
-              onPressed: () => Navigator.pop(ctx, true),
-              style: superAdminPrimaryFabStyle,
-              child: const Text('저장'),
-            ),
-          ],
+        builder: (ctx, setLocal) => SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              DropdownButtonFormField<String>(
+                initialValue: complexId.isEmpty ? null : complexId,
+                decoration: const InputDecoration(labelText: '단지'),
+                items: complexes
+                    .map((c) => DropdownMenuItem(value: c.id, child: Text(c.name)))
+                    .toList(),
+                onChanged: (val) => setLocal(() => complexId = val ?? complexId),
+              ),
+              TextField(controller: name, decoration: const InputDecoration(labelText: '차량명')),
+              TextField(controller: carNo, decoration: const InputDecoration(labelText: '차량번호')),
+              VehicleRentalTypesSection(
+                selectedTypes: rentalTypes,
+                onTypesChanged: (types) => setLocal(() => rentalTypes = types),
+                hourlyPriceController: hourlyPrice,
+                dailyPriceController: dailyPrice,
+                monthlyPriceController: monthlyPrice,
+              ),
+              SwitchListTile(
+                contentPadding: EdgeInsets.zero,
+                title: const Text('가용'),
+                value: available,
+                onChanged: (val) => setLocal(() => available = val),
+              ),
+              const SizedBox(height: 12),
+              FilledButton(
+                onPressed: () => Navigator.pop(ctx, true),
+                style: superAdminPrimaryFabStyle,
+                child: const Text('저장'),
+              ),
+            ],
+          ),
         ),
       ),
     );
-    if (ok != true || complexId.isEmpty) return;
+    final dailyText = dailyPrice.text.trim();
+    final monthlyText = monthlyPrice.text.trim();
+    if (ok != true || complexId.isEmpty) {
+      name.dispose();
+      carNo.dispose();
+      hourlyPrice.dispose();
+      dailyPrice.dispose();
+      monthlyPrice.dispose();
+      return;
+    }
+
     try {
       await widget.service.upsertVehicle(
         id: v?.id,
         complexId: complexId,
         modelName: name.text,
         carNumber: carNo.text,
-        pricePerHour: int.tryParse(price.text) ?? 0,
+        pricePerHour: rentalTypes.contains(RentalType.hourly)
+            ? (int.tryParse(hourlyPrice.text) ?? 0)
+            : 0,
         isAvailable: available,
+        dailyPrice: dailyText.isEmpty ? null : int.tryParse(dailyText),
+        monthlyPrice: monthlyText.isEmpty ? null : int.tryParse(monthlyText),
+        rentalTypes: RentalPricing.rentalTypesToDb(rentalTypes),
       );
       _reload();
     } catch (e) {
       if (mounted) DanjiSnackBar.show(context, friendlySuperAdminError(e));
+    } finally {
+      name.dispose();
+      carNo.dispose();
+      hourlyPrice.dispose();
+      dailyPrice.dispose();
+      monthlyPrice.dispose();
     }
   }
 
@@ -458,6 +493,9 @@ class _SuperAdminVehiclesScreenState extends State<SuperAdminVehiclesScreen> {
                     carNumber: v.carNumber,
                     pricePerHour: v.pricePerHour,
                     isAvailable: !v.isAvailable,
+                    dailyPrice: v.dailyPrice,
+                    monthlyPrice: v.monthlyPrice,
+                    rentalTypes: RentalPricing.rentalTypesToDb(v.rentalTypes),
                   );
                   _reload();
                 } catch (e) {
@@ -651,6 +689,7 @@ class _SuperAdminStaffScreenState extends State<SuperAdminStaffScreen> {
 
   Future<void> _openDetail(SuperAdminStaff s) async {
     final cx = await _complexesFuture ?? [];
+    final staffList = await _future ?? [];
     if (!mounted) return;
 
     await showSuperAdminBottomSheet<void>(
@@ -667,6 +706,8 @@ class _SuperAdminStaffScreenState extends State<SuperAdminStaffScreen> {
             label: s.approved ? '승인' : '대기',
             color: s.approved ? SuperAdminUiColors.availableGreen : DanjiColors.danger,
           ),
+          const SizedBox(height: 12),
+          _StaffBusinessInfoSection(staff: s),
           const SizedBox(height: 16),
           if (!s.approved)
             FilledButton(
@@ -718,6 +759,13 @@ class _SuperAdminStaffScreenState extends State<SuperAdminStaffScreen> {
           FilledButton(
             onPressed: () async {
               Navigator.pop(context);
+              if (!widget.service.canDeleteStaff(s, allStaff: staffList)) {
+                DanjiSnackBar.show(
+                  context,
+                  '담당 단지가 있어 삭제할 수 없습니다. 단지 변경으로 인계 후 삭제하세요.',
+                );
+                return;
+              }
               final confirm = await superAdminConfirmDialog(
                 context,
                 title: '스태프 삭제',
@@ -726,8 +774,14 @@ class _SuperAdminStaffScreenState extends State<SuperAdminStaffScreen> {
                 danger: true,
               );
               if (!confirm) return;
-              await widget.service.deleteStaff(s.userId);
-              _reload();
+              try {
+                await widget.service.deleteStaff(s.userId);
+                _reload();
+              } catch (e) {
+                if (mounted) {
+                  DanjiSnackBar.show(context, friendlySuperAdminError(e));
+                }
+              }
             },
             style: DanjiTheme.dangerButton,
             child: const Text('삭제'),
@@ -752,10 +806,14 @@ class _SuperAdminStaffScreenState extends State<SuperAdminStaffScreen> {
           separatorBuilder: (_, __) => const SizedBox(height: 10),
           itemBuilder: (_, i) {
             final s = list[i];
+            final company = s.listCompanyLabel;
+            final subtitle = company == null
+                ? '${s.complexName} · ${s.email ?? ''}'
+                : '${s.complexName} · ${s.email ?? ''}\n$company';
             return SuperAdminListCard(
               icon: Icons.badge_outlined,
               title: s.displayName,
-              subtitle: '${s.complexName} · ${s.email ?? ''}',
+              subtitle: subtitle,
               trailing: SuperAdminChip(
                 label: s.approved ? '승인' : '대기',
                 color: s.approved ? SuperAdminUiColors.availableGreen : DanjiColors.danger,
@@ -764,6 +822,76 @@ class _SuperAdminStaffScreenState extends State<SuperAdminStaffScreen> {
             );
           },
         ),
+      ),
+    );
+  }
+}
+
+class _StaffBusinessInfoSection extends StatelessWidget {
+  final SuperAdminStaff staff;
+
+  const _StaffBusinessInfoSection({required this.staff});
+
+  Widget _row(String label, String? value) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 6),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SizedBox(
+            width: 72,
+            child: Text(
+              label,
+              style: const TextStyle(
+                color: DanjiColors.textSecondary,
+                fontSize: 12,
+              ),
+            ),
+          ),
+          Expanded(
+            child: Text(
+              (value == null || value.trim().isEmpty) ? '-' : value,
+              style: const TextStyle(
+                color: DanjiColors.textPrimary,
+                fontSize: 13,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return SectionCard(
+      padding: const EdgeInsets.all(12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          const Text(
+            '사업자 정보',
+            style: TextStyle(
+              fontWeight: FontWeight.w800,
+              fontSize: 14,
+            ),
+          ),
+          const SizedBox(height: 8),
+          if (!staff.hasBusinessInfo)
+            const Text(
+              '사업자 정보 미등록',
+              style: TextStyle(
+                color: DanjiColors.textMuted,
+                fontSize: 13,
+              ),
+            )
+          else ...[
+            _row('업체명', staff.businessName ?? staff.companyName),
+            _row('등록번호', staff.businessRegistrationNumber),
+            _row('주소', staff.businessAddress),
+            _row('대표자', staff.businessRepresentative),
+          ],
+        ],
       ),
     );
   }
@@ -895,7 +1023,9 @@ class _SuperAdminResidentsScreenState extends State<SuperAdminResidentsScreen> {
         return SuperAdminListCard(
           icon: Icons.person_outline,
           title: r.fullName ?? r.email ?? '이름 미등록',
-          subtitle: '${r.complexName} ${r.building ?? ''}동 ${r.unit ?? ''}호',
+          subtitle:
+              '${r.complexName} ${r.building ?? ''}동 ${r.unit ?? ''}호\n'
+              '${ResidentDisplay.joinAndRentalLine(joinedAt: r.createdAt, lastRentalAt: r.lastRentalAt)}',
           trailing: Wrap(
             spacing: 4,
             children: [

@@ -34,6 +34,52 @@ Future<void> launchRentalInquiryPhone(BuildContext context) async {
   }
 }
 
+/// 30일 이상 / 12개월 이상 대여 — 전화 문의 팝업
+Future<void> showExtendedRentalInquiryDialog(
+  BuildContext context, {
+  required String message,
+}) async {
+  final call = await showDialog<bool>(
+    context: context,
+    builder: (ctx) => AlertDialog(
+      backgroundColor: DanjiColors.surface,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      title: const Text(
+        '전화 문의',
+        style: TextStyle(
+          color: DanjiColors.textPrimary,
+          fontWeight: FontWeight.w800,
+        ),
+      ),
+      content: Text(
+        message,
+        style: const TextStyle(
+          color: DanjiColors.textSecondary,
+          height: 1.5,
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(ctx).pop(false),
+          child: const Text('닫기'),
+        ),
+        FilledButton(
+          onPressed: () => Navigator.of(ctx).pop(true),
+          style: FilledButton.styleFrom(
+            backgroundColor: DanjiColors.primaryBlue,
+            foregroundColor: Colors.white,
+          ),
+          child: const Text('전화 문의'),
+        ),
+      ],
+    ),
+  );
+
+  if (call == true && context.mounted) {
+    await launchRentalInquiryPhone(context);
+  }
+}
+
 /// 일반 렌트 문의 — 확인 후 전화 연결 (DB `app_support_contacts.rental_inquiry`)
 Future<void> showRentalInquiryDialog(BuildContext context) async {
   final phone = await SupportContactsService().fetchRentalInquiryPhone();

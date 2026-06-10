@@ -16,6 +16,7 @@ class RentalExtensionCheckResult {
   final String? emergencyPhone;
   final bool showEmergencyConsultation;
   final String? blockingReservationId;
+  final DateTime? blockingStartAt;
 
   const RentalExtensionCheckResult({
     required this.eligible,
@@ -33,6 +34,7 @@ class RentalExtensionCheckResult {
     this.emergencyPhone,
     this.showEmergencyConsultation = false,
     this.blockingReservationId,
+    this.blockingStartAt,
   });
 
   factory RentalExtensionCheckResult.fromMap(Map<String, dynamic> map) {
@@ -54,6 +56,7 @@ class RentalExtensionCheckResult {
       ),
       showEmergencyConsultation: map['showEmergencyConsultation'] == true,
       blockingReservationId: map['blockingReservationId']?.toString(),
+      blockingStartAt: _parseDate(map['blockingStartAt']),
     );
   }
 
