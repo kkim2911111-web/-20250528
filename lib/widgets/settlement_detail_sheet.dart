@@ -4,6 +4,7 @@ import 'package:intl/intl.dart';
 import '../models/rental_detail.dart';
 import '../models/super_admin_models.dart';
 import '../theme/danji_colors.dart';
+import '../utils/refund_status_display.dart';
 import 'rental_type_badge.dart';
 
 typedef RentalDetailItemTap = void Function(
@@ -20,7 +21,7 @@ extension SettlementDetailTabX on SettlementDetailTab {
   String title(int year, int month) {
     switch (this) {
       case SettlementDetailTab.rental:
-        return '완료 예약 상세 · $year년 $month월';
+        return '정산 기준 매출 · $year년 $month월';
       case SettlementDetailTab.payment:
         return '결제 내역 · $year년 $month월';
       case SettlementDetailTab.cancel:
@@ -31,7 +32,7 @@ extension SettlementDetailTabX on SettlementDetailTab {
   String emptyMessage() {
     switch (this) {
       case SettlementDetailTab.rental:
-        return '해당 월 완료 예약 내역이 없습니다.';
+        return '해당 월 정산 기준 매출 내역이 없습니다.';
       case SettlementDetailTab.payment:
         return '해당 월 결제 내역이 없습니다.';
       case SettlementDetailTab.cancel:
@@ -349,6 +350,11 @@ class _RentalList extends StatelessWidget {
                   ),
                 ),
               ),
+              RefundStatusBadge.forAmounts(
+                paidAmount: item.paidAmount,
+                refundAmount: item.refundAmount,
+              ),
+              const SizedBox(width: 6),
               RentalTypeBadge(rentalType: item.rentalType),
             ],
           ),
@@ -472,12 +478,22 @@ class _CancelList extends StatelessWidget {
                       refundAmount: item.refundAmount,
                     ),
                   ),
-          title: Text(
-            item.reservationNumberLabel,
-            style: const TextStyle(
-              fontWeight: FontWeight.w700,
-              fontSize: 14,
-            ),
+          title: Row(
+            children: [
+              Expanded(
+                child: Text(
+                  item.reservationNumberLabel,
+                  style: const TextStyle(
+                    fontWeight: FontWeight.w700,
+                    fontSize: 14,
+                  ),
+                ),
+              ),
+              RefundStatusBadge.forAmounts(
+                paidAmount: item.paidAmount,
+                refundAmount: item.refundAmount,
+              ),
+            ],
           ),
           subtitle: Text(
             '${item.renterName} · $cancelledAt\n'

@@ -464,6 +464,8 @@ class SuperAdminReservation {
   final int totalPrice;
   final DateTime? createdAt;
   final DateTime? cancelledAt;
+  final int paidAmount;
+  final int refundAmount;
   final List<String> pickupPhotos;
   final List<String> returnPhotos;
   final RentalType? rentalType;
@@ -488,6 +490,8 @@ class SuperAdminReservation {
     this.totalPrice = 0,
     this.createdAt,
     this.cancelledAt,
+    this.paidAmount = 0,
+    this.refundAmount = 0,
     this.pickupPhotos = const [],
     this.returnPhotos = const [],
     this.rentalType,
@@ -543,6 +547,8 @@ class SuperAdminReservation {
       totalPrice: (m['total_price'] as num?)?.toInt() ?? 0,
       createdAt: _dt(m['created_at']),
       cancelledAt: _dt(m['cancelled_at']),
+      paidAmount: (m['paid_amount'] as num?)?.toInt() ?? 0,
+      refundAmount: (m['refund_amount'] as num?)?.toInt() ?? 0,
       pickupPhotos: _stringList(m['pickup_photos']),
       returnPhotos: _stringList(m['return_photos']),
       rentalType: RentalType.fromDb(m['rental_type']?.toString()),
@@ -702,6 +708,9 @@ class SuperAdminSettlementReservation {
   final String? reservationNumber;
   final String renterName;
   final int totalPrice;
+  final String? status;
+  final int paidAmount;
+  final int refundAmount;
   final DateTime? startAt;
   final DateTime? endAt;
   final DateTime? rentalStartedAt;
@@ -721,6 +730,9 @@ class SuperAdminSettlementReservation {
     this.reservationNumber,
     required this.renterName,
     this.totalPrice = 0,
+    this.status,
+    this.paidAmount = 0,
+    this.refundAmount = 0,
     this.startAt,
     this.endAt,
     this.rentalStartedAt,
@@ -740,6 +752,9 @@ class SuperAdminSettlementReservation {
       reservationNumber: m['reservation_number']?.toString(),
       renterName: m['renter_name']?.toString() ?? '',
       totalPrice: (m['total_price'] as num?)?.toInt() ?? 0,
+      status: m['status']?.toString(),
+      paidAmount: (m['paid_amount'] as num?)?.toInt() ?? 0,
+      refundAmount: (m['refund_amount'] as num?)?.toInt() ?? 0,
       startAt: _dt(m['start_at']),
       endAt: _dt(m['end_at']),
       rentalStartedAt: _dt(m['rental_started_at']),

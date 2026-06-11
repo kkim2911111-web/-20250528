@@ -15,6 +15,7 @@ import '../../widgets/admin_reservation_card_extras.dart';
 import '../../widgets/return_inspection_photo_compare.dart';
 import '../../widgets/section_card.dart';
 import '../../widgets/settlement_detail_sheet.dart';
+import '../../widgets/vehicle_month_sales_sheet.dart';
 import '../../models/rental_detail.dart';
 import '../../utils/rental_detail_navigation.dart';
 import '../../utils/reservation_display.dart';
@@ -1985,6 +1986,42 @@ class _AdminSalesScreenState extends State<AdminSalesScreen> {
     });
   }
 
+  Future<void> _openVehicleSalesSheet(SalesRow row) async {
+    try {
+      final items = await _admin.fetchVehicleSalesRentals(
+        complexId: widget.profile.complexId,
+        year: _selectedMonth.year,
+        month: _selectedMonth.month,
+        vehicleName: row.vehicleName,
+      );
+      if (!mounted) return;
+      await showVehicleMonthSalesSheet(
+        context: context,
+        vehicleName: row.vehicleName,
+        year: _selectedMonth.year,
+        month: _selectedMonth.month,
+        items: items,
+      );
+    } catch (e) {
+      if (!mounted) return;
+      DanjiSnackBar.show(context, '매출 상세를 불러오지 못했습니다.');
+    }
+  }
+
+  Widget _monthSwipeWrapper({required Widget child}) {
+    return GestureDetector(
+      onHorizontalDragEnd: (details) {
+        final velocity = details.primaryVelocity ?? 0;
+        if (velocity < -180 && _canGoNextMonth) {
+          _shiftMonth(1);
+        } else if (velocity > 180) {
+          _shiftMonth(-1);
+        }
+      },
+      child: child,
+    );
+  }
+
   Future<void> _openSettlementDetail(
     SalesSummary summary, {
     SettlementDetailTab initialTab = SettlementDetailTab.rental,
@@ -2098,7 +2135,21 @@ class _AdminSalesScreenState extends State<AdminSalesScreen> {
             return const Center(child: CircularProgressIndicator());
           }
           final summary = snap.data ??
-              const SalesSummary(totalAmount: 0, reservationCount: 0, rows: []);
+              SalesSummary(
+                totalAmount: 0,
+                reservationCount: 0,
+                rows: const [],
+                monthHours: SalesSummary.monthHoursFor(
+                  year: _selectedMonth.year,
+                  month: _selectedMonth.month,
+                ),
+              );
+          final utilizationMonthHours = summary.monthHours > 0
+              ? summary.monthHours
+              : SalesSummary.monthHoursFor(
+                  year: _selectedMonth.year,
+                  month: _selectedMonth.month,
+                );
           return ListView(
             padding: const EdgeInsets.all(20),
             children: [
@@ -2216,33 +2267,47 @@ class _AdminSalesScreenState extends State<AdminSalesScreen> {
               const SizedBox(height: 16),
               _buildSettlementSection(summary),
               const SizedBox(height: 16),
-              const Text(
-                '차량별 가동률/수익률',
-                style: TextStyle(fontWeight: FontWeight.w800, fontSize: 16),
-              ),
-              const SizedBox(height: 4),
-              const Text(
-                '반납 완료 기준 · 가동률 = 실대여시간 합계 ÷ 744시간',
-                style: TextStyle(
-                  color: DanjiColors.textMuted,
-                  fontSize: 12,
-                ),
-              ),
-              const SizedBox(height: 10),
-              if (summary.utilizationRows.isEmpty)
-                SectionCard(
-                  child: Text('$monthLabel 등록 차량이 없습니다.'),
-                )
-              else
-                ...summary.utilizationRows.map(
-                  (row) => Padding(
-                    padding: const EdgeInsets.only(bottom: 10),
-                    child: _VehicleUtilizationCard(
-                      row: row,
-                      won: _won,
+              _monthSwipeWrapper(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    const Text(
+                      '차량별 가동률/수익률',
+                      style: TextStyle(fontWeight: FontWeight.w800, fontSize: 16),
                     ),
-                  ),
+                    const SizedBox(height: 8),
+                    MonthFilterBar(
+                      label: monthLabel,
+                      canGoNext: _canGoNextMonth,
+                      onPrevious: () => _shiftMonth(-1),
+                      onNext: _canGoNextMonth ? () => _shiftMonth(1) : null,
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      '반납 완료 기준 · 가동률 = 실대여시간 합계 ÷ $utilizationMonthHours시간',
+                      style: const TextStyle(
+                        color: DanjiColors.textMuted,
+                        fontSize: 12,
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+                    if (summary.utilizationRows.isEmpty)
+                      const SectionCard(
+                        child: Text('이 달 가동 데이터가 없습니다.'),
+                      )
+                    else
+                      ...summary.utilizationRows.map(
+                        (row) => Padding(
+                          padding: const EdgeInsets.only(bottom: 10),
+                          child: _VehicleUtilizationCard(
+                            row: row,
+                            won: _won,
+                          ),
+                        ),
+                      ),
+                  ],
                 ),
+              ),
               const SizedBox(height: 16),
               const Text(
                 '차량별 매출',
@@ -2258,6 +2323,7 @@ class _AdminSalesScreenState extends State<AdminSalesScreen> {
                     child: SectionCard(
                       child: ListTile(
                         contentPadding: EdgeInsets.zero,
+                        onTap: () => _openVehicleSalesSheet(row),
                         title: Text(
                           row.vehicleName,
                           style: const TextStyle(fontWeight: FontWeight.w800),

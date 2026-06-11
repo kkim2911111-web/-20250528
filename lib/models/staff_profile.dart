@@ -624,6 +624,7 @@ class SalesSummary {
   final bool isRequested;
   final List<SalesRow> rows;
   final List<VehicleUtilizationRow> utilizationRows;
+  final int monthHours;
 
   const SalesSummary({
     this.grossRevenue = 0,
@@ -638,6 +639,7 @@ class SalesSummary {
     this.isRequested = false,
     required this.rows,
     this.utilizationRows = const [],
+    this.monthHours = 0,
   });
 
   String get settlementBadgeLabel {
@@ -648,7 +650,15 @@ class SalesSummary {
     return '미정산';
   }
 
-  factory SalesSummary.fromRpc(Map<String, dynamic> m) {
+  static int monthHoursFor({required int year, required int month}) {
+    return DateTime(year, month + 1, 0).day * 24;
+  }
+
+  factory SalesSummary.fromRpc(
+    Map<String, dynamic> m, {
+    int? year,
+    int? month,
+  }) {
     final rowsRaw = m['rows'];
     final rows = rowsRaw is List
         ? rowsRaw
@@ -676,6 +686,11 @@ class SalesSummary {
     final extension = (m['extension_revenue'] as num?)?.toInt() ?? 0;
     final total = (m['total_revenue'] as num?)?.toInt() ?? (gross + extension);
 
+    final rpcMonthHours = (m['month_hours'] as num?)?.toInt() ?? 0;
+    final fallbackMonthHours = year != null && month != null
+        ? monthHoursFor(year: year, month: month)
+        : 0;
+
     return SalesSummary(
       grossRevenue: gross,
       extensionRevenue: extension,
@@ -691,6 +706,42 @@ class SalesSummary {
       isRequested: m['is_requested'] == true,
       rows: rows,
       utilizationRows: utilizationRows,
+      monthHours: rpcMonthHours > 0 ? rpcMonthHours : fallbackMonthHours,
+    );
+  }
+}
+
+class VehicleSalesRentalItem {
+  final String? reservationId;
+  final String? reservationNumber;
+  final String renterName;
+  final String rentalType;
+  final DateTime? sortAt;
+  final int grossAmount;
+
+  const VehicleSalesRentalItem({
+    this.reservationId,
+    this.reservationNumber,
+    required this.renterName,
+    required this.rentalType,
+    this.sortAt,
+    required this.grossAmount,
+  });
+
+  factory VehicleSalesRentalItem.fromRpc(Map<String, dynamic> m) {
+    DateTime? sortAt;
+    final rawSort = m['sort_at'];
+    if (rawSort is String && rawSort.isNotEmpty) {
+      sortAt = DateTime.tryParse(rawSort);
+    }
+
+    return VehicleSalesRentalItem(
+      reservationId: m['reservation_id']?.toString(),
+      reservationNumber: m['reservation_number']?.toString(),
+      renterName: m['renter_name']?.toString() ?? '임차인',
+      rentalType: m['rental_type']?.toString() ?? 'hourly',
+      sortAt: sortAt,
+      grossAmount: (m['gross_amount'] as num?)?.toInt() ?? 0,
     );
   }
 }

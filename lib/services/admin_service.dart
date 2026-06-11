@@ -1246,13 +1246,63 @@ class AdminService {
         },
       );
       if (data is Map) {
-        return SalesSummary.fromRpc(Map<String, dynamic>.from(data));
+        return SalesSummary.fromRpc(
+          Map<String, dynamic>.from(data),
+          year: targetYear,
+          month: targetMonth,
+        );
       }
     } on PostgrestException catch (e) {
       if (!_isAdminSalesSummaryRpcMissing(e)) rethrow;
     }
 
-    return const SalesSummary(totalAmount: 0, reservationCount: 0, rows: []);
+    return SalesSummary(
+      totalAmount: 0,
+      reservationCount: 0,
+      rows: const [],
+      monthHours: SalesSummary.monthHoursFor(
+        year: targetYear,
+        month: targetMonth,
+      ),
+    );
+  }
+
+  Future<List<VehicleSalesRentalItem>> fetchVehicleSalesRentals({
+    required String complexId,
+    required int year,
+    required int month,
+    required String vehicleName,
+  }) async {
+    try {
+      final data = await supabase.rpc(
+        'get_admin_vehicle_sales_rentals',
+        params: {
+          'p_complex_id': complexId,
+          'p_year': year,
+          'p_month': month,
+          'p_vehicle_name': vehicleName,
+        },
+      );
+      if (data is List) {
+        return data
+            .map(
+              (e) => VehicleSalesRentalItem.fromRpc(
+                Map<String, dynamic>.from(e as Map),
+              ),
+            )
+            .toList();
+      }
+    } on PostgrestException catch (e) {
+      if (!_isAdminVehicleSalesRentalsRpcMissing(e)) rethrow;
+    }
+    return const [];
+  }
+
+  bool _isAdminVehicleSalesRentalsRpcMissing(PostgrestException e) {
+    final msg = e.message.toLowerCase();
+    return e.code == 'PGRST202' ||
+        msg.contains('get_admin_vehicle_sales_rentals') ||
+        msg.contains('could not find the function');
   }
 
   Future<SuperAdminSettlementSheet> fetchSettlementSheet({

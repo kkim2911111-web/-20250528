@@ -6,6 +6,7 @@ import '../../services/super_admin_service.dart';
 import '../../theme/danji_colors.dart';
 import '../../utils/danji_snackbar.dart';
 import '../../utils/reservation_status_badge.dart';
+import '../../utils/refund_status_display.dart';
 import '../../utils/super_admin_reservation_sort.dart';
 import '../../widgets/admin_scaffold.dart';
 import '../../widgets/danji_app_bar.dart';
@@ -97,7 +98,7 @@ class _SuperAdminReservationsScreenState
         filterDate: _filterDate,
       );
     }).toList();
-    sortSuperAdminReservationsByRentalAxis(filtered);
+    sortSuperAdminReservations(filtered, filterDate: _filterDate);
     return filtered;
   }
 
@@ -205,7 +206,8 @@ class _SuperAdminReservationsScreenState
       separatorBuilder: (_, __) => const SizedBox(height: 10),
       itemBuilder: (_, i) {
         final r = filtered[i];
-        final isCancelled = r.status.trim().toLowerCase() == 'cancelled';
+        final isCancelled = superAdminReservationIsCancelled(r);
+        final axisLabel = superAdminReservationAxisLabel(r);
         final statusLabel = resolveReservationStatusStyle(
           status: r.status,
           isNoShow: r.isNoShow,
@@ -214,11 +216,22 @@ class _SuperAdminReservationsScreenState
           icon: Icons.event_note_outlined,
           title: '${r.vehicleName} · ${r.renterName}',
           subtitle: isCancelled
-              ? '${r.complexName} · ₩${superAdminWon.format(r.totalPrice)}'
-              : '${r.complexName} · $statusLabel · '
+              ? '$axisLabel · ${r.complexName} · '
+                  '₩${superAdminWon.format(r.totalPrice)}'
+              : '$axisLabel · ${r.complexName} · $statusLabel · '
                   '₩${superAdminWon.format(r.totalPrice)}',
           titleSuffix: isCancelled
-              ? const ReservationStatusBadge(status: 'cancelled')
+              ? Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    RefundStatusBadge.forAmounts(
+                      paidAmount: r.paidAmount,
+                      refundAmount: r.refundAmount,
+                    ),
+                    const SizedBox(width: 6),
+                    const ReservationStatusBadge(status: 'cancelled'),
+                  ],
+                )
               : null,
           onTap: () => _openDetail(r),
         );
@@ -317,6 +330,18 @@ class _SuperAdminReservationsScreenState
                         ),
                       ],
                     ],
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: Text(
+                    superAdminReservationSortHint(filterDate: _filterDate),
+                    style: const TextStyle(
+                      color: DanjiColors.textMuted,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                    ),
                   ),
                 ),
               ],
