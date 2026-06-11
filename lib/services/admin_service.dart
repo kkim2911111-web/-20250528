@@ -1065,16 +1065,70 @@ class AdminService {
     return all;
   }
 
+  /// RPC에 reservation_number가 없을 때(레거시 RPC) 표시용 번호 보강
+  Future<void> _enrichAdminReservationRowsWithNumbers(
+    List<Map<String, dynamic>> rows,
+  ) async {
+    if (rows.isEmpty) return;
+
+    final needsEnrich = rows.any((r) {
+      final existing = r['reservation_number']?.toString().trim();
+      return existing == null || existing.isEmpty;
+    });
+    if (!needsEnrich) return;
+
+    final ids = rows
+        .map((r) => r['reservation_id'] ?? r['id'])
+        .map((v) => v?.toString().trim())
+        .whereType<String>()
+        .where((id) => id.isNotEmpty)
+        .toSet()
+        .toList();
+    if (ids.isEmpty) return;
+
+    try {
+      final fetched = await supabase
+          .from('reservations')
+          .select('id, reservation_number')
+          .inFilter('id', ids);
+      final byId = <String, String>{};
+      for (final raw in fetched as List) {
+        final m = Map<String, dynamic>.from(raw as Map);
+        final id = m['id']?.toString();
+        final number = m['reservation_number']?.toString().trim();
+        if (id != null && number != null && number.isNotEmpty) {
+          byId[id] = number;
+        }
+      }
+      for (final r in rows) {
+        final existing = r['reservation_number']?.toString().trim();
+        if (existing != null && existing.isNotEmpty) continue;
+        final id = (r['reservation_id'] ?? r['id'])?.toString();
+        final number = id != null ? byId[id] : null;
+        if (number != null) {
+          r['reservation_number'] = number;
+        }
+      }
+    } on PostgrestException {
+      // RLS 등 — 레거시 #id 표시 유지
+    }
+  }
+
   Future<List<Map<String, dynamic>>> getAdminReservationsWithConflict() async {
     try {
-      return await _fetchRpcAllPages('get_admin_reservations_with_conflict');
+      final rows =
+          await _fetchRpcAllPages('get_admin_reservations_with_conflict');
+      await _enrichAdminReservationRowsWithNumbers(rows);
+      return rows;
     } on PostgrestException catch (e) {
       if (_isReservationRpcPaginationUnsupported(e)) {
         try {
           final data =
               await supabase.rpc('get_admin_reservations_with_conflict');
           if (data == null) return [];
-          return List<Map<String, dynamic>>.from(data as List);
+          final rows = List<Map<String, dynamic>>.from(data as List);
+          await _enrichAdminReservationRowsWithNumbers(rows);
+          return rows;
         } on PostgrestException catch (fallback) {
           throw AdminException(mapAdminPostgrestError(fallback));
         }
@@ -1097,13 +1151,18 @@ class AdminService {
 
   Future<List<Map<String, dynamic>>> getAdminCompletedReservations() async {
     try {
-      return await _fetchRpcAllPages('get_admin_completed_reservations');
+      final rows =
+          await _fetchRpcAllPages('get_admin_completed_reservations');
+      await _enrichAdminReservationRowsWithNumbers(rows);
+      return rows;
     } on PostgrestException catch (e) {
       if (_isReservationRpcPaginationUnsupported(e)) {
         try {
           final data = await supabase.rpc('get_admin_completed_reservations');
           if (data == null) return [];
-          return List<Map<String, dynamic>>.from(data as List);
+          final rows = List<Map<String, dynamic>>.from(data as List);
+          await _enrichAdminReservationRowsWithNumbers(rows);
+          return rows;
         } on PostgrestException catch (fallback) {
           throw AdminException(mapAdminPostgrestError(fallback));
         }
@@ -1212,19 +1271,29 @@ class AdminService {
     final ids = (vehicles as List).map((v) => v['id']).toList();
     if (ids.isEmpty) return [];
 
-    final rows = await supabase
-        .from('reservations')
-        .select(
-          'id, user_id, reservation_number, status, total_price, start_at, start_time, '
-          'end_at, end_time, rental_started_at, '
-          'user_profiles(full_name, name, email), '
-          'vehicles(model_name, car_number, parking_location, last_latitude, last_longitude, last_location_updated_at)',
-        )
-        .inFilter('vehicle_id', ids)
-        .eq('status', 'in_use')
-        .order('rental_started_at', ascending: false);
+    const baseSelect =
+        'id, user_id, reservation_number, status, total_price, start_at, start_time, '
+        'end_at, end_time, rental_started_at, '
+        'vehicles(model_name, car_number, parking_location, last_latitude, last_longitude, last_location_updated_at)';
 
-    final list = (rows as List)
+    List<dynamic> rows;
+    try {
+      rows = await supabase
+          .from('reservations')
+          .select('$baseSelect, user_profiles!left(full_name, name, email)')
+          .inFilter('vehicle_id', ids)
+          .eq('status', 'in_use')
+          .order('rental_started_at', ascending: false);
+    } on PostgrestException {
+      rows = await supabase
+          .from('reservations')
+          .select(baseSelect)
+          .inFilter('vehicle_id', ids)
+          .eq('status', 'in_use')
+          .order('rental_started_at', ascending: false);
+    }
+
+    final list = rows
         .map((r) => Map<String, dynamic>.from(r as Map))
         .toList();
 
