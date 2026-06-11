@@ -6,6 +6,7 @@ import '../../services/super_admin_service.dart';
 import '../../theme/danji_colors.dart';
 import '../../utils/danji_snackbar.dart';
 import '../../utils/reservation_status_badge.dart';
+import '../../utils/super_admin_reservation_sort.dart';
 import '../../widgets/admin_scaffold.dart';
 import '../../widgets/danji_app_bar.dart';
 import '../../widgets/inspection_photo_compare_panel.dart';
@@ -83,26 +84,21 @@ class _SuperAdminReservationsScreenState
   }
 
   List<SuperAdminReservation> _filter(List<SuperAdminReservation> all) {
-    return all.where((r) {
+    final filtered = all.where((r) {
       if (_complexFilter != null &&
           _complexFilter!.isNotEmpty &&
           r.complexId != _complexFilter) {
         return false;
       }
-      final start = r.startAt;
-      if (start == null) return _filterDate == null;
-
-      final local = start.toLocal();
-      if (local.year != _year || local.month != _month) {
-        return false;
-      }
-      if (_filterDate != null) {
-        return local.year == _filterDate!.year &&
-            local.month == _filterDate!.month &&
-            local.day == _filterDate!.day;
-      }
-      return true;
+      return superAdminReservationMatchesMonth(
+        reservation: r,
+        year: _year,
+        month: _month,
+        filterDate: _filterDate,
+      );
     }).toList();
+    sortSuperAdminReservationsByRentalAxis(filtered);
+    return filtered;
   }
 
   Future<bool> _confirmAction({
@@ -209,6 +205,7 @@ class _SuperAdminReservationsScreenState
       separatorBuilder: (_, __) => const SizedBox(height: 10),
       itemBuilder: (_, i) {
         final r = filtered[i];
+        final isCancelled = r.status.trim().toLowerCase() == 'cancelled';
         final statusLabel = resolveReservationStatusStyle(
           status: r.status,
           isNoShow: r.isNoShow,
@@ -216,8 +213,13 @@ class _SuperAdminReservationsScreenState
         return SuperAdminListCard(
           icon: Icons.event_note_outlined,
           title: '${r.vehicleName} · ${r.renterName}',
-          subtitle: '${r.complexName} · $statusLabel · '
-              '₩${superAdminWon.format(r.totalPrice)}',
+          subtitle: isCancelled
+              ? '${r.complexName} · ₩${superAdminWon.format(r.totalPrice)}'
+              : '${r.complexName} · $statusLabel · '
+                  '₩${superAdminWon.format(r.totalPrice)}',
+          titleSuffix: isCancelled
+              ? const ReservationStatusBadge(status: 'cancelled')
+              : null,
           onTap: () => _openDetail(r),
         );
       },

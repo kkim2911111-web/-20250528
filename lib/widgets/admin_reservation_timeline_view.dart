@@ -325,6 +325,27 @@ class _AdminReservationTimelineViewState
     _scheduleInitialScroll(force: true);
   }
 
+  void _onReservationBlockTap(
+    AdminTimelineReservation reservation,
+    AdminVehicleDetail vehicle,
+  ) {
+    final type = reservation.rentalType;
+    if (type == RentalType.daily || type == RentalType.monthly) {
+      _showVehicleReservationsSheet(vehicle);
+      return;
+    }
+    if (_mode == _TimelineDisplayMode.month) {
+      final start = reservation.startAt;
+      if (start != null &&
+          start.year == widget.year &&
+          start.month == widget.month) {
+        _openDayView(start.day);
+        return;
+      }
+    }
+    _showReservationPopup(reservation);
+  }
+
   void _returnToMonthView() {
     setState(() {
       _mode = _TimelineDisplayMode.month;
@@ -712,6 +733,7 @@ class _AdminReservationTimelineViewState
     required int lane,
     required int laneCount,
     required String? label,
+    required VoidCallback onTap,
   }) {
     if (width <= 0) return const SizedBox.shrink();
 
@@ -728,7 +750,7 @@ class _AdminReservationTimelineViewState
       top: top,
       height: height,
       child: GestureDetector(
-        onTap: () => _showReservationPopup(reservation),
+        onTap: onTap,
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 3),
           alignment: Alignment.centerLeft,
@@ -966,6 +988,7 @@ class _AdminReservationTimelineViewState
               lane: laneInfo.lane,
               laneCount: laneInfo.laneCount,
               label: _monthBlockLabel(reservation, rect.width),
+              onTap: () => _onReservationBlockTap(reservation, vehicle),
             );
           }),
         ],
@@ -1024,6 +1047,7 @@ class _AdminReservationTimelineViewState
               lane: laneInfo.lane,
               laneCount: laneInfo.laneCount,
               label: _dayBlockLabel(reservation, rect.width),
+              onTap: () => _onReservationBlockTap(reservation, vehicle),
             );
           }),
         ],

@@ -26,6 +26,7 @@ import 'notification_list_screen.dart';
 import '../utils/accident_emergency_flow.dart';
 import '../utils/rental_extension_flow.dart';
 import '../utils/rental_navigation.dart';
+import '../utils/time_remaining_format.dart';
 import '../utils/booking_eligibility.dart';
 import '../utils/cancel_refund_policy.dart';
 import '../widgets/reservation_cancel_dialog.dart';
@@ -546,13 +547,7 @@ String? _remainingTimeLine(Reservation reservation) {
 }
 
 String _formatTimeRemaining(DateTime end) {
-  final diff = end.difference(DateTime.now());
-  if (diff.isNegative) return '종료';
-  if (diff.inHours >= 1) {
-    return '${diff.inHours}시간 ${diff.inMinutes % 60}분 남음';
-  }
-  if (diff.inMinutes >= 1) return '${diff.inMinutes}분 남음';
-  return '곧 종료';
+  return formatTimeRemaining(end.difference(DateTime.now()));
 }
 
 /// 퀵메뉴 예약취소 — 대여 시작 전 이용 대기 예약

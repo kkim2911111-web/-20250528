@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../theme/danji_colors.dart';
 import '../widgets/danji_app_bar.dart';
+import '../widgets/rental_inquiry_button.dart';
 import 'support_pages.dart';
 
 class _GuideSection {
@@ -113,6 +114,17 @@ class UsageGuideScreen extends StatelessWidget {
             ),
             const SizedBox(height: 20),
           ],
+          const _GuideAccordionTile(
+            title: '자동차사고 보험대차',
+            icon: Icons.shield_outlined,
+            body:
+                '자동차 사고로 차량 이용이 필요할 때, 단지 내 보험대차 차량을 '
+                '바로 예약·이용할 수 있습니다.\n'
+                '보험사 대차 승인 후 전화 문의를 주시면 안내해 드립니다.',
+          ),
+          const SizedBox(height: 12),
+          const RentalInquiryButton(),
+          const SizedBox(height: 20),
           for (final section in _sections) ...[
             _GuideAccordionTile(
               title: section.title,
@@ -125,6 +137,7 @@ class UsageGuideScreen extends StatelessWidget {
           _GuideNavTile(
             title: '자주 묻는 질문',
             icon: Icons.help_outline,
+            emphasized: true,
             onTap: () {
               Navigator.of(context).push(
                 MaterialPageRoute(builder: (_) => const FaqScreen()),
@@ -195,17 +208,24 @@ class _GuideNavTile extends StatelessWidget {
   final String title;
   final IconData icon;
   final VoidCallback onTap;
+  final bool emphasized;
 
   const _GuideNavTile({
     required this.title,
     required this.icon,
     required this.onTap,
+    this.emphasized = false,
   });
 
   @override
   Widget build(BuildContext context) {
+    final bg = emphasized ? const Color(0xFFE8F1FF) : DanjiColors.surface;
+    final border = emphasized ? DanjiColors.buttonBlue : DanjiColors.border;
+    final titleColor =
+        emphasized ? DanjiColors.buttonBlue : DanjiColors.textPrimary;
+
     return Material(
-      color: DanjiColors.surface,
+      color: bg,
       borderRadius: BorderRadius.circular(14),
       child: InkWell(
         onTap: onTap,
@@ -213,7 +233,7 @@ class _GuideNavTile extends StatelessWidget {
         child: Container(
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(14),
-            border: Border.all(color: DanjiColors.border),
+            border: Border.all(color: border),
           ),
           padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
           child: Row(
@@ -223,16 +243,18 @@ class _GuideNavTile extends StatelessWidget {
               Expanded(
                 child: Text(
                   title,
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontWeight: FontWeight.w700,
                     fontSize: 15,
-                    color: DanjiColors.textPrimary,
+                    color: titleColor,
                   ),
                 ),
               ),
-              const Icon(
+              Icon(
                 Icons.chevron_right,
-                color: DanjiColors.textMuted,
+                color: emphasized
+                    ? DanjiColors.buttonBlue
+                    : DanjiColors.textMuted,
               ),
             ],
           ),

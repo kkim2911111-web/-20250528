@@ -8,6 +8,7 @@ import '../../services/admin_service.dart';
 import '../../theme/danji_colors.dart';
 import '../../utils/danji_snackbar.dart';
 import '../../utils/resident_display.dart';
+import '../../utils/reservation_status_badge.dart';
 import '../../widgets/admin_license_review_list.dart';
 import '../../widgets/admin_scaffold.dart';
 import '../../widgets/danji_app_bar.dart';
@@ -433,16 +434,27 @@ class _UsageHistoryTab extends StatelessWidget {
             final start = _parse(r['start_at']);
             final end = _parse(r['end_at']);
             final status = r['status']?.toString() ?? '';
+            final isNoShow = r['is_no_show'] == true;
             final price = (r['total_price'] as num?)?.toInt() ?? 0;
             return SectionCard(
               child: ListTile(
                 contentPadding: EdgeInsets.zero,
-                title: Text(
-                  r['vehicle_name']?.toString() ?? '차량',
-                  style: const TextStyle(fontWeight: FontWeight.w700),
+                title: Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        r['vehicle_name']?.toString() ?? '차량',
+                        style: const TextStyle(fontWeight: FontWeight.w700),
+                      ),
+                    ),
+                    ReservationStatusBadge(
+                      status: status,
+                      isNoShow: isNoShow,
+                    ),
+                  ],
                 ),
                 subtitle: Text(
-                  '${r['renter_name'] ?? '—'} · $status · '
+                  '${r['renter_name'] ?? '—'} · '
                   '${r['car_number'] ?? '번호 미등록'}\n'
                   '${start != null ? dateTime.format(start) : '-'}'
                   '${end != null ? ' ~ ${dateTime.format(end)}' : ''}\n'

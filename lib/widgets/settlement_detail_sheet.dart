@@ -245,6 +245,7 @@ class SettlementDetailList extends StatelessWidget {
           child: switch (tab) {
             SettlementDetailTab.rental => _RentalList(
                 items: sheet.items,
+                paymentItems: sheet.paymentItems,
                 emptyMessage: tab.emptyMessage(),
                 onItemTap: onItemTap,
               ),
@@ -291,11 +292,13 @@ class SettlementReservationList extends StatelessWidget {
 
 class _RentalList extends StatelessWidget {
   final List<SuperAdminSettlementReservation> items;
+  final List<SuperAdminSettlementPaymentItem> paymentItems;
   final String emptyMessage;
   final RentalDetailItemTap? onItemTap;
 
   const _RentalList({
     required this.items,
+    this.paymentItems = const [],
     required this.emptyMessage,
     this.onItemTap,
   });
@@ -319,6 +322,17 @@ class _RentalList extends StatelessWidget {
         final period =
             '${item.displayRentalStartAt != null ? _dateTime.format(item.displayRentalStartAt!.toLocal()) : '-'} ~ '
             '${item.displayRentalEndAt != null ? _dateTime.format(item.displayRentalEndAt!.toLocal()) : '-'}';
+        DateTime? paidAt;
+        for (final payment in paymentItems) {
+          if (payment.reservationId == item.reservationId) {
+            if (paidAt == null || (payment.paidAt?.isAfter(paidAt) ?? false)) {
+              paidAt = payment.paidAt;
+            }
+          }
+        }
+        final paidAtLabel = paidAt != null
+            ? _dateTime.format(paidAt.toLocal())
+            : null;
         return ListTile(
           contentPadding: EdgeInsets.zero,
           onTap: onItemTap == null
@@ -339,7 +353,9 @@ class _RentalList extends StatelessWidget {
             ],
           ),
           subtitle: Text(
-            '${item.renterName} · $period',
+            paidAtLabel != null
+                ? '${item.renterName} · $period\n결제 $paidAtLabel'
+                : '${item.renterName} · $period',
             style: const TextStyle(fontSize: 13),
           ),
           trailing: Text(

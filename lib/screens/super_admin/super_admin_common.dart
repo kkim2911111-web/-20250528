@@ -160,6 +160,7 @@ class SuperAdminListCard extends StatelessWidget {
   final String title;
   final String subtitle;
   final Widget? titlePrefix;
+  final Widget? titleSuffix;
   final Widget? trailing;
   final VoidCallback? onTap;
 
@@ -169,6 +170,7 @@ class SuperAdminListCard extends StatelessWidget {
     required this.title,
     required this.subtitle,
     this.titlePrefix,
+    this.titleSuffix,
     this.trailing,
     this.onTap,
   });
@@ -195,6 +197,10 @@ class SuperAdminListCard extends StatelessWidget {
                 ),
               ),
             ),
+            if (titleSuffix != null) ...[
+              const SizedBox(width: 6),
+              titleSuffix!,
+            ],
           ],
         ),
         subtitle: Text(

@@ -351,7 +351,7 @@ class _MyPageScreenState extends State<MyPageScreen> {
                     ),
                     _MenuItem(
                       icon: Icons.help_outline,
-                      iconColor: DanjiColors.toneRed,
+                      iconColor: DanjiColors.buttonBlue,
                       title: '자주 묻는 질문',
                       onTap: () {
                         Navigator.of(context).push(

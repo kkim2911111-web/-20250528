@@ -463,6 +463,7 @@ class SuperAdminReservation {
   final DateTime? actualEndAt;
   final int totalPrice;
   final DateTime? createdAt;
+  final DateTime? cancelledAt;
   final List<String> pickupPhotos;
   final List<String> returnPhotos;
   final RentalType? rentalType;
@@ -486,6 +487,7 @@ class SuperAdminReservation {
     this.actualEndAt,
     this.totalPrice = 0,
     this.createdAt,
+    this.cancelledAt,
     this.pickupPhotos = const [],
     this.returnPhotos = const [],
     this.rentalType,
@@ -540,6 +542,7 @@ class SuperAdminReservation {
       actualEndAt: _dt(m['actual_end_at']),
       totalPrice: (m['total_price'] as num?)?.toInt() ?? 0,
       createdAt: _dt(m['created_at']),
+      cancelledAt: _dt(m['cancelled_at']),
       pickupPhotos: _stringList(m['pickup_photos']),
       returnPhotos: _stringList(m['return_photos']),
       rentalType: RentalType.fromDb(m['rental_type']?.toString()),

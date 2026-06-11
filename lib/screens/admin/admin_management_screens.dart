@@ -964,6 +964,8 @@ class _AdminReturnInspectionScreenState
   final _date = DateFormat('yyyy-MM-dd HH:mm');
   Future<List<AdminReservationRow>>? _pendingFuture;
   Future<List<AdminReservationRow>>? _completedFuture;
+  int _pendingCount = 0;
+  int _completedCount = 0;
 
   @override
   void initState() {
@@ -972,17 +974,27 @@ class _AdminReturnInspectionScreenState
   }
 
   void _reload() {
+    // 검수 대기: 고객 반납 완료(returned), 관리자 미확인
+    final pendingFuture = _admin.fetchReturnInspections(
+      widget.profile.complexId,
+      status: 'returned',
+    );
+    // 검수 완료: 관리자 검수 완료 버튼 처리(completed)
+    final completedFuture = _admin.fetchReturnInspections(
+      widget.profile.complexId,
+      status: 'completed',
+    );
+    pendingFuture.then((rows) {
+      if (!mounted) return;
+      setState(() => _pendingCount = rows.length);
+    });
+    completedFuture.then((rows) {
+      if (!mounted) return;
+      setState(() => _completedCount = rows.length);
+    });
     setState(() {
-      // 검수 대기: 고객 반납 완료(returned), 관리자 미확인
-      _pendingFuture = _admin.fetchReturnInspections(
-        widget.profile.complexId,
-        status: 'returned',
-      );
-      // 검수 완료: 관리자 검수 완료 버튼 처리(completed)
-      _completedFuture = _admin.fetchReturnInspections(
-        widget.profile.complexId,
-        status: 'completed',
-      );
+      _pendingFuture = pendingFuture;
+      _completedFuture = completedFuture;
     });
   }
 
@@ -1027,9 +1039,9 @@ class _AdminReturnInspectionScreenState
                     fontSize: 14,
                     fontWeight: FontWeight.w600,
                   ),
-                  tabs: const [
-                    Tab(text: '검수 대기'),
-                    Tab(text: '검수 완료'),
+                  tabs: [
+                    Tab(text: '검수대기 ($_pendingCount)'),
+                    Tab(text: '완료 ($_completedCount)'),
                   ],
                 ),
               ),
