@@ -1011,6 +1011,21 @@ String friendlyPaymentError(Object error) {
     return friendlyNetworkError(error);
   }
   if (error is PostgrestException) {
+    final msg = error.message.toLowerCase();
+    if (msg.contains('invalid_monthly_duration')) {
+      return '선택하신 기간의 월 대여 요금을 계산할 수 없습니다.\n'
+          '기간을 다시 선택하거나 전화로 문의해 주세요.';
+    }
+    if (msg.contains('price_mismatch')) {
+      return '요금 정보가 변경되었습니다.\n화면을 새로고침한 뒤 다시 시도해 주세요.';
+    }
+    if (msg.contains('time_overlap')) {
+      return '선택하신 시간에 이미 예약된 차량입니다.\n다른 차량이나 시간을 선택해 주세요.';
+    }
+    if (msg.contains('numeric time zone')) {
+      return '결제 서버 설정 오류입니다.\n'
+          '잠시 후 다시 시도하거나 관리자에게 문의해 주세요.';
+    }
     return error.message;
   }
   final text = error.toString();

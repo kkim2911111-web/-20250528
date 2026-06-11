@@ -887,15 +887,15 @@ class _BookingScreenState extends State<BookingScreen> {
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
       builder: (sheetContext) {
+        var sheetFocused = _tableCalendarDay(focusedDay);
         return StatefulBuilder(
           builder: (context, setSheetState) {
-            var focused = _tableCalendarDay(focusedDay);
             final calendarToday = _tableCalendarDay(DateTime.now());
             final firstDay = calendarFirstDay ?? calendarToday;
             final lastDay = calendarLastDay ??
                 calendarToday.add(const Duration(days: 365));
-            if (focused.isBefore(firstDay)) focused = firstDay;
-            if (focused.isAfter(lastDay)) focused = lastDay;
+            if (sheetFocused.isBefore(firstDay)) sheetFocused = firstDay;
+            if (sheetFocused.isAfter(lastDay)) sheetFocused = lastDay;
             return SafeArea(
               child: Padding(
                 padding: const EdgeInsets.fromLTRB(8, 12, 8, 16),
@@ -916,7 +916,7 @@ class _BookingScreenState extends State<BookingScreen> {
                     TableCalendar<void>(
                       firstDay: firstDay,
                       lastDay: lastDay,
-                      focusedDay: focused,
+                      focusedDay: sheetFocused,
                       availableGestures: AvailableGestures.all,
                       currentDay: calendarToday,
                       selectedDayPredicate: (d) =>
@@ -974,9 +974,9 @@ class _BookingScreenState extends State<BookingScreen> {
                         await onSelected(pickedDay, newFocused);
                       },
                       onPageChanged: (newFocused) {
-                        final d = _tableCalendarDay(newFocused);
+                        sheetFocused = _tableCalendarDay(newFocused);
                         onFocusedChanged(newFocused);
-                        setSheetState(() => focused = d);
+                        setSheetState(() {});
                       },
                     ),
                   ],

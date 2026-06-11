@@ -314,18 +314,6 @@ class _MyPageScreenState extends State<MyPageScreen> {
                 _MenuCard(
                   items: [
                     _MenuItem(
-                      icon: Icons.menu_book_outlined,
-                      iconColor: DanjiColors.brandBlue,
-                      title: '이용안내',
-                      onTap: () {
-                        Navigator.of(context).push(
-                          MaterialPageRoute(
-                            builder: (_) => const UsageGuideScreen(),
-                          ),
-                        );
-                      },
-                    ),
-                    _MenuItem(
                       icon: Icons.campaign_outlined,
                       iconColor: DanjiColors.brandBlue,
                       title: '공지사항',
@@ -345,6 +333,18 @@ class _MyPageScreenState extends State<MyPageScreen> {
                         Navigator.of(context).push(
                           MaterialPageRoute(
                             builder: (_) => const CustomerServiceScreen(),
+                          ),
+                        );
+                      },
+                    ),
+                    _MenuItem(
+                      icon: Icons.menu_book_outlined,
+                      iconColor: DanjiColors.brandBlue,
+                      title: '이용안내',
+                      onTap: () {
+                        Navigator.of(context).push(
+                          MaterialPageRoute(
+                            builder: (_) => const UsageGuideScreen(),
                           ),
                         );
                       },
