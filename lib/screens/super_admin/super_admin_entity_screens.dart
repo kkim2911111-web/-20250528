@@ -475,7 +475,12 @@ class _SuperAdminVehiclesScreenState extends State<SuperAdminVehiclesScreen> {
                     : (v.isAvailable ? SuperAdminUiColors.availableGreen : DanjiColors.textMuted),
               ),
               SuperAdminChip(
-                label: '₩${superAdminWon.format(v.pricePerHour)}/h',
+                label: RentalPricing.cardUnitPriceLabel(
+                  pricePerHour: v.pricePerHour,
+                  dailyPrice: v.dailyPrice,
+                  monthlyPrice: v.monthlyPrice,
+                  rentalTypes: v.rentalTypes,
+                ),
                 color: DanjiColors.buttonBlue,
               ),
             ],
@@ -645,7 +650,12 @@ class _SuperAdminVehiclesScreenState extends State<SuperAdminVehiclesScreen> {
                           title: '${v.modelName} · ${v.complexName}',
                           subtitle: '${v.carNumber ?? '번호 미등록'} · '
                               '${v.inUse ? '대여중' : (v.isAvailable ? '가용' : '비가용')} · '
-                              '₩${superAdminWon.format(v.pricePerHour)}/h',
+                              '${RentalPricing.cardUnitPriceLabel(
+                                pricePerHour: v.pricePerHour,
+                                dailyPrice: v.dailyPrice,
+                                monthlyPrice: v.monthlyPrice,
+                                rentalTypes: v.rentalTypes,
+                              )}',
                           trailing: Icon(
                             v.inUse
                                 ? Icons.navigation_outlined

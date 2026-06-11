@@ -104,6 +104,26 @@ void main() {
         RentalPricing.displayUnitPriceLabel(vehicle, RentalType.hourly),
         '₩1,100,000/월',
       );
+      expect(
+        RentalPricing.cardUnitPriceLabel(
+          pricePerHour: vehicle.pricePerHour,
+          dailyPrice: vehicle.dailyPrice,
+          monthlyPrice: vehicle.monthlyPrice,
+          rentalTypes: vehicle.rentalTypes,
+        ),
+        '₩1,100,000/월',
+      );
+    });
+
+    test('일 전용 차량 카드 요금 — ₩N/일', () {
+      expect(
+        RentalPricing.cardUnitPriceLabel(
+          pricePerHour: 0,
+          dailyPrice: 85000,
+          rentalTypes: const [RentalType.daily],
+        ),
+        '₩85,000/일',
+      );
     });
   });
 }

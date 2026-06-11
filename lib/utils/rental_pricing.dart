@@ -172,6 +172,30 @@ class RentalPricing {
     return unitPriceLabel(vehicle, billingType);
   }
 
+  /// 관리·목록 카드용 대표 단가 (입주민 카드와 동일, ₩0/h 방지)
+  static String cardUnitPriceLabel({
+    required int pricePerHour,
+    int? dailyPrice,
+    int? monthlyPrice,
+    required List<RentalType> rentalTypes,
+  }) {
+    final vehicle = Vehicle(
+      id: '',
+      complexId: '',
+      name: '',
+      vehicleType: '기타',
+      pricePerHour: pricePerHour,
+      dailyPrice: dailyPrice,
+      monthlyPrice: monthlyPrice,
+      rentalTypes: rentalTypes.isEmpty ? const [RentalType.hourly] : rentalTypes,
+      isAvailable: true,
+    );
+    return displayUnitPriceLabel(
+      vehicle,
+      representativeRentalType(vehicle),
+    );
+  }
+
   static String _formatWon(int amount) {
     final s = amount.toString();
     final buf = StringBuffer('₩');

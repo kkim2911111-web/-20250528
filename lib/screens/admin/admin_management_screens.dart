@@ -20,6 +20,7 @@ import '../../utils/rental_detail_navigation.dart';
 import '../../utils/reservation_display.dart';
 import '../../widgets/rental_type_badge.dart';
 import '../../widgets/reservation_times_panel.dart';
+import '../../utils/rental_pricing.dart';
 import '../../utils/vehicle_exposure_status.dart';
 import '../../utils/vehicle_insurance_status.dart';
 import 'admin_vehicle_detail_screen.dart';
@@ -229,7 +230,12 @@ class _AdminVehicleManageScreenState extends State<AdminVehicleManageScreen> {
               return _AdminVehicleManageCard(
                 vehicle: v,
                 complexLabel: _vehicleComplexLabel(v, widget.profile),
-                priceLabel: '₩${_won.format(v.pricePerHour)}/h',
+                priceLabel: RentalPricing.cardUnitPriceLabel(
+                  pricePerHour: v.pricePerHour,
+                  dailyPrice: v.dailyPrice,
+                  monthlyPrice: v.monthlyPrice,
+                  rentalTypes: v.rentalTypes,
+                ),
                 onOpenDetail: () async {
                   final ok = await Navigator.of(context).push<bool>(
                     MaterialPageRoute(
