@@ -96,6 +96,13 @@ class _ReservationDetailScreenState extends State<ReservationDetailScreen> {
               const SizedBox(height: 8),
               _InfoChip(label: reservation.statusLabel),
               const SizedBox(height: 20),
+              if (reservation.rentalDurationLabel != null) ...[
+                _InfoRow(
+                  label: '대여 기간',
+                  value: reservation.rentalDurationLabel!,
+                ),
+                const SizedBox(height: 8),
+              ],
               _InfoRow(
                 label: '예약 번호',
                 value: reservation.id,

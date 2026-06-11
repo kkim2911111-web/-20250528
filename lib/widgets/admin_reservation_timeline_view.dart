@@ -251,6 +251,7 @@ class _AdminReservationTimelineViewState
       pricePerHour: vehicle.pricePerHour,
       dailyPrice: vehicle.dailyPrice,
       monthlyPrice: vehicle.monthlyPrice,
+      monthlyExcessDailyPrice: vehicle.monthlyExcessDailyPrice,
       rentalTypes: vehicle.rentalTypes,
       carNumber: vehicle.carNumber,
       isPublished: vehicle.isPublished,

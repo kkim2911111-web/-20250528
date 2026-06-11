@@ -16,6 +16,7 @@ import '../supabase_client.dart';
 import '../theme/danji_colors.dart';
 import '../theme/danji_typography.dart';
 import '../utils/booking_period_resolver.dart';
+import '../utils/booking_vehicle_price_display.dart';
 import '../utils/rental_inquiry_flow.dart';
 import '../utils/rental_pricing.dart';
 import '../widgets/danji_app_bar.dart';
@@ -263,12 +264,21 @@ class _BookingScreenState extends State<BookingScreen> {
     }
   }
 
-  String get _durationSummary => RentalPricing.durationSummary(
-        _rentalType,
-        hours: _durationHours,
-        days: _durationDays,
-        months: _durationMonths,
+  String get _durationSummary {
+    final period = _resolvedPeriod;
+    if (period != null && period.valid) {
+      return RentalPricing.formatDurationLabelFromInterval(
+        start: period.start,
+        end: period.end,
       );
+    }
+    return RentalPricing.durationSummary(
+      _rentalType,
+      hours: _durationHours,
+      days: _durationDays,
+      months: _durationMonths,
+    );
+  }
 
   String? get _periodSummaryLine {
     final period = _resolvedPeriod;
@@ -481,27 +491,45 @@ class _BookingScreenState extends State<BookingScreen> {
 
   int? get _originalPrice {
     final vehicle = _selected;
-    if (vehicle == null || !_hasValidDuration) return null;
-    return RentalPricing.calculatePrice(
+    final period = _resolvedPeriod;
+    if (vehicle == null || period == null || !_hasValidDuration) return null;
+    return RentalPricing.calculateBasePriceFromIntervalVehicle(
       vehicle,
-      _rentalType,
-      hours: _durationHours,
-      days: _durationDays,
-      months: _durationMonths,
+      period.rentalType,
+      start: period.start,
+      end: period.end,
+    );
+  }
+
+  bool get _monthlyCapApplied {
+    final vehicle = _selected;
+    final period = _resolvedPeriod;
+    if (vehicle == null || period == null || !_hasValidDuration) return false;
+    return RentalPricing.monthlyCapAppliedForInterval(
+      vehicle,
+      period.rentalType,
+      start: period.start,
+      end: period.end,
     );
   }
 
   int? get _compareStrikethroughPrice {
     final vehicle = _selected;
-    if (vehicle == null || !_hasValidDuration) return null;
+    final period = _resolvedPeriod;
+    if (vehicle == null || period == null || !_hasValidDuration) return null;
     return RentalPricing.comparisonStrikethroughPrice(
       vehicle,
-      _rentalType,
+      period.rentalType,
       hours: _durationHours,
       days: _durationDays,
       months: _durationMonths,
+      start: period.start,
+      end: period.end,
     );
   }
+
+  bool get _fleetAllowsPartialMonthlyReturn =>
+      RentalPricing.fleetAllowsPartialMonthlyReturn(_allVehicles);
 
   int get _couponDiscount {
     final coupon = _selectedCoupon;
@@ -675,11 +703,13 @@ class _BookingScreenState extends State<BookingScreen> {
       return [];
     }
 
-    final startTime = _rentalStartTime;
-    final endTime = _rentalEndTime;
-    if (startTime == null || endTime == null) {
+    final period = _resolvedPeriod;
+    if (period == null || !period.valid) {
       return [];
     }
+
+    final startTime = period.start;
+    final endTime = period.end;
 
     if (_isToday(day) && !_isStartTimeInFuture(startTime)) {
       return [];
@@ -690,7 +720,13 @@ class _BookingScreenState extends State<BookingScreen> {
 
     for (final vehicle in vehicles) {
       if (!vehicle.isResidentBookable ||
-          !vehicle.supportsRentalType(_rentalType)) {
+          !vehicle.supportsRentalType(period.rentalType) ||
+          !RentalPricing.vehicleSupportsBookingPeriod(
+            vehicle,
+            period.rentalType,
+            start: startTime,
+            end: endTime,
+          )) {
         continue;
       }
 
@@ -790,7 +826,16 @@ class _BookingScreenState extends State<BookingScreen> {
     if (dayOnly.isBefore(_tableCalendarDay(start))) return false;
     final maxReturn =
         _tableCalendarDay(RentalPricing.maxReturnDay(_localDateOnly(start)));
-    return !dayOnly.isAfter(maxReturn);
+    if (dayOnly.isAfter(maxReturn)) return false;
+
+    if (!_fleetAllowsPartialMonthlyReturn) {
+      final previewEnd = DateTime(day.year, day.month, day.day, _startHour);
+      final startTime = _buildStartDateTime(start, _startHour);
+      if (startTime == null || !previewEnd.isAfter(startTime)) return false;
+      final days = previewEnd.difference(startTime).inDays;
+      if (days >= 30 && days % 30 != 0) return false;
+    }
+    return true;
   }
 
   Future<void> _openStartDayPicker() async {
@@ -1312,16 +1357,19 @@ class _BookingScreenState extends State<BookingScreen> {
                         const SizedBox(height: 12),
                         _BookingPeriodSummaryBanner(text: _periodSummaryLine!),
                       ],
-                      if (_selected != null &&
-                          _compareStrikethroughPrice != null &&
-                          _originalPrice != null) ...[
-                        const SizedBox(height: 12),
-                        _BookingRentalDiscountBanner(
-                          rentalType: _rentalType,
-                          comparePrice: _compareStrikethroughPrice!,
-                          finalPrice: _originalPrice!,
-                          formatWon: _formatWon,
-                        ),
+                      if (_selected != null && _originalPrice != null) ...[
+                        if (_monthlyCapApplied) ...[
+                          const SizedBox(height: 12),
+                          const _BookingMonthlyCapBanner(),
+                        ] else if (_compareStrikethroughPrice != null) ...[
+                          const SizedBox(height: 12),
+                          _BookingRentalDiscountBanner(
+                            rentalType: _rentalType,
+                            comparePrice: _compareStrikethroughPrice!,
+                            finalPrice: _originalPrice!,
+                            formatWon: _formatWon,
+                          ),
+                        ],
                       ],
                       const SizedBox(height: 24),
                       Text(
@@ -1386,6 +1434,8 @@ class _BookingScreenState extends State<BookingScreen> {
                                     durationHours: _durationHours,
                                     durationDays: _durationDays,
                                     durationMonths: _durationMonths,
+                                    periodStart: _rentalStartTime,
+                                    periodEnd: _rentalEndTime,
                                     onTap: entry.isBlocked
                                         ? null
                                         : () =>
@@ -1797,6 +1847,31 @@ class _BookingRentalDeliveryNotice extends StatelessWidget {
   }
 }
 
+class _BookingMonthlyCapBanner extends StatelessWidget {
+  const _BookingMonthlyCapBanner();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF0F6FF),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: const Color(0xFFD6E8FF)),
+      ),
+      child: const Text(
+        '일 요금 합산이 월 요금을 초과해 월 요금이 적용됐어요',
+        style: TextStyle(
+          color: DanjiColors.textSecondary,
+          fontSize: 13,
+          height: 1.35,
+        ),
+      ),
+    );
+  }
+}
+
 class _BookingRentalDiscountBanner extends StatelessWidget {
   final RentalType rentalType;
   final int comparePrice;
@@ -1872,6 +1947,88 @@ class _BookingRentalDiscountBanner extends StatelessWidget {
   }
 }
 
+class _BookingVehicleCardPriceLines extends StatelessWidget {
+  final BookingVehiclePriceLines? priceLines;
+  final String unitPriceLabel;
+  final RentalType periodType;
+  final Color priceColor;
+  final Color mutedColor;
+  final Color savingsColor;
+  final NumberFormat won;
+
+  const _BookingVehicleCardPriceLines({
+    required this.priceLines,
+    required this.unitPriceLabel,
+    required this.periodType,
+    required this.priceColor,
+    required this.mutedColor,
+    required this.savingsColor,
+    required this.won,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final lines = priceLines;
+    final suffix = RentalPricing.rentalTypeUnitSuffix(periodType);
+
+    if (lines == null || !lines.showDailyCompare) {
+      final label = lines != null
+          ? '₩${won.format(lines.appliedAmount)}$suffix'
+          : unitPriceLabel;
+      return Text(
+        label,
+        style: TextStyle(
+          fontSize: 13,
+          fontWeight: FontWeight.w500,
+          color: priceColor,
+          height: 1.3,
+        ),
+      );
+    }
+
+    final appliedLabel =
+        '₩${won.format(lines.appliedAmount)}$suffix';
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text.rich(
+          TextSpan(
+            style: TextStyle(
+              fontSize: 13,
+              fontWeight: FontWeight.w500,
+              color: priceColor,
+              height: 1.35,
+            ),
+            children: [
+              TextSpan(
+                text: '일 단가 ₩${won.format(lines.dailyCompareAmount)}',
+                style: TextStyle(
+                  color: mutedColor,
+                  decoration: TextDecoration.lineThrough,
+                ),
+              ),
+              const TextSpan(text: '  '),
+              TextSpan(text: appliedLabel),
+            ],
+          ),
+        ),
+        if (lines.showSavings) ...[
+          const SizedBox(height: 4),
+          Text(
+            '일 단가 대비 ₩${won.format(lines.savings!)} 절약',
+            style: TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
+              color: savingsColor,
+              height: 1.3,
+            ),
+          ),
+        ],
+      ],
+    );
+  }
+}
+
 class _BookingVehicleCard extends StatelessWidget {
   static const _disabledBg = Color(0xFFF8F8F8);
   static const _disabledText = Color(0xFFAAAAAA);
@@ -1885,6 +2042,8 @@ class _BookingVehicleCard extends StatelessWidget {
   final int durationHours;
   final int durationDays;
   final int durationMonths;
+  final DateTime? periodStart;
+  final DateTime? periodEnd;
   final VoidCallback? onTap;
 
   const _BookingVehicleCard({
@@ -1895,6 +2054,8 @@ class _BookingVehicleCard extends StatelessWidget {
     required this.durationHours,
     required this.durationDays,
     required this.durationMonths,
+    this.periodStart,
+    this.periodEnd,
     this.onTap,
   });
 
@@ -1919,16 +2080,18 @@ class _BookingVehicleCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final comparePrice = RentalPricing.comparisonStrikethroughPrice(
-      vehicle,
-      rentalType,
-      hours: durationHours < 1 ? 1 : durationHours,
-      days: durationDays,
-      months: durationMonths,
-    );
+    final priceLines = periodStart != null && periodEnd != null
+        ? buildBookingVehiclePriceLines(
+            vehicle,
+            rentalType,
+            start: periodStart!,
+            end: periodEnd!,
+          )
+        : null;
     final isElectric = _isElectricVehicleType(vehicle.vehicleType);
     final unitPriceLabel =
         RentalPricing.displayUnitPriceLabel(vehicle, rentalType);
+    final won = NumberFormat('#,###');
     final plate = vehicle.carNumber?.trim();
     final nameColor =
         _isBlocked ? _disabledText : DanjiColors.textPrimary;
@@ -2044,31 +2207,18 @@ class _BookingVehicleCard extends StatelessWidget {
                             ),
                           ),
                           const SizedBox(height: 6),
-                          Text.rich(
-                            TextSpan(
-                              style: TextStyle(
-                                fontSize: 13,
-                                fontWeight: FontWeight.w500,
-                                color: priceColor,
-                                height: 1.3,
-                              ),
-                              children: [
-                                if (comparePrice != null) ...[
-                                  TextSpan(
-                                    text:
-                                        '₩${NumberFormat('#,###').format(comparePrice)}',
-                                    style: TextStyle(
-                                      color: _isBlocked
-                                          ? _disabledPrice
-                                          : DanjiColors.textMuted,
-                                      decoration: TextDecoration.lineThrough,
-                                    ),
-                                  ),
-                                  const TextSpan(text: '  '),
-                                ],
-                                TextSpan(text: unitPriceLabel),
-                              ],
-                            ),
+                          _BookingVehicleCardPriceLines(
+                            priceLines: priceLines,
+                            unitPriceLabel: unitPriceLabel,
+                            periodType: rentalType,
+                            priceColor: priceColor,
+                            mutedColor: _isBlocked
+                                ? _disabledPrice
+                                : DanjiColors.textMuted,
+                            savingsColor: _isBlocked
+                                ? _disabledText
+                                : DanjiColors.buttonBlue,
+                            won: won,
                           ),
                         ],
                       ),

@@ -11,6 +11,7 @@ class VehicleRentalTypesSection extends StatefulWidget {
   final TextEditingController hourlyPriceController;
   final TextEditingController dailyPriceController;
   final TextEditingController monthlyPriceController;
+  final TextEditingController monthlyExcessDailyPriceController;
 
   const VehicleRentalTypesSection({
     super.key,
@@ -19,6 +20,7 @@ class VehicleRentalTypesSection extends StatefulWidget {
     required this.hourlyPriceController,
     required this.dailyPriceController,
     required this.monthlyPriceController,
+    required this.monthlyExcessDailyPriceController,
   });
 
   @override
@@ -35,6 +37,7 @@ class _VehicleRentalTypesSectionState extends State<VehicleRentalTypesSection> {
     widget.hourlyPriceController.addListener(_rebuild);
     widget.dailyPriceController.addListener(_rebuild);
     widget.monthlyPriceController.addListener(_rebuild);
+    widget.monthlyExcessDailyPriceController.addListener(_rebuild);
   }
 
   @override
@@ -42,6 +45,7 @@ class _VehicleRentalTypesSectionState extends State<VehicleRentalTypesSection> {
     widget.hourlyPriceController.removeListener(_rebuild);
     widget.dailyPriceController.removeListener(_rebuild);
     widget.monthlyPriceController.removeListener(_rebuild);
+    widget.monthlyExcessDailyPriceController.removeListener(_rebuild);
     super.dispose();
   }
 
@@ -170,6 +174,21 @@ class _VehicleRentalTypesSectionState extends State<VehicleRentalTypesSection> {
               ),
             ),
           ],
+          const SizedBox(height: 12),
+          _priceField(
+            label: '초과 일요금 (원)',
+            controller: widget.monthlyExcessDailyPriceController,
+            hint: '선택 입력',
+          ),
+          const SizedBox(height: 6),
+          const Text(
+            '30일 단위를 넘는 초과 일수에 적용됩니다. 비워두면 30일 단위로만 예약을 받습니다',
+            style: TextStyle(
+              color: DanjiColors.textMuted,
+              fontSize: 12,
+              height: 1.4,
+            ),
+          ),
         ],
       ],
     );

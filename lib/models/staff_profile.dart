@@ -191,6 +191,7 @@ class AdminVehicleDetail {
   final int pricePerHour;
   final int? dailyPrice;
   final int? monthlyPrice;
+  final int? monthlyExcessDailyPrice;
   final List<RentalType> rentalTypes;
   final String? parkingLocation;
   final String? carNumber;
@@ -217,6 +218,7 @@ class AdminVehicleDetail {
     required this.pricePerHour,
     this.dailyPrice,
     this.monthlyPrice,
+    this.monthlyExcessDailyPrice,
     this.rentalTypes = const [RentalType.hourly],
     this.parkingLocation,
     this.carNumber,
@@ -251,6 +253,8 @@ class AdminVehicleDetail {
           0,
       dailyPrice: (map['daily_price'] as num?)?.toInt(),
       monthlyPrice: (map['monthly_price'] as num?)?.toInt(),
+      monthlyExcessDailyPrice:
+          (map['monthly_excess_daily_price'] as num?)?.toInt(),
       rentalTypes: RentalPricing.parseRentalTypes(map['rental_types']),
       parkingLocation: map['parking_location']?.toString(),
       carNumber: map['car_number']?.toString(),
@@ -285,6 +289,7 @@ class AdminVehicleDetail {
       'hourly_rate': pricePerHour,
       'daily_price': dailyPrice,
       'monthly_price': monthlyPrice,
+      'monthly_excess_daily_price': monthlyExcessDailyPrice,
       'rental_types': RentalPricing.rentalTypesToDb(rentalTypes),
       'parking_location': parkingLocation,
       'car_number': carNumber,
@@ -308,6 +313,7 @@ class AdminVehicleDetail {
       'hourly_rate': pricePerHour,
       'daily_price': dailyPrice,
       'monthly_price': monthlyPrice,
+      'monthly_excess_daily_price': monthlyExcessDailyPrice,
       'rental_types': RentalPricing.rentalTypesToDb(rentalTypes),
       'parking_location': parkingLocation,
       'car_number': carNumber,
@@ -365,6 +371,7 @@ class AdminVehicleDetail {
       pricePerHour: pricePerHour,
       dailyPrice: dailyPrice,
       monthlyPrice: monthlyPrice,
+      monthlyExcessDailyPrice: monthlyExcessDailyPrice,
       rentalTypes: rentalTypes,
       parkingLocation: parkingLocation,
       carNumber: carNumber,

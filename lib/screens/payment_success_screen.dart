@@ -16,6 +16,7 @@ import '../theme/danji_colors.dart';
 import '../models/reservation.dart';
 import '../screens/main_shell.dart';
 import '../utils/rental_navigation.dart';
+import '../utils/reservation_display.dart';
 import 'my_reservations_screen.dart';
 
 /// 토스 결제 성공 리다이렉트 → Edge Function 승인 → 예약 완료
@@ -38,6 +39,7 @@ class _PaymentSuccessScreenState extends State<PaymentSuccessScreen> {
 
   final _paymentService = PaymentService();
   final _reservationService = ReservationService();
+  final _rentalService = RentalService();
   final _won = NumberFormat('#,###');
 
   bool _loading = true;
@@ -45,6 +47,7 @@ class _PaymentSuccessScreenState extends State<PaymentSuccessScreen> {
   String? _error;
   PaymentConfirmResult? _result;
   int? _amount;
+  String? _bookingSummaryLine;
 
   @override
   void initState() {
@@ -221,6 +224,23 @@ class _PaymentSuccessScreenState extends State<PaymentSuccessScreen> {
     }
   }
 
+  Future<String?> _resolveBookingSummaryLine({
+    required PaymentConfirmResult result,
+  }) async {
+    if (result.reservationId.isEmpty) return null;
+    try {
+      final reservation =
+          await _rentalService.fetchReservation(result.reservationId);
+      return formatBookingSummaryLine(
+        vehicleName: reservation.vehicle?.name ?? result.vehicleName,
+        durationLabel: reservation.rentalDurationLabel,
+      );
+    } catch (e) {
+      debugPrint('[payment/success] booking summary fetch failed: $e');
+      return formatBookingSummaryLine(vehicleName: result.vehicleName);
+    }
+  }
+
   Future<void> _onConfirmSuccess({
     required PaymentConfirmResult result,
     required String orderId,
@@ -228,30 +248,36 @@ class _PaymentSuccessScreenState extends State<PaymentSuccessScreen> {
   }) async {
     _handledResults[orderId] = result;
     _handledOrderIds.add(orderId);
+    final summaryLine = await _resolveBookingSummaryLine(result: result);
     if (!mounted) return;
     setState(() {
       _loading = false;
       _result = result;
       _amount = int.tryParse(amountStr);
+      _bookingSummaryLine = summaryLine;
     });
     await _goToMyReservations(
       reservationId: result.reservationId,
       orderId: orderId,
+      summaryLine: summaryLine,
     );
   }
 
   Future<void> _finishFromCache(String orderId) async {
     final cached = _handledResults[orderId];
     if (cached == null || cached.reservationId.isEmpty) return;
+    final summaryLine = await _resolveBookingSummaryLine(result: cached);
     if (mounted) {
       setState(() {
         _loading = false;
         _result = cached;
+        _bookingSummaryLine = summaryLine;
       });
     }
     await _goToMyReservations(
       reservationId: cached.reservationId,
       orderId: orderId,
+      summaryLine: summaryLine,
     );
   }
 
@@ -272,6 +298,7 @@ class _PaymentSuccessScreenState extends State<PaymentSuccessScreen> {
   Future<void> _goToMyReservations({
     String? reservationId,
     String? orderId,
+    String? summaryLine,
   }) async {
     final navKey = orderId ?? reservationId ?? '';
     if (navKey.isNotEmpty && _navigatedOrderIds.contains(navKey)) {
@@ -285,8 +312,11 @@ class _PaymentSuccessScreenState extends State<PaymentSuccessScreen> {
     }
 
     if (!mounted) return;
+    final snackText = summaryLine != null && summaryLine.isNotEmpty
+        ? '결제가 완료되었습니다. $summaryLine'
+        : '결제가 완료되었습니다. 내 예약으로 이동합니다.';
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('결제가 완료되었습니다. 내 예약으로 이동합니다.')),
+      SnackBar(content: Text(snackText)),
     );
 
     Navigator.of(context).pushAndRemoveUntil(
@@ -415,16 +445,29 @@ class _PaymentSuccessScreenState extends State<PaymentSuccessScreen> {
                             ),
                           ),
                         ],
-                        if (_result != null) ...[
-                          if (_result!.vehicleName != null) ...[
-                            const SizedBox(height: 4),
-                            Text(
-                              '차량: ${_result!.vehicleName}',
-                              style: const TextStyle(
-                                color: DanjiColors.textSecondary,
-                              ),
+                        if (_bookingSummaryLine != null) ...[
+                          const SizedBox(height: 12),
+                          Text(
+                            _bookingSummaryLine!,
+                            textAlign: TextAlign.center,
+                            style: const TextStyle(
+                              color: DanjiColors.textPrimary,
+                              fontSize: 15,
+                              fontWeight: FontWeight.w700,
+                              height: 1.35,
                             ),
-                          ],
+                          ),
+                        ] else if (_result != null &&
+                            _result!.vehicleName != null) ...[
+                          const SizedBox(height: 4),
+                          Text(
+                            '차량: ${_result!.vehicleName}',
+                            style: const TextStyle(
+                              color: DanjiColors.textSecondary,
+                            ),
+                          ),
+                        ],
+                        if (_result != null) ...[
                           const SizedBox(height: 4),
                           Text(
                             '예약 ID: ${_result!.reservationId}',

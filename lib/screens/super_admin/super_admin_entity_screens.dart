@@ -7,6 +7,7 @@ import '../../theme/danji_theme.dart';
 import '../../utils/danji_snackbar.dart';
 import '../../utils/resident_display.dart';
 import '../../utils/rental_pricing.dart';
+import '../../utils/vehicle_rental_type_price_guard.dart';
 import '../../utils/super_admin_vehicle_filter.dart';
 import '../../widgets/admin_scaffold.dart';
 import '../../widgets/rental_type_badge.dart';
@@ -362,6 +363,9 @@ class _SuperAdminVehiclesScreenState extends State<SuperAdminVehiclesScreen> {
     final monthlyPrice = TextEditingController(
       text: v?.monthlyPrice?.toString() ?? '',
     );
+    final monthlyExcessDailyPrice = TextEditingController(
+      text: v?.monthlyExcessDailyPrice?.toString() ?? '',
+    );
     var complexId = v?.complexId ?? (complexes.isNotEmpty ? complexes.first.id : '');
     var available = v?.isAvailable ?? true;
     var rentalTypes = v?.rentalTypes.toSet() ?? {RentalType.hourly};
@@ -390,6 +394,7 @@ class _SuperAdminVehiclesScreenState extends State<SuperAdminVehiclesScreen> {
                 hourlyPriceController: hourlyPrice,
                 dailyPriceController: dailyPrice,
                 monthlyPriceController: monthlyPrice,
+                monthlyExcessDailyPriceController: monthlyExcessDailyPrice,
               ),
               SwitchListTile(
                 contentPadding: EdgeInsets.zero,
@@ -410,13 +415,52 @@ class _SuperAdminVehiclesScreenState extends State<SuperAdminVehiclesScreen> {
     );
     final dailyText = dailyPrice.text.trim();
     final monthlyText = monthlyPrice.text.trim();
+    final excessText = monthlyExcessDailyPrice.text.trim();
     if (ok != true || complexId.isEmpty) {
       name.dispose();
       carNo.dispose();
       hourlyPrice.dispose();
       dailyPrice.dispose();
       monthlyPrice.dispose();
+      monthlyExcessDailyPrice.dispose();
       return;
+    }
+
+    var typesToSave = Set<RentalType>.from(rentalTypes);
+    final parsedHourly = int.tryParse(hourlyPrice.text.trim()) ?? 0;
+    final missingPrices = VehicleRentalTypePriceGuard.findTypesMissingPrice(
+      types: typesToSave,
+      hourlyPrice: parsedHourly,
+      dailyPriceText: dailyText,
+      monthlyPriceText: monthlyText,
+    );
+    if (missingPrices.isNotEmpty) {
+      final choice = await VehicleRentalTypePriceGuard.showSaveGuardDialog(
+        context,
+        missingPrices,
+      );
+      if (choice != VehicleRentalTypeSaveGuardChoice.saveWithTogglesOff) {
+        name.dispose();
+        carNo.dispose();
+        hourlyPrice.dispose();
+        dailyPrice.dispose();
+        monthlyPrice.dispose();
+        monthlyExcessDailyPrice.dispose();
+        return;
+      }
+      typesToSave.removeAll(missingPrices);
+      if (typesToSave.isEmpty) {
+        if (mounted) {
+          DanjiSnackBar.show(context, '대여 유형을 1개 이상 선택해주세요.');
+        }
+        name.dispose();
+        carNo.dispose();
+        hourlyPrice.dispose();
+        dailyPrice.dispose();
+        monthlyPrice.dispose();
+        monthlyExcessDailyPrice.dispose();
+        return;
+      }
     }
 
     try {
@@ -425,13 +469,13 @@ class _SuperAdminVehiclesScreenState extends State<SuperAdminVehiclesScreen> {
         complexId: complexId,
         modelName: name.text,
         carNumber: carNo.text,
-        pricePerHour: rentalTypes.contains(RentalType.hourly)
-            ? (int.tryParse(hourlyPrice.text) ?? 0)
-            : 0,
+        pricePerHour: typesToSave.contains(RentalType.hourly) ? parsedHourly : 0,
         isAvailable: available,
         dailyPrice: dailyText.isEmpty ? null : int.tryParse(dailyText),
         monthlyPrice: monthlyText.isEmpty ? null : int.tryParse(monthlyText),
-        rentalTypes: RentalPricing.rentalTypesToDb(rentalTypes),
+        monthlyExcessDailyPrice:
+            excessText.isEmpty ? null : int.tryParse(excessText),
+        rentalTypes: RentalPricing.rentalTypesToDb(typesToSave),
       );
       _reload();
     } catch (e) {
@@ -442,6 +486,7 @@ class _SuperAdminVehiclesScreenState extends State<SuperAdminVehiclesScreen> {
       hourlyPrice.dispose();
       dailyPrice.dispose();
       monthlyPrice.dispose();
+      monthlyExcessDailyPrice.dispose();
     }
   }
 
@@ -498,6 +543,7 @@ class _SuperAdminVehiclesScreenState extends State<SuperAdminVehiclesScreen> {
                     isAvailable: !v.isAvailable,
                     dailyPrice: v.dailyPrice,
                     monthlyPrice: v.monthlyPrice,
+                    monthlyExcessDailyPrice: v.monthlyExcessDailyPrice,
                     rentalTypes: RentalPricing.rentalTypesToDb(v.rentalTypes),
                   );
                   _reload();

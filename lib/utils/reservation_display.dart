@@ -150,6 +150,21 @@ String formatScheduledPeriod({
   return formatRentalPeriod(formatter: formatter, start: startAt, end: endAt);
 }
 
+/// 예약·결제 완료 — 차량명 · 기간 (예: 카니발9 · 1개월 5일)
+String? formatBookingSummaryLine({
+  String? vehicleName,
+  String? durationLabel,
+}) {
+  final name = vehicleName?.trim();
+  final duration = durationLabel?.trim();
+  if (name != null && name.isNotEmpty && duration != null && duration.isNotEmpty) {
+    return '$name · $duration';
+  }
+  if (name != null && name.isNotEmpty) return name;
+  if (duration != null && duration.isNotEmpty) return duration;
+  return null;
+}
+
 /// 예약/대여/반납/검수 시각 표시 모드
 enum ReservationTimesMode {
   /// 이용자 상세 — 대여 시작·반납은 값이 있을 때만

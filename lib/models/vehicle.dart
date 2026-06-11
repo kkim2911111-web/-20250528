@@ -10,6 +10,7 @@ class Vehicle {
   final int pricePerHour;
   final int? dailyPrice;
   final int? monthlyPrice;
+  final int? monthlyExcessDailyPrice;
   final List<RentalType> rentalTypes;
   final String? parkingLocation;
   final String? parkingPhotoUrl;
@@ -31,6 +32,7 @@ class Vehicle {
     required this.pricePerHour,
     this.dailyPrice,
     this.monthlyPrice,
+    this.monthlyExcessDailyPrice,
     this.rentalTypes = const [RentalType.hourly],
     this.parkingLocation,
     this.parkingPhotoUrl,
@@ -74,6 +76,8 @@ class Vehicle {
           0,
       dailyPrice: (map['daily_price'] as num?)?.toInt(),
       monthlyPrice: (map['monthly_price'] as num?)?.toInt(),
+      monthlyExcessDailyPrice:
+          (map['monthly_excess_daily_price'] as num?)?.toInt(),
       rentalTypes: rentalTypes,
       parkingLocation: _readString(map, ['parking_location', 'parking_spot']),
       parkingPhotoUrl: _readString(map, ['parking_photo_url', 'photo_url']),

@@ -1,4 +1,5 @@
 import '../models/vehicle.dart';
+import 'rental_interval_billing.dart' as interval_billing;
 
 enum RentalType {
   hourly,
@@ -214,6 +215,7 @@ class RentalPricing {
       pricePerHour: pricePerHour,
       dailyPrice: dailyPrice,
       monthlyPrice: monthlyPrice,
+      monthlyExcessDailyPrice: null,
       rentalTypes: displayTypes,
       isAvailable: true,
     );
@@ -257,17 +259,76 @@ class RentalPricing {
     required int hours,
     required int days,
     required int months,
+    DateTime? start,
+    DateTime? end,
   }) {
     switch (type) {
       case RentalType.hourly:
         return null;
       case RentalType.daily:
+        if (start != null && end != null) {
+          final d = end.difference(start).inDays;
+          final raw = d * effectiveDailyPrice(vehicle);
+          if (vehicle.rentalTypes.contains(RentalType.monthly) &&
+              raw > effectiveMonthlyPrice(vehicle)) {
+            return raw > 0 ? raw : null;
+          }
+          final compareHours = d * hoursPerDayForComparison;
+          final compare = compareHours * vehicle.pricePerHour;
+          return compare > 0 ? compare : null;
+        }
         final compareHours = days * hoursPerDayForComparison;
-        return compareHours * vehicle.pricePerHour;
+        final compare = compareHours * vehicle.pricePerHour;
+        return compare > 0 ? compare : null;
       case RentalType.monthly:
+        if (start != null && end != null) {
+          final d = end.difference(start).inDays;
+          final raw = d * effectiveDailyPrice(vehicle);
+          return raw > 0 ? raw : null;
+        }
         final compareDays = months * 30;
-        return compareDays * effectiveDailyPrice(vehicle);
+        final compare = compareDays * effectiveDailyPrice(vehicle);
+        return compare > 0 ? compare : null;
     }
+  }
+
+  static bool monthlyCapAppliedForInterval(
+    Vehicle vehicle,
+    RentalType type, {
+    required DateTime start,
+    required DateTime end,
+  }) {
+    return calculateBasePriceBreakdownFromVehicle(vehicle, type, start: start, end: end)
+            ?.monthlyCapApplied ??
+        false;
+  }
+
+  static bool vehicleSupportsBookingPeriod(
+    Vehicle vehicle,
+    RentalType type, {
+    required DateTime start,
+    required DateTime end,
+  }) {
+    return interval_billing.vehicleSupportsBookingPeriod(
+      rentalTypes: vehicle.rentalTypes,
+      monthlyExcessDailyPrice: vehicle.monthlyExcessDailyPrice,
+      type: type,
+      start: start,
+      end: end,
+    );
+  }
+
+  static bool fleetAllowsPartialMonthlyReturn(Iterable<Vehicle> vehicles) {
+    return interval_billing.fleetAllowsPartialMonthlyReturn(
+      vehicles: vehicles
+          .map(
+            (v) => (
+              rentalTypes: v.rentalTypes,
+              monthlyExcessDailyPrice: v.monthlyExcessDailyPrice,
+            ),
+          )
+          .toList(),
+    );
   }
 
   static DateTime addMonths(DateTime start, int months) {
@@ -307,19 +368,66 @@ class RentalPricing {
     }
   }
 
+  /// 30일 배수 → N개월, 그 외 → N개월 M일 (35일 → 1개월 5일)
+  static String formatDurationLabelFromDays(int totalDays) {
+    if (totalDays < 1) return '';
+    if (totalDays < 30) return '${totalDays}일';
+    final blocks = totalDays ~/ 30;
+    final rem = totalDays % 30;
+    if (rem == 0) {
+      return blocks == 1 ? '1개월' : '${blocks}개월';
+    }
+    final monthPart = blocks == 1 ? '1개월' : '${blocks}개월';
+    return '$monthPart $rem일';
+  }
+
+  static String formatDurationLabelFromInterval({
+    required DateTime start,
+    required DateTime end,
+  }) {
+    if (!end.isAfter(start)) return '';
+    final type = inferRentalTypeFromInterval(start: start, end: end);
+    switch (type) {
+      case RentalType.hourly:
+        final hours = inferHoursBetween(start, end);
+        return hours != null ? '${hours}시간' : '';
+      case RentalType.daily:
+        return '${end.difference(start).inDays}일';
+      case RentalType.monthly:
+        return formatDurationLabelFromDays(end.difference(start).inDays);
+    }
+  }
+
+  static String rentalTypeUnitSuffix(RentalType type) {
+    switch (type) {
+      case RentalType.hourly:
+        return '/시간';
+      case RentalType.daily:
+        return '/일';
+      case RentalType.monthly:
+        return '/월';
+    }
+  }
+
   static String durationSummary(
     RentalType type, {
     required int hours,
     required int days,
     required int months,
+    DateTime? start,
+    DateTime? end,
   }) {
+    if (start != null && end != null && end.isAfter(start)) {
+      return formatDurationLabelFromInterval(start: start, end: end);
+    }
     switch (type) {
       case RentalType.hourly:
         return '${hours}시간';
       case RentalType.daily:
         return '${days}일';
       case RentalType.monthly:
-        return '${months}개월';
+        if (days >= 30) return formatDurationLabelFromDays(days);
+        return months == 1 ? '1개월' : '${months}개월';
     }
   }
 
@@ -380,35 +488,67 @@ class RentalPricing {
 
   static DateTime maxReturnDay(DateTime startDay) => addMonths(startDay, maxMonthlyMonths);
 
-  /// start/end + rental_type으로 기본 요금 계산 (서버 calc_rental_base_price 동일)
-  static int? calculateBasePriceFromInterval({
+  static interval_billing.RentalPriceBreakdown? calculateBasePriceBreakdownFromInterval({
     required int pricePerHour,
     int? dailyPrice,
     int? monthlyPrice,
+    int? monthlyExcessDailyPrice,
+    required List<RentalType> rentalTypes,
     required RentalType type,
     required DateTime start,
     required DateTime end,
   }) {
-    final effectiveDaily =
-        dailyPrice ?? pricePerHour * dailyFromHourlyMultiplier;
-    final effectiveMonthly =
-        monthlyPrice ?? effectiveDaily * monthlyFromDailyMultiplier;
+    return interval_billing.calculateRentalPriceBreakdown(
+      pricePerHour: pricePerHour,
+      dailyPrice: dailyPrice,
+      monthlyPrice: monthlyPrice,
+      monthlyExcessDailyPrice: monthlyExcessDailyPrice,
+      rentalTypes: rentalTypes,
+      type: type,
+      start: start,
+      end: end,
+    );
+  }
 
-    switch (type) {
-      case RentalType.hourly:
-        final hours = inferHoursBetween(start, end);
-        if (hours == null) return null;
-        return hours * pricePerHour;
-      case RentalType.daily:
-        final days = inferDaysBetween(start, end);
-        if (days == null) return null;
-        return days * effectiveDaily;
-      case RentalType.monthly:
-        final months =
-            inferMonthsBetween(start, end) ?? inferBillingMonthsBetween(start, end);
-        if (months == null) return null;
-        return months * effectiveMonthly;
-    }
+  /// start/end + rental_type으로 기본 요금 (서버 calc_rental_base_price 동일)
+  static int? calculateBasePriceFromInterval({
+    required int pricePerHour,
+    int? dailyPrice,
+    int? monthlyPrice,
+    int? monthlyExcessDailyPrice,
+    required List<RentalType> rentalTypes,
+    required RentalType type,
+    required DateTime start,
+    required DateTime end,
+  }) {
+    return calculateBasePriceBreakdownFromInterval(
+      pricePerHour: pricePerHour,
+      dailyPrice: dailyPrice,
+      monthlyPrice: monthlyPrice,
+      monthlyExcessDailyPrice: monthlyExcessDailyPrice,
+      rentalTypes: rentalTypes,
+      type: type,
+      start: start,
+      end: end,
+    )?.amount;
+  }
+
+  static interval_billing.RentalPriceBreakdown? calculateBasePriceBreakdownFromVehicle(
+    Vehicle vehicle,
+    RentalType type, {
+    required DateTime start,
+    required DateTime end,
+  }) {
+    return calculateBasePriceBreakdownFromInterval(
+      pricePerHour: vehicle.pricePerHour,
+      dailyPrice: vehicle.dailyPrice,
+      monthlyPrice: vehicle.monthlyPrice,
+      monthlyExcessDailyPrice: vehicle.monthlyExcessDailyPrice,
+      rentalTypes: vehicle.rentalTypes,
+      type: type,
+      start: start,
+      end: end,
+    );
   }
 
   static int? calculateBasePriceFromIntervalVehicle(
@@ -417,13 +557,16 @@ class RentalPricing {
     required DateTime start,
     required DateTime end,
   }) {
-    return calculateBasePriceFromInterval(
-      pricePerHour: vehicle.pricePerHour,
-      dailyPrice: vehicle.dailyPrice,
-      monthlyPrice: vehicle.monthlyPrice,
-      type: type,
-      start: start,
-      end: end,
-    );
+    return calculateBasePriceBreakdownFromVehicle(vehicle, type, start: start, end: end)
+        ?.amount;
+  }
+
+  static int? calculatePriceFromInterval(
+    Vehicle vehicle,
+    RentalType type, {
+    required DateTime start,
+    required DateTime end,
+  }) {
+    return calculateBasePriceFromIntervalVehicle(vehicle, type, start: start, end: end);
   }
 }

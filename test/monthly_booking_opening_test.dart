@@ -36,7 +36,7 @@ void main() {
       );
     });
 
-    test('35일 선택 → 카니발9 월 110만 노출·2개월 청구 요금', () {
+    test('35일 선택 — 초과 일요금 없는 월 전용 차는 30일 배수만 허용', () {
       final vehicle = _carnivalMonthly();
       final result = BookingPeriodResolver.resolve(
         startDay: startDay,
@@ -46,20 +46,49 @@ void main() {
 
       expect(result.valid, isTrue);
       expect(result.rentalType, RentalType.monthly);
-      expect(result.months, 2);
       expect(
         RentalPricing.displayUnitPriceLabel(vehicle, result.rentalType),
         '₩1,100,000/월',
       );
-
-      final checkoutPrice = RentalPricing.calculatePrice(
-        vehicle,
-        RentalType.monthly,
-        hours: 0,
-        days: 1,
-        months: result.months,
+      expect(
+        RentalPricing.vehicleSupportsBookingPeriod(
+          vehicle,
+          result.rentalType,
+          start: result.start,
+          end: result.end,
+        ),
+        isFalse,
       );
-      expect(checkoutPrice, 2200000);
+      expect(
+        RentalPricing.calculateBasePriceFromIntervalVehicle(
+          vehicle,
+          result.rentalType,
+          start: result.start,
+          end: result.end,
+        ),
+        isNull,
+      );
+    });
+
+    test('30일 선택 — 월 전용 차 1개월 청구', () {
+      final vehicle = _carnivalMonthly();
+      final result = BookingPeriodResolver.resolve(
+        startDay: startDay,
+        returnDay: startDay.add(const Duration(days: 30)),
+        startHour: 9,
+      );
+
+      expect(result.valid, isTrue);
+      expect(result.rentalType, RentalType.monthly);
+      expect(
+        RentalPricing.calculateBasePriceFromIntervalVehicle(
+          vehicle,
+          result.rentalType,
+          start: result.start,
+          end: result.end,
+        ),
+        1100000,
+      );
     });
 
     test('29일 daily 회귀', () {

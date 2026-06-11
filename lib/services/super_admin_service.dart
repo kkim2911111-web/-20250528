@@ -391,6 +391,7 @@ class SuperAdminService {
     bool isAvailable = true,
     int? dailyPrice,
     int? monthlyPrice,
+    int? monthlyExcessDailyPrice,
     List<String>? rentalTypes,
   }) =>
       _rpc(
@@ -406,6 +407,7 @@ class SuperAdminService {
           'p_is_available': isAvailable,
           'p_daily_price': dailyPrice,
           'p_monthly_price': monthlyPrice,
+          'p_monthly_excess_daily_price': monthlyExcessDailyPrice,
           if (rentalTypes != null) 'p_rental_types': rentalTypes,
         },
         parse: (d) => d?.toString() ?? '',

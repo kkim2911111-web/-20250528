@@ -334,6 +334,14 @@ class Reservation {
     return formatUsagePeriod(start, end);
   }
 
+  /// 예약·대여 기간 라벨 (30/35/38일 → 1개월·1개월 5일 등)
+  String? get rentalDurationLabel {
+    final start = startAt;
+    final end = endAt;
+    if (start == null || end == null || !end.isAfter(start)) return null;
+    return RentalPricing.formatDurationLabelFromInterval(start: start, end: end);
+  }
+
   static String formatUsagePeriod(DateTime start, DateTime end) {
     final time = DateFormat('HH:mm');
     final date = DateFormat('MM/dd');

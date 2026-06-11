@@ -979,6 +979,15 @@ class _ReservationCard extends StatelessWidget {
               '${dateFormat.format(start)} ~ ${dateFormat.format(end)}',
               style: DanjiTypography.secondary.copyWith(height: 1.4),
             ),
+            if (reservation.rentalDurationLabel != null) ...[
+              const SizedBox(height: 4),
+              Text(
+                reservation.rentalDurationLabel!,
+                style: DanjiTypography.caption.copyWith(
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ],
             if (variant == _CardVariant.waiting) ...[
               const SizedBox(height: 4),
               Text(

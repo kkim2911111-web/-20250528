@@ -100,6 +100,17 @@ class ReservationCard extends StatelessWidget {
               overflow: TextOverflow.ellipsis,
               style: DanjiTypography.secondary.copyWith(height: 1.4),
             ),
+            if (reservation.rentalDurationLabel != null) ...[
+              const SizedBox(height: 4),
+              Text(
+                reservation.rentalDurationLabel!,
+                style: const TextStyle(
+                  color: DanjiColors.textSecondary,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ],
             if (phase == ReservationCardPhase.beforeRental) ...[
               const SizedBox(height: 4),
               Text(

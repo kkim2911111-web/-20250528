@@ -71,14 +71,14 @@ void main() {
       expect(fromPicker, 3 * 10000 * 20);
     });
 
-    test('monthly — 명시 월 요금', () {
+    test('monthly — 명시 월 요금 (60일 = 2개월)', () {
       final vehicle = _vehicle(
         types: const [RentalType.monthly],
         daily: 150000,
         monthly: 3000000,
       );
-      final start = DateTime(2026, 1, 31, 14);
-      final end = RentalPricing.addMonths(start, 2);
+      final start = DateTime(2026, 5, 1, 9);
+      final end = start.add(const Duration(days: 60));
 
       final fromPicker = RentalPricing.calculatePrice(
         vehicle,
