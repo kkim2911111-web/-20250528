@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../theme/danji_colors.dart';
+import '../utils/cancel_refund_policy.dart';
 import '../widgets/danji_app_bar.dart';
 import '../widgets/rental_inquiry_button.dart';
 import 'support_pages.dart';
@@ -55,12 +56,7 @@ class UsageGuideScreen extends StatelessWidget {
     _GuideSection(
       title: '취소 정책',
       icon: Icons.cancel_schedule_send_outlined,
-      body:
-          '· 대여 시작 전까지 앱에서 언제든 예약 취소가 가능합니다.\n'
-          '· 카셰어링(시간): 출고 1시간 전까지 전액 환불, 이후 환불 없음.\n'
-          '· 일·월 렌트: 출고 72시간 전 전액, 72~24시간 50%, 24시간 이내 환불 없음.\n'
-          '· 환불 없이 취소해도 차량 슬롯은 해제됩니다.\n'
-          '· 전액 환불 시에만 사용한 쿠폰·포인트가 복구됩니다.',
+      body: CancelRefundDisplay.faqCancelAnswer,
     ),
     _GuideSection(
       title: '포인트/쿠폰 사용 방법',

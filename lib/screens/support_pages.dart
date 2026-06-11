@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../theme/danji_colors.dart';
+import '../utils/cancel_refund_policy.dart';
 import '../widgets/danji_app_bar.dart';
 
 class CustomerServiceScreen extends StatelessWidget {
@@ -59,7 +60,10 @@ class _FaqItem {
 }
 
 class FaqScreen extends StatefulWidget {
-  const FaqScreen({super.key});
+  /// 펼쳐서 표시할 질문 (예: 취소·환불 FAQ 직행)
+  final String? initialExpandedQuestion;
+
+  const FaqScreen({super.key, this.initialExpandedQuestion});
 
   @override
   State<FaqScreen> createState() => _FaqScreenState();
@@ -84,12 +88,8 @@ class _FaqScreenState extends State<FaqScreen> {
     ),
     _FaqItem(
       category: _FaqCategory.bookingPayment,
-      question: '예약 취소는 언제까지 가능한가요?',
-      answer:
-          '대여 시작 전까지 언제든 취소할 수 있습니다. '
-          '카셰어링(시간)은 출고 1시간 전까지 전액 환불, '
-          '일·월 렌트는 출고 72시간 전 전액·72~24시간 50%·24시간 이내 환불 없음입니다. '
-          '환불 없는 구간에서도 취소 시 차량 예약은 해제됩니다.',
+      question: CancelRefundDisplay.faqCancelQuestion,
+      answer: CancelRefundDisplay.faqCancelAnswer,
     ),
     _FaqItem(
       category: _FaqCategory.bookingPayment,
@@ -220,6 +220,8 @@ class _FaqScreenState extends State<FaqScreen> {
                 return _FaqTile(
                   question: item.question,
                   answer: item.answer,
+                  initiallyExpanded:
+                      widget.initialExpandedQuestion == item.question,
                 );
               },
             ),
@@ -528,20 +530,27 @@ class _InfoCard extends StatelessWidget {
 class _FaqTile extends StatelessWidget {
   final String question;
   final String answer;
+  final bool initiallyExpanded;
 
-  const _FaqTile({required this.question, required this.answer});
+  const _FaqTile({
+    required this.question,
+    required this.answer,
+    this.initiallyExpanded = false,
+  });
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      decoration: BoxDecoration(
-        color: DanjiColors.surface,
+    return Material(
+      color: DanjiColors.surface,
+      shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: DanjiColors.border),
+        side: const BorderSide(color: DanjiColors.border),
       ),
+      clipBehavior: Clip.antiAlias,
       child: Theme(
         data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
         child: ExpansionTile(
+          initiallyExpanded: initiallyExpanded,
           tilePadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
           childrenPadding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
           iconColor: DanjiColors.buttonBlue,

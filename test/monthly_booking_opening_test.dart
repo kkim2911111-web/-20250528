@@ -125,5 +125,16 @@ void main() {
         '₩85,000/일',
       );
     });
+
+    test('rental_types 미설정 + monthly_price — 카드 ₩N/월 추론', () {
+      expect(
+        RentalPricing.cardUnitPriceLabel(
+          pricePerHour: 0,
+          monthlyPrice: 1100000,
+          rentalTypes: const [RentalType.hourly],
+        ),
+        '₩1,100,000/월',
+      );
+    });
   });
 }

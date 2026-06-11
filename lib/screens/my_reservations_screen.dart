@@ -11,6 +11,7 @@ import '../theme/danji_typography.dart';
 import '../widgets/danji_app_bar.dart';
 import '../utils/cancel_refund_policy.dart';
 import '../widgets/reservation_cancel_dialog.dart';
+import 'support_pages.dart';
 import '../widgets/reservation_price_display.dart';
 import '../utils/rental_navigation.dart';
 import '../utils/reservation_display.dart';
@@ -470,14 +471,7 @@ class _MyReservationsScreenState extends State<MyReservationsScreen> {
                   const SizedBox(height: 10),
                   const Padding(
                     padding: EdgeInsets.only(bottom: 12),
-                    child: Text(
-                      ReservationCancelMessages.waitingGuide,
-                      style: TextStyle(
-                        color: Color(0xFF888888),
-                        fontSize: 13,
-                        height: 1.45,
-                      ),
-                    ),
+                    child: _WaitingRefundGuideLine(),
                   ),
                   ...grouped.waiting.map(
                     (item) => Padding(
@@ -1117,6 +1111,47 @@ class _ReservationCard extends StatelessWidget {
           ],
         ],
       ),
+    );
+  }
+}
+
+class _WaitingRefundGuideLine extends StatelessWidget {
+  const _WaitingRefundGuideLine();
+
+  void _openCancelRefundFaq(BuildContext context) {
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => FaqScreen(
+          initialExpandedQuestion: CancelRefundDisplay.faqCancelQuestion,
+        ),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    const baseStyle = TextStyle(
+      color: Color(0xFF888888),
+      fontSize: 13,
+      height: 1.45,
+    );
+    return Wrap(
+      crossAxisAlignment: WrapCrossAlignment.center,
+      children: [
+        const Text(CancelRefundDisplay.waitingGuidePrefix, style: baseStyle),
+        GestureDetector(
+          onTap: () => _openCancelRefundFaq(context),
+          child: const Text(
+            CancelRefundDisplay.waitingGuideLink,
+            style: TextStyle(
+              color: DanjiColors.buttonBlue,
+              fontSize: 13,
+              height: 1.45,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ),
+      ],
     );
   }
 }

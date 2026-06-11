@@ -2,6 +2,36 @@ import 'package:intl/intl.dart';
 
 import '../utils/rental_pricing.dart';
 
+/// 취소·환불 정책 UI 문구 (FAQ 단일 출처)
+abstract final class CancelRefundDisplay {
+  static const faqCancelQuestion = '예약 취소는 언제까지 가능한가요?';
+
+  static const faqCancelAnswer =
+      '대여 시작 전까지 언제든 취소할 수 있습니다.\n'
+      '· 카셰어링(시간): 출고 1시간 전까지 전액 환불, 이후 환불 없음\n'
+      '· 일·월 렌트: 출고 3일(72시간) 전 전액 / '
+      '1~3일(24~72시간) 전 50% / 1일(24시간) 이내 환불 없음\n'
+      '· 전액 환불 시 사용한 쿠폰·포인트가 복구됩니다\n'
+      '· 환불 없는 구간에서도 취소 시 차량 예약은 해제됩니다';
+
+  static const waitingGuidePrefix = '출고 전 언제든 취소 가능 · ';
+  static const waitingGuideLink = '환불 규정 보기 >';
+
+  static String refundTierLabel({
+    required RentalType? rentalType,
+    required double refundRate,
+  }) {
+    final type = rentalType ?? RentalType.hourly;
+    if (type == RentalType.hourly) {
+      if (refundRate >= 1) return '출고 1시간 전 취소 — 전액 환불';
+      return '출고 1시간 이내 취소 — 환불 없음';
+    }
+    if (refundRate >= 1) return '출고 3일(72시간) 전 취소 — 전액 환불';
+    if (refundRate >= 0.5) return '출고 1~3일(24~72시간) 전 취소 — 50% 환불';
+    return '출고 1일(24시간) 이내 취소 — 환불 없음';
+  }
+}
+
 /// 서버 `calc_cancel_refund_rate` / `preview_cancel_refund_for_me` 와 동일한 규칙.
 class CancelRefundPolicy {
   static double refundRate({
@@ -152,6 +182,11 @@ class CancelRefundQuote {
 
   bool get isPartialRefund =>
       refundAmount > 0 && paidAmount > 0 && refundAmount < paidAmount;
+
+  String get refundTierLabel => CancelRefundDisplay.refundTierLabel(
+        rentalType: rentalType,
+        refundRate: refundRate,
+      );
 
   String confirmMessage({NumberFormat? won}) {
     final formatter = won ?? NumberFormat('#,###');

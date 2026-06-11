@@ -7,6 +7,7 @@ import '../../theme/danji_theme.dart';
 import '../../utils/danji_snackbar.dart';
 import '../../utils/resident_display.dart';
 import '../../utils/rental_pricing.dart';
+import '../../utils/super_admin_vehicle_filter.dart';
 import '../../widgets/admin_scaffold.dart';
 import '../../widgets/rental_type_badge.dart';
 import '../../widgets/vehicle_rental_types_section.dart';
@@ -344,18 +345,11 @@ class _SuperAdminVehiclesScreenState extends State<SuperAdminVehiclesScreen> {
   }
 
   List<SuperAdminVehicle> _applyFilter(List<SuperAdminVehicle> list) {
-    var result = list;
-    if (_complexFilter != null) {
-      result = result.where((v) => v.complexId == _complexFilter).toList();
-    }
-    switch (_filter) {
-      case SuperAdminVehicleFilter.available:
-        return result.where((v) => !v.inUse && v.isAvailable).toList();
-      case SuperAdminVehicleFilter.inUse:
-        return result.where((v) => v.inUse).toList();
-      case SuperAdminVehicleFilter.all:
-        return result;
-    }
+    return applySuperAdminVehicleFilter(
+      list: list,
+      filter: _filter,
+      complexId: _complexFilter,
+    );
   }
 
   Future<void> _editor(List<SuperAdminComplex> complexes, [SuperAdminVehicle? v]) async {

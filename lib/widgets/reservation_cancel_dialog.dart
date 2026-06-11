@@ -23,13 +23,7 @@ Future<bool> showReservationCancelConfirmDialog(
           fontWeight: FontWeight.w800,
         ),
       ),
-      content: Text(
-        quote.confirmMessage(won: won),
-        style: DanjiTypography.bodyRegular.copyWith(
-          color: DanjiColors.textSecondary,
-          height: 1.5,
-        ),
-      ),
+      content: _CancelConfirmBody(quote: quote, won: won),
       actions: [
         TextButton(
           onPressed: () => Navigator.pop(ctx, false),
@@ -43,4 +37,64 @@ Future<bool> showReservationCancelConfirmDialog(
       ],
     ),
   ).then((value) => value == true);
+}
+
+class _CancelConfirmBody extends StatelessWidget {
+  final CancelRefundQuote quote;
+  final NumberFormat won;
+
+  const _CancelConfirmBody({
+    required this.quote,
+    required this.won,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final bodyStyle = DanjiTypography.bodyRegular.copyWith(
+      color: DanjiColors.textSecondary,
+      height: 1.5,
+    );
+    final tierStyle = DanjiTypography.caption.copyWith(
+      color: DanjiColors.buttonBlue,
+      fontWeight: FontWeight.w600,
+      height: 1.4,
+    );
+
+    if (quote.paidAmount <= 0) {
+      return Text(
+        '결제 금액이 없습니다. 예약을 취소하시겠습니까?',
+        style: bodyStyle,
+      );
+    }
+
+    if (quote.isNoRefund) {
+      return Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text('환불 불가 시점입니다.', style: bodyStyle),
+          const SizedBox(height: 6),
+          Text(quote.refundTierLabel, style: tierStyle),
+          const SizedBox(height: 8),
+          Text('취소하시겠습니까?', style: bodyStyle),
+        ],
+      );
+    }
+
+    final amountLine = quote.refundPercent == 100
+        ? '지금 취소 시 환불 ₩${won.format(quote.refundAmount)} (전액)'
+        : '지금 취소 시 환불 ₩${won.format(quote.refundAmount)} (${quote.refundPercent}%)';
+
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(amountLine, style: bodyStyle),
+        const SizedBox(height: 4),
+        Text(quote.refundTierLabel, style: tierStyle),
+        const SizedBox(height: 8),
+        Text('정말 취소하시겠습니까?', style: bodyStyle),
+      ],
+    );
+  }
 }

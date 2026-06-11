@@ -172,6 +172,27 @@ class RentalPricing {
     return unitPriceLabel(vehicle, billingType);
   }
 
+  /// DB 기본값 hourly만 있을 때 요금 컬럼으로 표시 유형 추론 (UI 전용)
+  static List<RentalType> cardDisplayRentalTypes({
+    required List<RentalType> rentalTypes,
+    required int pricePerHour,
+    int? dailyPrice,
+    int? monthlyPrice,
+  }) {
+    final types = rentalTypes.isEmpty ? const [RentalType.hourly] : rentalTypes;
+    final hourlyOnly =
+        types.length == 1 && types.first == RentalType.hourly;
+    if (hourlyOnly && pricePerHour == 0) {
+      if (monthlyPrice != null && monthlyPrice > 0) {
+        return const [RentalType.monthly];
+      }
+      if (dailyPrice != null && dailyPrice > 0) {
+        return const [RentalType.daily];
+      }
+    }
+    return types;
+  }
+
   /// 관리·목록 카드용 대표 단가 (입주민 카드와 동일, ₩0/h 방지)
   static String cardUnitPriceLabel({
     required int pricePerHour,
@@ -179,6 +200,12 @@ class RentalPricing {
     int? monthlyPrice,
     required List<RentalType> rentalTypes,
   }) {
+    final displayTypes = cardDisplayRentalTypes(
+      rentalTypes: rentalTypes,
+      pricePerHour: pricePerHour,
+      dailyPrice: dailyPrice,
+      monthlyPrice: monthlyPrice,
+    );
     final vehicle = Vehicle(
       id: '',
       complexId: '',
@@ -187,7 +214,7 @@ class RentalPricing {
       pricePerHour: pricePerHour,
       dailyPrice: dailyPrice,
       monthlyPrice: monthlyPrice,
-      rentalTypes: rentalTypes.isEmpty ? const [RentalType.hourly] : rentalTypes,
+      rentalTypes: displayTypes,
       isAvailable: true,
     );
     return displayUnitPriceLabel(

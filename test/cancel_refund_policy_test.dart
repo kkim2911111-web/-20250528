@@ -175,6 +175,34 @@ void main() {
     });
   });
 
+  group('CancelRefundQuote.refundTierLabel', () {
+    test('daily 100% tier', () {
+      final quote = CancelRefundQuote(
+        reservationId: 'r1',
+        rentalType: RentalType.daily,
+        paidAmount: 10000,
+        refundRate: 1,
+        refundAmount: 10000,
+        refundPercent: 100,
+        restoreBenefits: true,
+      );
+      expect(quote.refundTierLabel, '출고 3일(72시간) 전 취소 — 전액 환불');
+    });
+
+    test('hourly no-refund tier', () {
+      final quote = CancelRefundQuote(
+        reservationId: 'r1',
+        rentalType: RentalType.hourly,
+        paidAmount: 10000,
+        refundRate: 0,
+        refundAmount: 0,
+        refundPercent: 0,
+        restoreBenefits: false,
+      );
+      expect(quote.refundTierLabel, '출고 1시간 이내 취소 — 환불 없음');
+    });
+  });
+
   group('CancelRefundQuote.confirmMessage', () {
     test('0% shows no-refund prompt', () {
       final quote = CancelRefundQuote(
