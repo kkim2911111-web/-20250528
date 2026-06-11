@@ -6,6 +6,7 @@ import '../config/payment_config.dart';
 import '../models/coupon.dart';
 import '../models/vehicle.dart';
 import '../models/vehicle_query_result.dart';
+import '../services/app_feature_config_service.dart';
 import '../services/coupon_service.dart';
 import '../services/payment_service.dart';
 import '../services/point_service.dart';
@@ -16,6 +17,7 @@ import '../supabase_client.dart';
 import '../theme/danji_colors.dart';
 import '../theme/danji_typography.dart';
 import '../utils/booking_period_resolver.dart';
+import '../utils/feature_kill_switch_guard.dart';
 import '../utils/booking_vehicle_price_display.dart';
 import '../utils/rental_inquiry_flow.dart';
 import '../utils/rental_pricing.dart';
@@ -111,6 +113,7 @@ class _BookingScreenState extends State<BookingScreen> {
     _applyInitialDateTime();
     _applyResolvedPeriod(_resolvedPeriod);
     _vehiclesFuture = _loadVehicles();
+    AppFeatureConfigService.instance.fetch(force: true);
   }
 
   /// 23:00 이전 — 오늘·현재시+1h / 23:00 이후 — 내일 00:00 시작
@@ -1150,6 +1153,10 @@ class _BookingScreenState extends State<BookingScreen> {
             ? '최소 5,000원 이상 사용 가능합니다'
             : '사용 가능한 포인트를 초과했습니다';
       });
+      return;
+    }
+
+    if (!await ensureBookingPaymentEnabled(context, _rentalType)) {
       return;
     }
 

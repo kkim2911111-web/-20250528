@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 
+import '../../models/app_feature_config.dart';
 import '../../models/super_admin_models.dart';
+import '../../utils/feature_kill_switch.dart';
 import '../../services/super_admin_service.dart';
 import '../../theme/danji_colors.dart';
 import '../../utils/danji_snackbar.dart';
@@ -19,6 +21,13 @@ class SuperAdminSystemScreen extends StatefulWidget {
 class _SuperAdminSystemScreenState extends State<SuperAdminSystemScreen> {
   bool _maintenance = false;
   final _maintenanceMsg = TextEditingController();
+  final Map<String, bool> _featureEnabled = {
+    for (final key in AppFeatureConfig.allEnabledKeys) key: true,
+  };
+  final Map<String, TextEditingController> _featureMessages = {
+    for (final key in AppFeatureConfig.allEnabledKeys)
+      key: TextEditingController(),
+  };
   final _pushTitle = TextEditingController();
   final _pushBody = TextEditingController();
   Future<List<SuperAdminBanner>>? _bannersFuture;
@@ -35,6 +44,9 @@ class _SuperAdminSystemScreenState extends State<SuperAdminSystemScreen> {
   @override
   void dispose() {
     _maintenanceMsg.dispose();
+    for (final c in _featureMessages.values) {
+      c.dispose();
+    }
     _pushTitle.dispose();
     _pushBody.dispose();
     super.dispose();
@@ -49,10 +61,64 @@ class _SuperAdminSystemScreenState extends State<SuperAdminSystemScreen> {
         _maintenance = maintenance['enabled'] == true;
         _maintenanceMsg.text = maintenance['message']?.toString() ?? '';
       }
+      final features = settings['featureConfigs'];
+      if (features is List) {
+        for (final raw in features) {
+          if (raw is! Map) continue;
+          final row = AppFeatureConfig.fromSuperAdminRow(
+            Map<String, dynamic>.from(raw),
+          );
+          if (row.featureKey.isEmpty) continue;
+          _featureEnabled[row.featureKey] = row.isEnabled;
+          _featureMessages[row.featureKey]?.text =
+              row.disabledMessage ?? '';
+        }
+      }
       _bannersFuture = widget.service.fetchBanners();
       _noticesFuture = widget.service.fetchNotices();
     } catch (_) {}
     if (mounted) setState(() => _loading = false);
+  }
+
+  Future<void> _onFeatureToggle(String featureKey, bool next) async {
+    if (!next) {
+      final ok = await showDialog<bool>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: const Text('기능 차단'),
+          content: const Text('해당 기능이 모든 사용자에게 즉시 차단됩니다.'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('취소'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('차단'),
+            ),
+          ],
+        ),
+      );
+      if (ok != true) return;
+    }
+    setState(() => _featureEnabled[featureKey] = next);
+  }
+
+  Future<void> _saveFeatureConfigs() async {
+    try {
+      for (final key in AppFeatureConfig.allEnabledKeys) {
+        await widget.service.setFeatureConfig(
+          featureKey: key,
+          isEnabled: _featureEnabled[key] ?? true,
+          disabledMessage: _featureMessages[key]?.text,
+        );
+      }
+      if (mounted) {
+        DanjiSnackBar.show(context, '기능별 차단 설정이 저장되었습니다.');
+      }
+    } catch (e) {
+      if (mounted) DanjiSnackBar.show(context, friendlySuperAdminError(e));
+    }
   }
 
   Future<void> _saveMaintenance() async {
@@ -214,6 +280,49 @@ class _SuperAdminSystemScreenState extends State<SuperAdminSystemScreen> {
                 const SizedBox(height: 10),
                 FilledButton(
                   onPressed: _saveMaintenance,
+                  style: superAdminPrimaryFabStyle,
+                  child: const Text('저장'),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 12),
+          SectionCard(
+            padding: const EdgeInsets.all(14),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const SuperAdminSectionTitle('기능별 차단'),
+                const SizedBox(height: 4),
+                const Text(
+                  '전체 점검모드가 켜져 있으면 아래 설정과 관계없이 전체 차단됩니다.',
+                  style: TextStyle(
+                    color: DanjiColors.textSecondary,
+                    fontSize: 13,
+                    height: 1.4,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                for (final key in AppFeatureConfig.allEnabledKeys) ...[
+                  SwitchListTile(
+                    contentPadding: EdgeInsets.zero,
+                    title: Text(featureLabelKo(key)),
+                    value: _featureEnabled[key] ?? true,
+                    onChanged: (v) => _onFeatureToggle(key, v),
+                  ),
+                  TextField(
+                    controller: _featureMessages[key],
+                    decoration: InputDecoration(
+                      labelText: '${featureLabelKo(key)} 안내 문구',
+                      hintText: AppFeatureConfig.defaultFeatureDisabledMessage,
+                      border: const OutlineInputBorder(),
+                    ),
+                    maxLines: 2,
+                  ),
+                  const SizedBox(height: 8),
+                ],
+                FilledButton(
+                  onPressed: _saveFeatureConfigs,
                   style: superAdminPrimaryFabStyle,
                   child: const Text('저장'),
                 ),

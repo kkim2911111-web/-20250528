@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../models/app_maintenance_status.dart';
+import '../services/app_feature_config_service.dart';
 import '../services/app_maintenance_service.dart';
 import '../theme/danji_colors.dart';
 import '../widgets/maintenance_mode_screen.dart';
@@ -46,9 +47,12 @@ class _MainShellState extends State<MainShell> with WidgetsBindingObserver {
   }
 
   Future<void> _loadMaintenance() async {
-    final status = await AppMaintenanceService.instance.fetch(force: true);
+    final results = await Future.wait([
+      AppMaintenanceService.instance.fetch(force: true),
+      AppFeatureConfigService.instance.fetch(force: true),
+    ]);
     if (!mounted) return;
-    setState(() => _maintenance = status);
+    setState(() => _maintenance = results[0] as AppMaintenanceStatus);
   }
 
   void _openMyReservations() {

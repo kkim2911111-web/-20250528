@@ -1,5 +1,5 @@
 import { handleCors, jsonResponse } from '../_shared/http.ts';
-import { assertResidentMaintenanceAllowed } from '../_shared/maintenance_mode.ts';
+import { assertAppFeatureEnabled } from '../_shared/feature_config.ts';
 import { getAdminClient, getUserFromRequest } from '../_shared/payment.ts';
 import { issueTossBillingKey } from '../_shared/toss.ts';
 
@@ -28,12 +28,18 @@ Deno.serve(async (req) => {
 
     const admin = getAdminClient();
     try {
-      await assertResidentMaintenanceAllowed(admin, user.id);
+      await assertAppFeatureEnabled(admin, user.id, 'payment');
     } catch (e) {
       const err = e as Error & { code?: string };
       if (err.code === 'maintenance_active') {
         return jsonResponse(
           { error: 'maintenance_active', code: 'maintenance_active' },
+          503,
+        );
+      }
+      if (err.code === 'feature_disabled') {
+        return jsonResponse(
+          { error: 'feature_disabled', code: 'feature_disabled' },
           503,
         );
       }

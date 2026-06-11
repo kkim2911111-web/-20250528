@@ -1,4 +1,5 @@
 import { handleCors, jsonResponse } from '../_shared/http.ts';
+import { assertAppFeatureEnabled } from '../_shared/feature_config.ts';
 import {
   enqueueBillingRetry,
   notifyBillingPaymentFailed,
@@ -42,6 +43,25 @@ Deno.serve(async (req) => {
 
     const userClient = getUserClient(authHeader);
     const admin = getAdminClient();
+
+    try {
+      await assertAppFeatureEnabled(admin, user.id, 'extension');
+    } catch (e) {
+      const err = e as Error & { code?: string };
+      if (err.code === 'maintenance_active') {
+        return jsonResponse(
+          { error: 'maintenance_active', code: 'maintenance_active' },
+          503,
+        );
+      }
+      if (err.code === 'feature_disabled') {
+        return jsonResponse(
+          { error: 'feature_disabled', code: 'feature_disabled' },
+          503,
+        );
+      }
+      throw e;
+    }
 
     const { data: checkRaw, error: checkErr } = await userClient.rpc(
       'check_rental_extension_for_me',

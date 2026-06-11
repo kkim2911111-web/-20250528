@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../config/payment_config.dart';
+import '../models/app_feature_config.dart';
 import '../constants/payment_order_status.dart';
 import '../models/payment_confirm_result.dart';
 import '../models/reservation.dart';
@@ -14,8 +15,10 @@ import '../screens/payment_success_screen.dart';
 import '../screens/toss_billing_webview_screen.dart';
 import '../screens/toss_payment_webview_screen.dart';
 import '../supabase_client.dart';
+import '../utils/feature_kill_switch.dart';
 import '../utils/maintenance_error.dart';
 import '../utils/network_retry.dart';
+import 'app_feature_config_service.dart';
 import 'app_maintenance_service.dart';
 import '../utils/rental_pricing.dart';
 import 'reservation_service.dart';
@@ -71,6 +74,9 @@ class PaymentService {
       }
       if (msg.contains(maintenanceActiveCode)) {
         return AppMaintenanceService.instance.cached.message;
+      }
+      if (msg.contains(featureDisabledCode)) {
+        return AppFeatureConfigService.instance.messageFor(AppFeatureKeys.payment);
       }
       if (msg.contains('not_authenticated')) {
         return '로그인이 필요합니다. 다시 로그인한 뒤 결제를 시도해주세요.';
@@ -316,6 +322,20 @@ class PaymentService {
     );
   }
 
+  Future<void> _assertPaymentFeatureAllowed() async {
+    final maintenance =
+        await AppMaintenanceService.instance.current(force: true);
+    if (maintenance.enabled) {
+      throw Exception(maintenance.message);
+    }
+    await AppFeatureConfigService.instance.fetch(force: true);
+    if (!AppFeatureConfigService.instance.isEnabled(AppFeatureKeys.payment)) {
+      throw Exception(
+        AppFeatureConfigService.instance.messageFor(AppFeatureKeys.payment),
+      );
+    }
+  }
+
   /// 예약하기 → 결제창
   Future<void> startBookingPayment({
     required BuildContext context,
@@ -341,6 +361,8 @@ class PaymentService {
     if (user == null) {
       throw const AuthException('로그인이 필요합니다. 다시 로그인한 뒤 결제를 시도해주세요.');
     }
+
+    await _assertPaymentFeatureAllowed();
 
     final prepared = await preparePayment(
       vehicle: vehicle,
@@ -489,6 +511,18 @@ class PaymentService {
       throw const AuthException('로그인이 필요합니다.');
     }
 
+    final maintenance =
+        await AppMaintenanceService.instance.current(force: true);
+    if (maintenance.enabled) {
+      throw Exception(maintenance.message);
+    }
+    await AppFeatureConfigService.instance.fetch(force: true);
+    if (!AppFeatureConfigService.instance.isEnabled(AppFeatureKeys.extension)) {
+      throw Exception(
+        AppFeatureConfigService.instance.messageFor(AppFeatureKeys.extension),
+      );
+    }
+
     try {
       final data = await _invokeFunction('billing-extension-charge', {
         'reservationId': reservationId,
@@ -515,6 +549,12 @@ class PaymentService {
       if (code == 'extension_apply_failed') {
         return '결제는 완료되었으나 연장 적용에 실패했습니다. 고객센터로 문의해주세요.';
       }
+      if (code == 'feature_disabled') {
+        return AppFeatureConfigService.instance.messageFor(AppFeatureKeys.extension);
+      }
+      if (code == 'maintenance_active') {
+        return AppMaintenanceService.instance.cached.message;
+      }
     }
     if (details is String && details.isNotEmpty) {
       return _mapCancelError(details);
@@ -540,11 +580,7 @@ class PaymentService {
       throw StateError('TOSS_CLIENT_KEY가 필요합니다.');
     }
 
-    final maintenance =
-        await AppMaintenanceService.instance.current(force: true);
-    if (maintenance.enabled) {
-      throw Exception(maintenance.message);
-    }
+    await _assertPaymentFeatureAllowed();
 
     final user = supabase.auth.currentUser;
     if (user == null) {
@@ -972,6 +1008,9 @@ String _mapCancelError(String message) {
   if (lower.contains(maintenanceActiveCode)) {
     return AppMaintenanceService.instance.cached.message;
   }
+  if (lower.contains(featureDisabledCode)) {
+    return AppFeatureConfigService.instance.messageFor(AppFeatureKeys.payment);
+  }
   if (lower.contains('refund_amount_mismatch')) {
     return '환불 금액이 변경되었습니다. 다시 시도해주세요.';
   }
@@ -1045,6 +1084,9 @@ String friendlyPaymentError(Object error) {
     return '결제 요청 중 오류가 발생했습니다.\n'
         '로그인 상태와 TOSS_CLIENT_KEY 설정을 확인한 뒤 다시 시도해주세요.\n'
         '(상세: $text)';
+  }
+  if (isFeatureDisabledError(text)) {
+    return AppFeatureConfigService.instance.messageFor(AppFeatureKeys.payment);
   }
   if (text.startsWith('Exception: ')) {
     return text.substring('Exception: '.length);

@@ -757,6 +757,21 @@ class SuperAdminService {
         parse: (_) {},
       );
 
+  Future<void> setFeatureConfig({
+    required String featureKey,
+    required bool isEnabled,
+    String? disabledMessage,
+  }) =>
+      _rpc(
+        'set_super_admin_feature_config',
+        params: {
+          'p_feature_key': featureKey,
+          'p_is_enabled': isEnabled,
+          if (disabledMessage != null) 'p_disabled_message': disabledMessage,
+        },
+        parse: (_) {},
+      );
+
   /// 전체 푸시 — user_profiles 기준 (최대 limit명)
   Future<int> broadcastPush({
     required String title,

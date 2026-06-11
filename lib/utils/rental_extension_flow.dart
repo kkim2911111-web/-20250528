@@ -2,9 +2,11 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
+import '../models/app_feature_config.dart';
 import '../models/rental_extension_result.dart';
 import '../models/reservation.dart';
 import '../services/rental_service.dart';
+import '../utils/feature_kill_switch_guard.dart';
 import '../services/support_contacts_service.dart';
 import '../supabase_client.dart';
 import '../theme/danji_colors.dart';
@@ -16,6 +18,10 @@ Future<bool> openRentalExtension(
   Reservation reservation, {
   int extensionHours = 1,
 }) async {
+  if (!await ensureFeatureEnabled(context, AppFeatureKeys.extension)) {
+    return false;
+  }
+
   final service = RentalService();
   final navigator = Navigator.of(context, rootNavigator: true);
   showDialog<void>(
