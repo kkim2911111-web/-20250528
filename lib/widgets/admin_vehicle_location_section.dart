@@ -66,7 +66,7 @@ class AdminVehicleLocationSection extends StatelessWidget {
                 borderRadius: BorderRadius.circular(8),
               ),
               child: Text(
-                '대여 중 · 임차인 ${inUse.renterName ?? '—'} · 예약 ${inUse.id}',
+                '대여 중 · 임차인 ${inUse.renterDisplayName} · 예약 ${inUse.reservationNumberLabel}',
                 style: const TextStyle(
                   color: Color(0xFFF97316),
                   fontWeight: FontWeight.w600,

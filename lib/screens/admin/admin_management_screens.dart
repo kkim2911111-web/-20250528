@@ -2370,7 +2370,7 @@ class _AdminSalesScreenState extends State<AdminSalesScreen> {
                   Text(
                     _vehicleMetric == _AdminSalesVehicleMetric.revenue
                         ? '반납 완료 기준 · 매출 내림차순'
-                        : '가동률 = 해당 월 내 대여 점유 시간(진행 중 포함) ÷ $utilizationMonthHours시간',
+                        : '가동률 = 결제된 예약 구간 ÷ $utilizationMonthHours시간',
                     style: const TextStyle(
                       color: DanjiColors.textMuted,
                       fontSize: 12,

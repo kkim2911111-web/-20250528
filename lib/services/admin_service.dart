@@ -1215,16 +1215,49 @@ class AdminService {
     final rows = await supabase
         .from('reservations')
         .select(
-          'id, status, total_price, start_at, start_time, end_at, end_time, '
+          'id, user_id, reservation_number, status, total_price, start_at, start_time, '
+          'end_at, end_time, rental_started_at, '
+          'user_profiles(full_name, name, email), '
           'vehicles(model_name, car_number, parking_location, last_latitude, last_longitude, last_location_updated_at)',
         )
         .inFilter('vehicle_id', ids)
         .eq('status', 'in_use')
         .order('rental_started_at', ascending: false);
 
-    return (rows as List)
-        .map((r) => AdminReservationRow.fromMap(Map<String, dynamic>.from(r)))
+    final list = (rows as List)
+        .map((r) => Map<String, dynamic>.from(r as Map))
         .toList();
+
+    final userIds = list
+        .map((r) => r['user_id']?.toString())
+        .whereType<String>()
+        .where((id) => id.isNotEmpty)
+        .toSet()
+        .toList();
+
+    final profileByUserId = await _fetchRenterProfilesForStaff(userIds);
+
+    return list.map((r) {
+      final uid = r['user_id']?.toString();
+      final embedded = r['user_profiles'];
+      Map<String, dynamic>? profile;
+      if (embedded is Map) {
+        profile = Map<String, dynamic>.from(embedded);
+      }
+      final fallback = uid != null ? profileByUserId[uid] : null;
+      if (fallback != null) {
+        profile = {
+          ...?profile,
+          'full_name': fallback['full_name'] ?? profile?['full_name'],
+          'name': fallback['name'] ?? profile?['name'],
+          'email': fallback['email'] ?? profile?['email'],
+        };
+      }
+      if (profile != null) {
+        r['user_profiles'] = profile;
+      }
+      return AdminReservationRow.fromMap(r);
+    }).toList();
   }
 
   Future<SalesSummary> fetchSalesSummary(
