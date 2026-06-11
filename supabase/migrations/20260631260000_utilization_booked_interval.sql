@@ -1,4 +1,4 @@
--- 가동률: 결제된 예약 구간(confirmed/in_use/completed, 월 경계 클리핑) — 매출 집계는 변경 없음
+-- 가동률: 결제된 예약 구간 전체(confirmed/in_use/completed·노쇼, 월 경계 클리핑, 100% 초과 가능) — 매출 집계는 변경 없음
 
 drop function if exists public.get_admin_sales_summary(uuid, integer, integer);
 
@@ -133,10 +133,7 @@ begin
       coalesce(vs.rental_count, 0)::bigint as rental_count,
       coalesce(vs.revenue, 0)::bigint as revenue,
       round(
-        least(
-          100,
-          (coalesce(occ.rental_hours, 0) / nullif(v_month_hours, 0)) * 100
-        ),
+        (coalesce(occ.rental_hours, 0) / nullif(v_month_hours, 0)) * 100,
         1
       ) as utilization_percent
     from public.vehicles v
