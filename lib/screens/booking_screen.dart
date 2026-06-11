@@ -1982,14 +1982,31 @@ class _BookingVehicleCardPriceLines extends StatelessWidget {
       final label = lines != null
           ? '₩${won.format(lines.appliedAmount)}$suffix'
           : unitPriceLabel;
-      return Text(
-        label,
-        style: TextStyle(
-          fontSize: 13,
-          fontWeight: FontWeight.w500,
-          color: priceColor,
-          height: 1.3,
-        ),
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            label,
+            style: TextStyle(
+              fontSize: 13,
+              fontWeight: FontWeight.w500,
+              color: priceColor,
+              height: 1.3,
+            ),
+          ),
+          if (lines?.showMonthlyOnlyLabel == true) ...[
+            const SizedBox(height: 4),
+            Text(
+              '월 단위 전용 차량',
+              style: TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w500,
+                color: mutedColor,
+                height: 1.3,
+              ),
+            ),
+          ],
+        ],
       );
     }
 

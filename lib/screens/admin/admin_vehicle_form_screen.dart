@@ -8,7 +8,7 @@ import '../../theme/danji_colors.dart';
 import '../../theme/danji_theme.dart';
 import '../../utils/rental_pricing.dart';
 import '../../utils/vehicle_insurance_status.dart';
-import '../../utils/vehicle_rental_type_price_guard.dart';
+import '../../utils/vehicle_rental_types_save.dart';
 import '../../widgets/admin_scaffold.dart';
 import '../../widgets/danji_app_bar.dart';
 import '../../widgets/vehicle_rental_types_section.dart';
@@ -112,58 +112,38 @@ class _AdminVehicleFormScreenState extends State<AdminVehicleFormScreen> {
     final dailyText = _dailyPrice.text.trim();
     final monthlyText = _monthlyPrice.text.trim();
     final excessText = _monthlyExcessDailyPrice.text.trim();
-    final dailyPrice = dailyText.isEmpty ? null : int.tryParse(dailyText);
-    final monthlyPrice = monthlyText.isEmpty ? null : int.tryParse(monthlyText);
-    final monthlyExcessDailyPrice =
-        excessText.isEmpty ? null : int.tryParse(excessText);
 
     if (name.isEmpty) {
       setState(() => _error = '차종(모델명)을 입력해주세요.');
       return;
     }
-    if (_rentalTypes.isEmpty) {
-      setState(() => _error = '대여 유형을 1개 이상 선택해주세요.');
-      return;
-    }
-    if (_rentalTypes.contains(RentalType.hourly) && hourlyPrice < 0) {
-      setState(() => _error = '시간당 요금을 올바르게 입력해주세요.');
-      return;
-    }
-    if (dailyPrice != null && dailyPrice < 0) {
-      setState(() => _error = '1일 요금을 올바르게 입력해주세요.');
-      return;
-    }
-    if (monthlyPrice != null && monthlyPrice < 0) {
-      setState(() => _error = '월 요금을 올바르게 입력해주세요.');
-      return;
-    }
-    if (monthlyExcessDailyPrice != null && monthlyExcessDailyPrice < 0) {
-      setState(() => _error = '초과 일요금을 올바르게 입력해주세요.');
+    final fieldError = VehicleRentalTypesSaveHelper.validateFields(
+      rentalTypes: _rentalTypes,
+      hourlyPrice: hourlyPrice,
+      dailyText: dailyText,
+      monthlyText: monthlyText,
+      excessText: excessText,
+    );
+    if (fieldError != null) {
+      setState(() => _error = fieldError);
       return;
     }
 
-    var rentalTypes = Set<RentalType>.from(_rentalTypes);
-    final missingPrices = VehicleRentalTypePriceGuard.findTypesMissingPrice(
-      types: rentalTypes,
+    final rentalData = await VehicleRentalTypesSaveHelper.prepareForSave(
+      context,
+      rentalTypes: _rentalTypes,
       hourlyPrice: hourlyPrice,
-      dailyPriceText: dailyText,
-      monthlyPriceText: monthlyText,
+      dailyText: dailyText,
+      monthlyText: monthlyText,
+      excessText: excessText,
     );
-    if (missingPrices.isNotEmpty) {
-      final choice = await VehicleRentalTypePriceGuard.showSaveGuardDialog(
-        context,
-        missingPrices,
-      );
-      if (choice != VehicleRentalTypeSaveGuardChoice.saveWithTogglesOff) {
-        return;
-      }
-      rentalTypes.removeAll(missingPrices);
-      if (rentalTypes.isEmpty) {
+    if (rentalData == null) {
+      if (_rentalTypes.isEmpty) {
         setState(() => _error = '대여 유형을 1개 이상 선택해주세요.');
-        return;
       }
-      setState(() => _rentalTypes = rentalTypes);
+      return;
     }
+    setState(() => _rentalTypes = rentalData.rentalTypes);
 
     setState(() {
       _loading = true;
@@ -178,11 +158,11 @@ class _AdminVehicleFormScreenState extends State<AdminVehicleFormScreen> {
       name: name,
       vehicleType: _vehicleType,
       fuelType: _fuelType,
-      pricePerHour: rentalTypes.contains(RentalType.hourly) ? hourlyPrice : 0,
-      dailyPrice: dailyPrice,
-      monthlyPrice: monthlyPrice,
-      monthlyExcessDailyPrice: monthlyExcessDailyPrice,
-      rentalTypes: rentalTypes.toList(),
+      pricePerHour: rentalData.pricePerHour,
+      dailyPrice: rentalData.dailyPrice,
+      monthlyPrice: rentalData.monthlyPrice,
+      monthlyExcessDailyPrice: rentalData.monthlyExcessDailyPrice,
+      rentalTypes: rentalData.rentalTypes.toList(),
       parkingLocation: _parking.text.trim().isEmpty ? null : _parking.text.trim(),
       ownerName: _ownerName.text.trim().isEmpty ? null : _ownerName.text.trim(),
       carNumber: _carNumber.text.trim().isEmpty ? null : _carNumber.text.trim(),

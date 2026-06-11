@@ -7,18 +7,25 @@ class BookingVehiclePriceLines {
   final int appliedAmount;
   final RentalType periodType;
   final int? savings;
+  final bool showMonthlyOnlyLabel;
 
   const BookingVehiclePriceLines({
     this.dailyCompareAmount,
     required this.appliedAmount,
     required this.periodType,
     this.savings,
+    this.showMonthlyOnlyLabel = false,
   });
 
   bool get showDailyCompare =>
       dailyCompareAmount != null && dailyCompareAmount! > 0;
 
   bool get showSavings => savings != null && savings! > 0;
+}
+
+bool isMonthlyOnlyVehicle(Vehicle vehicle) {
+  final types = vehicle.rentalTypes;
+  return types.contains(RentalType.monthly) && !types.contains(RentalType.daily);
 }
 
 BookingVehiclePriceLines? buildBookingVehiclePriceLines(
@@ -40,6 +47,8 @@ BookingVehiclePriceLines? buildBookingVehiclePriceLines(
     return BookingVehiclePriceLines(
       appliedAmount: applied,
       periodType: periodType,
+      showMonthlyOnlyLabel:
+          periodType == RentalType.monthly && isMonthlyOnlyVehicle(vehicle),
     );
   }
 

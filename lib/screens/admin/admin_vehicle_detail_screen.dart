@@ -13,7 +13,9 @@ import '../../widgets/admin_vehicle_location_section.dart';
 import '../../widgets/danji_app_bar.dart';
 import '../../widgets/rental_type_badge.dart';
 import '../../widgets/section_card.dart';
-import '../../utils/vehicle_rental_type_price_display.dart';
+import '../../utils/rental_pricing.dart';
+import '../../utils/vehicle_rental_types_save.dart';
+import '../../widgets/vehicle_rental_types_section.dart';
 import 'admin_vehicle_form_screen.dart';
 
 class AdminVehicleDetailScreen extends StatefulWidget {
@@ -41,11 +43,38 @@ class _AdminVehicleDetailScreenState extends State<AdminVehicleDetailScreen> {
   Future<List<AdminReservationRow>>? _operatingFuture;
   bool _changed = false;
 
+  final _hourlyPrice = TextEditingController();
+  final _dailyPrice = TextEditingController();
+  final _monthlyPrice = TextEditingController();
+  final _monthlyExcessDailyPrice = TextEditingController();
+  Set<RentalType> _rentalTypes = {RentalType.hourly};
+  bool _rentalTypesSaving = false;
+  String? _rentalTypesError;
+
   @override
   void initState() {
     super.initState();
     _vehicle = widget.vehicle;
+    _syncRentalTypeFieldsFromVehicle();
     _reload();
+  }
+
+  @override
+  void dispose() {
+    _hourlyPrice.dispose();
+    _dailyPrice.dispose();
+    _monthlyPrice.dispose();
+    _monthlyExcessDailyPrice.dispose();
+    super.dispose();
+  }
+
+  void _syncRentalTypeFieldsFromVehicle() {
+    _hourlyPrice.text = _vehicle.pricePerHour.toString();
+    _dailyPrice.text = _vehicle.dailyPrice?.toString() ?? '';
+    _monthlyPrice.text = _vehicle.monthlyPrice?.toString() ?? '';
+    _monthlyExcessDailyPrice.text =
+        _vehicle.monthlyExcessDailyPrice?.toString() ?? '';
+    _rentalTypes = _vehicle.rentalTypes.toSet();
   }
 
   void _reload() {
@@ -77,6 +106,7 @@ class _AdminVehicleDetailScreenState extends State<AdminVehicleDetailScreen> {
         setState(() {
           _vehicle = v;
           _changed = true;
+          _syncRentalTypeFieldsFromVehicle();
         });
         _reload();
         return;
@@ -210,65 +240,55 @@ class _AdminVehicleDetailScreenState extends State<AdminVehicleDetailScreen> {
     return result;
   }
 
-  Future<void> _editPrice() async {
-    final controller = TextEditingController(text: '${_vehicle.pricePerHour}');
-    final price = await showDialog<int>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: Text('${_vehicle.name} 가격'),
-        content: TextField(
-          controller: controller,
-          keyboardType: TextInputType.number,
-          decoration: const InputDecoration(labelText: '시간당 가격 (원)'),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: const Text('취소'),
-          ),
-          FilledButton(
-            onPressed: () {
-              final v = int.tryParse(controller.text.trim());
-              if (v == null || v < 0) return;
-              Navigator.pop(ctx, v);
-            },
-            child: const Text('저장'),
-          ),
-        ],
-      ),
+  Future<void> _saveRentalTypes() async {
+    final hourlyPrice = int.tryParse(_hourlyPrice.text.trim()) ?? -1;
+    final dailyText = _dailyPrice.text.trim();
+    final monthlyText = _monthlyPrice.text.trim();
+    final excessText = _monthlyExcessDailyPrice.text.trim();
+
+    final fieldError = VehicleRentalTypesSaveHelper.validateFields(
+      rentalTypes: _rentalTypes,
+      hourlyPrice: hourlyPrice,
+      dailyText: dailyText,
+      monthlyText: monthlyText,
+      excessText: excessText,
     );
-    controller.dispose();
-    if (price == null) return;
+    if (fieldError != null) {
+      setState(() => _rentalTypesError = fieldError);
+      return;
+    }
+
+    final data = await VehicleRentalTypesSaveHelper.prepareForSave(
+      context,
+      rentalTypes: _rentalTypes,
+      hourlyPrice: hourlyPrice,
+      dailyText: dailyText,
+      monthlyText: monthlyText,
+      excessText: excessText,
+    );
+    if (data == null) {
+      if (mounted && _rentalTypes.isEmpty) {
+        setState(() => _rentalTypesError = '대여 유형을 1개 이상 선택해주세요.');
+      }
+      return;
+    }
+
+    setState(() {
+      _rentalTypesSaving = true;
+      _rentalTypesError = null;
+      _rentalTypes = data.rentalTypes;
+    });
 
     try {
       await _admin.updateVehicle(
-        AdminVehicleDetail(
-          id: _vehicle.id,
-          complexId: _vehicle.complexId,
-          complexName: _vehicle.complexName,
-          name: _vehicle.name,
-          vehicleType: _vehicle.vehicleType,
-          fuelType: _vehicle.fuelType,
-          pricePerHour: price,
-          dailyPrice: _vehicle.dailyPrice,
-          monthlyPrice: _vehicle.monthlyPrice,
-          rentalTypes: _vehicle.rentalTypes,
-          parkingLocation: _vehicle.parkingLocation,
-          carNumber: _vehicle.carNumber,
-          ownerName: _vehicle.ownerName,
-          isPublished: _vehicle.isPublished,
-          isAvailable: _vehicle.isAvailable,
-          insuranceCompany: _vehicle.insuranceCompany,
-          insurancePolicyNumber: _vehicle.insurancePolicyNumber,
-          insuranceExpiresAt: _vehicle.insuranceExpiresAt,
-          totalMileage: _vehicle.totalMileage,
-          isUnderMaintenance: _vehicle.isUnderMaintenance,
-          maintenanceMemo: _vehicle.maintenanceMemo,
-        ),
+        VehicleRentalTypesSaveHelper.applyToVehicle(_vehicle, data),
       );
       await _refreshVehicle();
+      if (mounted) DanjiSnackBar.show(context, '대여 유형·요금을 저장했습니다.');
     } catch (e) {
       if (mounted) DanjiSnackBar.show(context, friendlyAdminError(e));
+    } finally {
+      if (mounted) setState(() => _rentalTypesSaving = false);
     }
   }
 
@@ -538,49 +558,42 @@ class _AdminVehicleDetailScreenState extends State<AdminVehicleDetailScreen> {
                     compact: true,
                   ),
                   const SizedBox(height: 16),
-                  _SectionTitle('대여 유형 설정'),
                   SectionCard(
-                    child: Builder(
-                      builder: (context) {
-                        final priceLines = buildAdminVehicleRentalTypePriceLines(
-                          _vehicle,
-                          won: _won,
-                        );
-                        return InkWell(
-                          onTap: _editPrice,
-                          borderRadius: BorderRadius.circular(12),
-                          child: Padding(
-                            padding: const EdgeInsets.symmetric(vertical: 4),
-                            child: priceLines.isEmpty
-                                ? const Text(
-                                    '등록된 요금 정보가 없습니다.',
-                                    style: TextStyle(
-                                      color: DanjiColors.textSecondary,
-                                    ),
-                                  )
-                                : Column(
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.start,
-                                    children: [
-                                      for (final line in priceLines)
-                                        Padding(
-                                          padding: const EdgeInsets.symmetric(
-                                            vertical: 6,
-                                          ),
-                                          child: Text(
-                                            line,
-                                            style: const TextStyle(
-                                              fontWeight: FontWeight.w700,
-                                              fontSize: 15,
-                                              color: DanjiColors.textPrimary,
-                                            ),
-                                          ),
-                                        ),
-                                    ],
-                                  ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        VehicleRentalTypesSection(
+                          selectedTypes: _rentalTypes,
+                          onTypesChanged: (types) =>
+                              setState(() => _rentalTypes = types),
+                          hourlyPriceController: _hourlyPrice,
+                          dailyPriceController: _dailyPrice,
+                          monthlyPriceController: _monthlyPrice,
+                          monthlyExcessDailyPriceController:
+                              _monthlyExcessDailyPrice,
+                        ),
+                        if (_rentalTypesError != null) ...[
+                          const SizedBox(height: 8),
+                          Text(
+                            _rentalTypesError!,
+                            style: const TextStyle(color: DanjiColors.accentRed),
                           ),
-                        );
-                      },
+                        ],
+                        const SizedBox(height: 16),
+                        FilledButton(
+                          onPressed:
+                              _rentalTypesSaving ? null : _saveRentalTypes,
+                          child: _rentalTypesSaving
+                              ? const SizedBox(
+                                  height: 18,
+                                  width: 18,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                  ),
+                                )
+                              : const Text('저장'),
+                        ),
+                      ],
                     ),
                   ),
                   const SizedBox(height: 16),
