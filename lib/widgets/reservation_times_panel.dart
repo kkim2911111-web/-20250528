@@ -7,6 +7,13 @@ import 'return_confirmation_badge.dart';
 
 enum ReservationTimesLayout { detail, compact }
 
+/// 반납 검수·상세 공통 시간 라벨 (4종 고정 폭)
+const reservationTimesLabelWidth = 76.0;
+const reservationScheduledTimeLabel = '예약 시간';
+const reservationRentalStartLabel = '대여 시작';
+const reservationReturnTimeLabel = '반납 시간';
+const reservationInspectionDoneLabel = '검수 완료';
+
 class ReservationTimesPanel extends StatelessWidget {
   final DateFormat formatter;
   final ReservationTimesMode mode;
@@ -54,7 +61,7 @@ class ReservationTimesPanel extends StatelessWidget {
         updatedAt: parseReservationDate(row['updated_at']),
       ),
       isNoShow: row['is_no_show'] == true,
-      status: row['status']?.toString(),
+      status: status,
     );
   }
 
@@ -76,7 +83,7 @@ class ReservationTimesPanel extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         for (var i = 0; i < rows.length; i++) ...[
-          if (i > 0) SizedBox(height: layout == ReservationTimesLayout.detail ? 0 : 4),
+          if (i > 0) const SizedBox(height: 4),
           _TimeRow(
             label: rows[i].label,
             value: rows[i].value,
@@ -91,7 +98,7 @@ class ReservationTimesPanel extends StatelessWidget {
   List<_TimeRowData> _buildRows() {
     final rows = <_TimeRowData>[
       _TimeRowData(
-        label: '예약 시간',
+        label: reservationScheduledTimeLabel,
         value: formatScheduledPeriod(
           formatter: formatter,
           startAt: scheduledStartAt,
@@ -108,7 +115,7 @@ class ReservationTimesPanel extends StatelessWidget {
     if (showRentalStart || forceShowActual) {
       rows.add(
         _TimeRowData(
-          label: '대여 시작',
+          label: reservationRentalStartLabel,
           value: _formatActualTime(
             timestamp: rentalStartedAt,
             forceShow: forceShowActual,
@@ -120,7 +127,7 @@ class ReservationTimesPanel extends StatelessWidget {
     if (showReturned || forceShowActual) {
       rows.add(
         _TimeRowData(
-          label: '반납',
+          label: reservationReturnTimeLabel,
           value: _needsReturnConfirmation
               ? ''
               : _formatActualTime(
@@ -135,7 +142,7 @@ class ReservationTimesPanel extends StatelessWidget {
     if (mode == ReservationTimesMode.inspectionCompleted) {
       rows.add(
         _TimeRowData(
-          label: '검수 완료',
+          label: reservationInspectionDoneLabel,
           value: formatOptionalDateTime(formatter, returnCompletedAt),
         ),
       );
@@ -188,60 +195,33 @@ class _TimeRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    if (layout == ReservationTimesLayout.detail) {
-      return Padding(
-        padding: const EdgeInsets.only(bottom: 10),
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            SizedBox(
-              width: 72,
-              child: Text(
-                label,
-                style: const TextStyle(
-                  color: DanjiColors.textSecondary,
-                  fontSize: 14,
-                ),
-              ),
-            ),
-            Expanded(
-              child: showReturnConfirmation
-                  ? const ReturnConfirmationBadge()
-                  : Text(
-                      value,
-                      style: const TextStyle(
-                        color: DanjiColors.textPrimary,
-                        fontSize: 14,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-            ),
-          ],
+    final labelStyle = TextStyle(
+      color: DanjiColors.textSecondary,
+      fontSize: layout == ReservationTimesLayout.detail ? 14 : 13,
+      height: 1.4,
+    );
+    final valueStyle = TextStyle(
+      color: DanjiColors.textPrimary,
+      fontSize: layout == ReservationTimesLayout.detail ? 14 : 13,
+      fontWeight: layout == ReservationTimesLayout.detail
+          ? FontWeight.w600
+          : FontWeight.w500,
+      height: 1.4,
+    );
+
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        SizedBox(
+          width: reservationTimesLabelWidth,
+          child: Text(label, style: labelStyle),
         ),
-      );
-    }
-
-    if (showReturnConfirmation) {
-      return Row(
-        children: [
-          Text(
-            '$label: ',
-            style: const TextStyle(
-              color: DanjiColors.textSecondary,
-              height: 1.4,
-            ),
-          ),
-          const ReturnConfirmationBadge(),
-        ],
-      );
-    }
-
-    return Text(
-      '$label: $value',
-      style: const TextStyle(
-        color: DanjiColors.textSecondary,
-        height: 1.4,
-      ),
+        Expanded(
+          child: showReturnConfirmation
+              ? const ReturnConfirmationBadge()
+              : Text(value, style: valueStyle),
+        ),
+      ],
     );
   }
 }

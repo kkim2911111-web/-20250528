@@ -299,6 +299,7 @@ class SuperAdminResidentRental {
   final DateTime? actualEndAt;
   final int totalPrice;
   final String status;
+  final bool isNoShow;
   final String? secondDriverName;
   final String? secondDriverLicense;
 
@@ -318,6 +319,7 @@ class SuperAdminResidentRental {
     this.actualEndAt,
     this.totalPrice = 0,
     required this.status,
+    this.isNoShow = false,
     this.secondDriverName,
     this.secondDriverLicense,
   });
@@ -339,6 +341,7 @@ class SuperAdminResidentRental {
       actualEndAt: _dt(m['actual_end_at']),
       totalPrice: (m['total_price'] as num?)?.toInt() ?? 0,
       status: m['status']?.toString() ?? '',
+      isNoShow: m['is_no_show'] == true,
       secondDriverName: m['second_driver_name']?.toString(),
       secondDriverLicense: m['second_driver_license']?.toString(),
     );
@@ -715,6 +718,7 @@ class SuperAdminSettlementReservation {
   final String? status;
   final int paidAmount;
   final int refundAmount;
+  final bool isNoShow;
   final DateTime? startAt;
   final DateTime? endAt;
   final DateTime? rentalStartedAt;
@@ -737,6 +741,7 @@ class SuperAdminSettlementReservation {
     this.status,
     this.paidAmount = 0,
     this.refundAmount = 0,
+    this.isNoShow = false,
     this.startAt,
     this.endAt,
     this.rentalStartedAt,
@@ -759,6 +764,7 @@ class SuperAdminSettlementReservation {
       status: m['status']?.toString(),
       paidAmount: (m['paid_amount'] as num?)?.toInt() ?? 0,
       refundAmount: (m['refund_amount'] as num?)?.toInt() ?? 0,
+      isNoShow: m['is_no_show'] == true,
       startAt: _dt(m['start_at']),
       endAt: _dt(m['end_at']),
       rentalStartedAt: _dt(m['rental_started_at']),

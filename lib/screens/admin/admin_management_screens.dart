@@ -1931,6 +1931,18 @@ class _ReturnInspectionCardState extends State<_ReturnInspectionCard> {
   }
 }
 
+enum _AdminSalesVehicleMetric { revenue, utilization }
+
+class _AdminSalesBundle {
+  final SalesSummary summary;
+  final List<AdminVehicleDetail> vehicles;
+
+  const _AdminSalesBundle({
+    required this.summary,
+    required this.vehicles,
+  });
+}
+
 class AdminSalesScreen extends StatefulWidget {
   final StaffProfile profile;
 
@@ -1945,7 +1957,8 @@ class _AdminSalesScreenState extends State<AdminSalesScreen> {
   final _won = NumberFormat('#,###');
   final _monthHeaderFormat = DateFormat('yyyy년 M월');
   late DateTime _selectedMonth;
-  Future<SalesSummary>? _future;
+  Future<_AdminSalesBundle>? _future;
+  _AdminSalesVehicleMetric _vehicleMetric = _AdminSalesVehicleMetric.revenue;
 
   @override
   void initState() {
@@ -1968,7 +1981,7 @@ class _AdminSalesScreenState extends State<AdminSalesScreen> {
         _selectedMonth.year,
         _selectedMonth.month + delta,
       );
-      _future = _fetchSummary();
+      _future = _fetchBundle();
     });
   }
 
@@ -1980,10 +1993,61 @@ class _AdminSalesScreenState extends State<AdminSalesScreen> {
     );
   }
 
+  Future<_AdminSalesBundle> _fetchBundle() async {
+    final results = await Future.wait([
+      _fetchSummary(),
+      _admin.fetchVehicles(widget.profile.complexId),
+    ]);
+    return _AdminSalesBundle(
+      summary: results[0] as SalesSummary,
+      vehicles: results[1] as List<AdminVehicleDetail>,
+    );
+  }
+
   void _reload() {
     setState(() {
-      _future = _fetchSummary();
+      _future = _fetchBundle();
     });
+  }
+
+  Map<String, List<RentalType>> _rentalTypesLookup(
+    List<AdminVehicleDetail> vehicles,
+  ) {
+    final map = <String, List<RentalType>>{};
+    for (final vehicle in vehicles) {
+      map[vehicle.name] = vehicle.rentalTypes;
+      final plate = vehicle.carNumber?.trim();
+      if (plate != null && plate.isNotEmpty) {
+        map['${vehicle.name}|$plate'] = vehicle.rentalTypes;
+      }
+    }
+    return map;
+  }
+
+  List<RentalType> _rentalTypesForRow(
+    VehicleUtilizationRow row,
+    Map<String, List<RentalType>> lookup,
+  ) {
+    final plate = row.carNumber?.trim();
+    if (plate != null && plate.isNotEmpty) {
+      final keyed = lookup['${row.vehicleName}|$plate'];
+      if (keyed != null) return keyed;
+    }
+    return lookup[row.vehicleName] ?? const [];
+  }
+
+  List<VehicleUtilizationRow> _sortedVehicleRows(
+    List<VehicleUtilizationRow> rows,
+  ) {
+    final list = List<VehicleUtilizationRow>.from(rows);
+    list.sort((a, b) {
+      final metric = _vehicleMetric == _AdminSalesVehicleMetric.revenue
+          ? b.revenue.compareTo(a.revenue)
+          : b.utilizationPercent.compareTo(a.utilizationPercent);
+      if (metric != 0) return metric;
+      return a.vehicleName.compareTo(b.vehicleName);
+    });
+    return list;
   }
 
   Future<void> _openVehicleSalesSheet(SalesRow row) async {
@@ -2128,13 +2192,14 @@ class _AdminSalesScreenState extends State<AdminSalesScreen> {
 
     return AdminScaffold(
       appBar: const DanjiAppBar(title: '매출 관리'),
-      body: FutureBuilder<SalesSummary>(
+      body: FutureBuilder<_AdminSalesBundle>(
         future: _future,
         builder: (context, snap) {
           if (snap.connectionState == ConnectionState.waiting) {
             return const Center(child: CircularProgressIndicator());
           }
-          final summary = snap.data ??
+          final bundle = snap.data;
+          final summary = bundle?.summary ??
               SalesSummary(
                 totalAmount: 0,
                 reservationCount: 0,
@@ -2144,6 +2209,8 @@ class _AdminSalesScreenState extends State<AdminSalesScreen> {
                   month: _selectedMonth.month,
                 ),
               );
+          final rentalTypeLookup =
+              _rentalTypesLookup(bundle?.vehicles ?? const []);
           final utilizationMonthHours = summary.monthHours > 0
               ? summary.monthHours
               : SalesSummary.monthHoursFor(
@@ -2267,79 +2334,77 @@ class _AdminSalesScreenState extends State<AdminSalesScreen> {
               const SizedBox(height: 16),
               _buildSettlementSection(summary),
               const SizedBox(height: 16),
-              _monthSwipeWrapper(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    const Text(
-                      '차량별 가동률/수익률',
-                      style: TextStyle(fontWeight: FontWeight.w800, fontSize: 16),
-                    ),
-                    const SizedBox(height: 8),
-                    MonthFilterBar(
-                      label: monthLabel,
-                      canGoNext: _canGoNextMonth,
-                      onPrevious: () => _shiftMonth(-1),
-                      onNext: _canGoNextMonth ? () => _shiftMonth(1) : null,
-                    ),
-                    const SizedBox(height: 8),
-                    Text(
-                      '반납 완료 기준 · 가동률 = 실대여시간 합계 ÷ $utilizationMonthHours시간',
-                      style: const TextStyle(
-                        color: DanjiColors.textMuted,
-                        fontSize: 12,
-                      ),
-                    ),
-                    const SizedBox(height: 10),
-                    if (summary.utilizationRows.isEmpty)
-                      const SectionCard(
-                        child: Text('이 달 가동 데이터가 없습니다.'),
-                      )
-                    else
-                      ...summary.utilizationRows.map(
-                        (row) => Padding(
-                          padding: const EdgeInsets.only(bottom: 10),
-                          child: _VehicleUtilizationCard(
-                            row: row,
-                            won: _won,
-                          ),
-                        ),
-                      ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 16),
-              const Text(
-                '차량별 매출',
-                style: TextStyle(fontWeight: FontWeight.w800, fontSize: 16),
-              ),
-              const SizedBox(height: 10),
-              if (summary.rows.isEmpty)
-                SectionCard(child: Text('$monthLabel 매출 데이터가 없습니다.'))
-              else
-                ...summary.rows.map(
-                  (row) => Padding(
-                    padding: const EdgeInsets.only(bottom: 10),
-                    child: SectionCard(
-                      child: ListTile(
-                        contentPadding: EdgeInsets.zero,
-                        onTap: () => _openVehicleSalesSheet(row),
-                        title: Text(
-                          row.vehicleName,
-                          style: const TextStyle(fontWeight: FontWeight.w800),
-                        ),
-                        subtitle: Text('${row.count}건'),
-                        trailing: Text(
-                          '₩${_won.format(row.amount)}',
-                          style: const TextStyle(
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Row(
+                    children: [
+                      const Expanded(
+                        child: Text(
+                          '차량별 실적',
+                          style: TextStyle(
                             fontWeight: FontWeight.w800,
-                            color: DanjiColors.buttonBlue,
+                            fontSize: 16,
                           ),
                         ),
                       ),
+                      SegmentedButton<_AdminSalesVehicleMetric>(
+                        segments: const [
+                          ButtonSegment(
+                            value: _AdminSalesVehicleMetric.revenue,
+                            label: Text('매출'),
+                          ),
+                          ButtonSegment(
+                            value: _AdminSalesVehicleMetric.utilization,
+                            label: Text('가동률'),
+                          ),
+                        ],
+                        selected: {_vehicleMetric},
+                        onSelectionChanged: (value) {
+                          setState(() => _vehicleMetric = value.first);
+                        },
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    _vehicleMetric == _AdminSalesVehicleMetric.revenue
+                        ? '반납 완료 기준 · 매출 내림차순'
+                        : '반납 완료 기준 · 가동률 = 실대여시간 합계 ÷ $utilizationMonthHours시간',
+                    style: const TextStyle(
+                      color: DanjiColors.textMuted,
+                      fontSize: 12,
                     ),
                   ),
-                ),
+                  const SizedBox(height: 10),
+                  if (summary.utilizationRows.isEmpty)
+                    const SectionCard(
+                      child: Text('이 달 차량 데이터가 없습니다.'),
+                    )
+                  else
+                    ..._sortedVehicleRows(summary.utilizationRows).map(
+                      (row) => Padding(
+                        padding: const EdgeInsets.only(bottom: 8),
+                        child: _CompactVehicleSalesCard(
+                          row: row,
+                          won: _won,
+                          metric: _vehicleMetric,
+                          rentalTypes: _rentalTypesForRow(
+                            row,
+                            rentalTypeLookup,
+                          ),
+                          onTap: () => _openVehicleSalesSheet(
+                            SalesRow(
+                              vehicleName: row.vehicleName,
+                              amount: row.revenue,
+                              count: row.rentalCount,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                ],
+              ),
             ],
           );
         },
@@ -2348,108 +2413,89 @@ class _AdminSalesScreenState extends State<AdminSalesScreen> {
   }
 }
 
-class _VehicleUtilizationCard extends StatelessWidget {
+class _CompactVehicleSalesCard extends StatelessWidget {
   final VehicleUtilizationRow row;
   final NumberFormat won;
+  final _AdminSalesVehicleMetric metric;
+  final List<RentalType> rentalTypes;
+  final VoidCallback? onTap;
 
-  const _VehicleUtilizationCard({
+  const _CompactVehicleSalesCard({
     required this.row,
     required this.won,
+    required this.metric,
+    required this.rentalTypes,
+    this.onTap,
   });
 
   @override
   Widget build(BuildContext context) {
     final carNumber = row.carNumber?.trim();
-    final utilizationLabel = row.utilizationPercent == row.utilizationPercent.roundToDouble()
-        ? '${row.utilizationPercent.round()}%'
-        : '${row.utilizationPercent.toStringAsFixed(1)}%';
+    final utilizationLabel =
+        row.utilizationPercent == row.utilizationPercent.roundToDouble()
+            ? '${row.utilizationPercent.round()}%'
+            : '${row.utilizationPercent.toStringAsFixed(1)}%';
+    final metricValue = metric == _AdminSalesVehicleMetric.revenue
+        ? '₩${won.format(row.revenue)}'
+        : utilizationLabel;
 
     return SectionCard(
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            row.vehicleName,
-            style: const TextStyle(
-              fontWeight: FontWeight.w800,
-              fontSize: 16,
-              color: DanjiColors.textPrimary,
-            ),
-          ),
-          if (carNumber != null && carNumber.isNotEmpty) ...[
-            const SizedBox(height: 4),
-            Text(
-              carNumber,
-              style: const TextStyle(
-                color: DanjiColors.textSecondary,
-                fontSize: 13,
-              ),
-            ),
-          ],
-          const SizedBox(height: 12),
-          Row(
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(12),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 2),
+          child: Row(
             children: [
               Expanded(
-                child: _VehicleUtilizationMetric(
-                  label: '대여 횟수',
-                  value: '${row.rentalCount}회',
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Flexible(
+                          child: Text(
+                            row.vehicleName,
+                            style: const TextStyle(
+                              fontWeight: FontWeight.w800,
+                              fontSize: 15,
+                            ),
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                        if (rentalTypes.isNotEmpty) ...[
+                          const SizedBox(width: 8),
+                          RentalTypeBadgeGroup(rentalTypes: rentalTypes),
+                        ],
+                      ],
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      [
+                        if (carNumber != null && carNumber.isNotEmpty) carNumber,
+                        '${row.rentalCount}건',
+                      ].join(' · '),
+                      style: const TextStyle(
+                        color: DanjiColors.textSecondary,
+                        fontSize: 13,
+                      ),
+                    ),
+                  ],
                 ),
               ),
-              Expanded(
-                child: _VehicleUtilizationMetric(
-                  label: '매출',
-                  value: '₩${won.format(row.revenue)}',
-                  emphasize: true,
-                ),
-              ),
-              Expanded(
-                child: _VehicleUtilizationMetric(
-                  label: '가동률',
-                  value: utilizationLabel,
-                  emphasize: true,
+              const SizedBox(width: 12),
+              Text(
+                metricValue,
+                style: const TextStyle(
+                  fontWeight: FontWeight.w800,
+                  fontSize: 15,
+                  color: DanjiColors.buttonBlue,
                 ),
               ),
             ],
           ),
-        ],
+        ),
       ),
-    );
-  }
-}
-
-class _VehicleUtilizationMetric extends StatelessWidget {
-  final String label;
-  final String value;
-  final bool emphasize;
-
-  const _VehicleUtilizationMetric({
-    required this.label,
-    required this.value,
-    this.emphasize = false,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          label,
-          style: const TextStyle(
-            color: DanjiColors.textMuted,
-            fontSize: 12,
-          ),
-        ),
-        const SizedBox(height: 4),
-        Text(
-          value,
-          style: TextStyle(
-            fontWeight: emphasize ? FontWeight.w800 : FontWeight.w600,
-            fontSize: emphasize ? 15 : 14,
-            color: emphasize ? DanjiColors.buttonBlue : DanjiColors.textPrimary,
-          ),
-        ),
-      ],
     );
   }
 }

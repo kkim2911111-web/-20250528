@@ -5,6 +5,7 @@ import '../models/rental_detail.dart';
 import '../models/super_admin_models.dart';
 import '../theme/danji_colors.dart';
 import '../utils/refund_status_display.dart';
+import '../utils/reservation_status_badge.dart';
 import 'rental_type_badge.dart';
 
 typedef RentalDetailItemTap = void Function(
@@ -350,7 +351,9 @@ class _RentalList extends StatelessWidget {
                   ),
                 ),
               ),
-              RefundStatusBadge.forAmounts(
+              ReservationDisplayBadgeRow(
+                status: item.status ?? 'completed',
+                isNoShow: item.isNoShow,
                 paidAmount: item.paidAmount,
                 refundAmount: item.refundAmount,
               ),
@@ -489,7 +492,8 @@ class _CancelList extends StatelessWidget {
                   ),
                 ),
               ),
-              RefundStatusBadge.forAmounts(
+              ReservationDisplayBadgeRow(
+                status: 'cancelled',
                 paidAmount: item.paidAmount,
                 refundAmount: item.refundAmount,
               ),

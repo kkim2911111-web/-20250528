@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import 'refund_status_display.dart';
+
 /// 예약 status + is_no_show → 한글 배지 (전체 예약·대여 관리 공통)
 class ReservationStatusStyle {
   final String label;
@@ -49,9 +51,9 @@ ReservationStatusStyle resolveReservationStatusStyle({
       );
     case 'completed':
       return const ReservationStatusStyle(
-        label: '이용완료',
-        background: Color(0xFFF2F4F6),
-        foreground: Color(0xFF6B7280),
+        label: '완료',
+        background: Color(0xFFDCFCE7),
+        foreground: Color(0xFF16A34A),
       );
     case 'cancelled':
       return const ReservationStatusStyle(
@@ -101,6 +103,43 @@ class ReservationStatusBadge extends StatelessWidget {
           fontSize: 12,
         ),
       ),
+    );
+  }
+}
+
+/// 상태 + 환불 뱃지 묶음 (표시 전용)
+class ReservationDisplayBadgeRow extends StatelessWidget {
+  final String status;
+  final bool isNoShow;
+  final int paidAmount;
+  final int refundAmount;
+
+  const ReservationDisplayBadgeRow({
+    super.key,
+    required this.status,
+    this.isNoShow = false,
+    this.paidAmount = 0,
+    this.refundAmount = 0,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final refundKind = refundBadgeKind(
+      paidAmount: paidAmount,
+      refundAmount: refundAmount,
+    );
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        if (refundKind != RefundBadgeKind.none) ...[
+          RefundStatusBadge(kind: refundKind),
+          const SizedBox(width: 6),
+        ],
+        ReservationStatusBadge(
+          status: status,
+          isNoShow: isNoShow,
+        ),
+      ],
     );
   }
 }

@@ -13,6 +13,7 @@ import '../../widgets/admin_vehicle_location_section.dart';
 import '../../widgets/danji_app_bar.dart';
 import '../../widgets/rental_type_badge.dart';
 import '../../widgets/section_card.dart';
+import '../../utils/vehicle_rental_type_price_display.dart';
 import 'admin_vehicle_form_screen.dart';
 
 class AdminVehicleDetailScreen extends StatefulWidget {
@@ -537,27 +538,49 @@ class _AdminVehicleDetailScreenState extends State<AdminVehicleDetailScreen> {
                     compact: true,
                   ),
                   const SizedBox(height: 16),
-                  _SectionTitle('시간당 가격'),
+                  _SectionTitle('대여 유형 설정'),
                   SectionCard(
-                    child: ListTile(
-                      contentPadding: EdgeInsets.zero,
-                      title: const Text(
-                        '시간당 요금',
-                        style: TextStyle(fontWeight: FontWeight.w700),
-                      ),
-                      subtitle: Text(
-                        '일 ${ _vehicle.dailyPrice != null ? '₩${_won.format(_vehicle.dailyPrice!)}' : '-'} · '
-                        '월 ${_vehicle.monthlyPrice != null ? '₩${_won.format(_vehicle.monthlyPrice!)}' : '-'}',
-                      ),
-                      trailing: Text(
-                        '₩${_won.format(_vehicle.pricePerHour)}/h',
-                        style: const TextStyle(
-                          color: DanjiColors.buttonBlue,
-                          fontWeight: FontWeight.w800,
-                          fontSize: 16,
-                        ),
-                      ),
-                      onTap: _editPrice,
+                    child: Builder(
+                      builder: (context) {
+                        final priceLines = buildAdminVehicleRentalTypePriceLines(
+                          _vehicle,
+                          won: _won,
+                        );
+                        return InkWell(
+                          onTap: _editPrice,
+                          borderRadius: BorderRadius.circular(12),
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(vertical: 4),
+                            child: priceLines.isEmpty
+                                ? const Text(
+                                    '등록된 요금 정보가 없습니다.',
+                                    style: TextStyle(
+                                      color: DanjiColors.textSecondary,
+                                    ),
+                                  )
+                                : Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      for (final line in priceLines)
+                                        Padding(
+                                          padding: const EdgeInsets.symmetric(
+                                            vertical: 6,
+                                          ),
+                                          child: Text(
+                                            line,
+                                            style: const TextStyle(
+                                              fontWeight: FontWeight.w700,
+                                              fontSize: 15,
+                                              color: DanjiColors.textPrimary,
+                                            ),
+                                          ),
+                                        ),
+                                    ],
+                                  ),
+                          ),
+                        );
+                      },
                     ),
                   ),
                   const SizedBox(height: 16),

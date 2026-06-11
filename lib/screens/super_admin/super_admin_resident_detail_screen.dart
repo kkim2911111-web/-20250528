@@ -8,6 +8,7 @@ import '../../theme/danji_theme.dart';
 import '../../utils/danji_snackbar.dart';
 import '../../utils/rental_contract_parser.dart';
 import '../../utils/resident_display.dart';
+import '../../utils/reservation_status_badge.dart';
 import '../../widgets/admin_scaffold.dart';
 import '../../widgets/admin_reservation_card_extras.dart';
 import '../../widgets/danji_app_bar.dart';
@@ -312,15 +313,25 @@ class _SuperAdminResidentDetailScreenState
                         _openingContractId == rental.reservationId;
                     return ListTile(
                       onTap: loading ? null : () => _openContract(detail, rental),
-                      title: Text(
-                        '${rental.reservationNumberLabel} · ${rental.vehicleName}',
-                        style: const TextStyle(
-                          fontWeight: FontWeight.w700,
-                          fontSize: 14,
-                        ),
+                      title: Row(
+                        children: [
+                          Expanded(
+                            child: Text(
+                              '${rental.reservationNumberLabel} · ${rental.vehicleName}',
+                              style: const TextStyle(
+                                fontWeight: FontWeight.w700,
+                                fontSize: 14,
+                              ),
+                            ),
+                          ),
+                          ReservationStatusBadge(
+                            status: rental.status,
+                            isNoShow: rental.isNoShow,
+                          ),
+                        ],
                       ),
                       subtitle: Text(
-                        '$period · ${rental.status}',
+                        period,
                         style: const TextStyle(fontSize: 12),
                       ),
                       trailing: loading

@@ -206,33 +206,18 @@ class _SuperAdminReservationsScreenState
       separatorBuilder: (_, __) => const SizedBox(height: 10),
       itemBuilder: (_, i) {
         final r = filtered[i];
-        final isCancelled = superAdminReservationIsCancelled(r);
         final axisLabel = superAdminReservationAxisLabel(r);
-        final statusLabel = resolveReservationStatusStyle(
-          status: r.status,
-          isNoShow: r.isNoShow,
-        ).label;
         return SuperAdminListCard(
           icon: Icons.event_note_outlined,
           title: '${r.vehicleName} · ${r.renterName}',
-          subtitle: isCancelled
-              ? '$axisLabel · ${r.complexName} · '
-                  '₩${superAdminWon.format(r.totalPrice)}'
-              : '$axisLabel · ${r.complexName} · $statusLabel · '
-                  '₩${superAdminWon.format(r.totalPrice)}',
-          titleSuffix: isCancelled
-              ? Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    RefundStatusBadge.forAmounts(
-                      paidAmount: r.paidAmount,
-                      refundAmount: r.refundAmount,
-                    ),
-                    const SizedBox(width: 6),
-                    const ReservationStatusBadge(status: 'cancelled'),
-                  ],
-                )
-              : null,
+          subtitle: '$axisLabel · ${r.complexName} · '
+              '₩${superAdminWon.format(r.totalPrice)}',
+          titleSuffix: ReservationDisplayBadgeRow(
+            status: r.status,
+            isNoShow: r.isNoShow,
+            paidAmount: r.paidAmount,
+            refundAmount: r.refundAmount,
+          ),
           onTap: () => _openDetail(r),
         );
       },
