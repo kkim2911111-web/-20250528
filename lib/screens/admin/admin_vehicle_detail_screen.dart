@@ -11,6 +11,7 @@ import '../../utils/vehicle_insurance_status.dart';
 import '../../widgets/admin_scaffold.dart';
 import '../../widgets/admin_vehicle_location_section.dart';
 import '../../widgets/danji_app_bar.dart';
+import '../../widgets/rental_type_badge.dart';
 import '../../widgets/section_card.dart';
 import 'admin_vehicle_form_screen.dart';
 
@@ -425,6 +426,24 @@ class _AdminVehicleDetailScreenState extends State<AdminVehicleDetailScreen> {
                           label: '주행거리',
                           value: '${_won.format(_vehicle.totalMileage)} km',
                         ),
+                        Row(
+                          children: [
+                            const SizedBox(
+                              width: 72,
+                              child: Text(
+                                '대여 유형',
+                                style: TextStyle(
+                                  color: DanjiColors.textSecondary,
+                                  fontSize: 13,
+                                ),
+                              ),
+                            ),
+                            RentalTypeBadgeGroup(
+                              rentalTypes: _vehicle.rentalTypes,
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 8),
                         Row(
                           children: [
                             const SizedBox(

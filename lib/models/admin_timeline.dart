@@ -1,3 +1,4 @@
+import '../utils/rental_pricing.dart';
 import '../utils/reservation_display.dart';
 import 'staff_profile.dart';
 
@@ -16,6 +17,7 @@ class AdminTimelineReservation {
   final DateTime? rentalStartedAt;
   final DateTime? returnedAt;
   final int totalPrice;
+  final RentalType? rentalType;
 
   const AdminTimelineReservation({
     required this.id,
@@ -32,6 +34,7 @@ class AdminTimelineReservation {
     this.rentalStartedAt,
     this.returnedAt,
     this.totalPrice = 0,
+    this.rentalType,
   });
 
   String get reservationNumberLabel => resolveReservationNumberLabel(
@@ -65,6 +68,7 @@ class AdminTimelineReservation {
       rentalStartedAt: dt(m['rental_started_at']),
       returnedAt: dt(m['returned_at']),
       totalPrice: (m['total_price'] as num?)?.toInt() ?? 0,
+      rentalType: RentalType.fromDb(m['rental_type']?.toString()),
     );
   }
 }

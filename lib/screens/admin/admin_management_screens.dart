@@ -218,11 +218,14 @@ class _AdminVehicleManageScreenState extends State<AdminVehicleManageScreen> {
             return const Center(child: Text('등록된 차량이 없습니다.'));
           }
           return ListView.separated(
-            padding: const EdgeInsets.all(20),
-            itemCount: list.length,
+            padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
+            itemCount: list.length + 1,
             separatorBuilder: (_, __) => const SizedBox(height: 10),
             itemBuilder: (context, index) {
-              final v = list[index];
+              if (index == 0) {
+                return const RentalTypeBadgeLegend();
+              }
+              final v = list[index - 1];
               return _AdminVehicleManageCard(
                 vehicle: v,
                 complexLabel: _vehicleComplexLabel(v, widget.profile),
@@ -336,6 +339,10 @@ class _AdminVehicleManageCard extends StatelessWidget {
                                             fontSize: 16,
                                           ),
                                         ),
+                                      ),
+                                      const SizedBox(width: 6),
+                                      RentalTypeBadgeGroup(
+                                        rentalTypes: vehicle.rentalTypes,
                                       ),
                                       const SizedBox(width: 6),
                                       VehicleExposureBadge(

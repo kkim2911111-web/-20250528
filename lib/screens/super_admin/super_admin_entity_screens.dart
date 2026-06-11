@@ -8,6 +8,7 @@ import '../../utils/danji_snackbar.dart';
 import '../../utils/resident_display.dart';
 import '../../utils/rental_pricing.dart';
 import '../../widgets/admin_scaffold.dart';
+import '../../widgets/rental_type_badge.dart';
 import '../../widgets/vehicle_rental_types_section.dart';
 import '../../widgets/danji_app_bar.dart';
 import '../../widgets/section_card.dart';
@@ -463,7 +464,10 @@ class _SuperAdminVehiclesScreenState extends State<SuperAdminVehiclesScreen> {
           const SizedBox(height: 8),
           Wrap(
             spacing: 6,
+            runSpacing: 6,
+            crossAxisAlignment: WrapCrossAlignment.center,
             children: [
+              RentalTypeBadgeGroup(rentalTypes: v.rentalTypes),
               SuperAdminChip(
                 label: v.inUse ? '대여중' : (v.isAvailable ? '가용' : '비가용'),
                 color: v.inUse
@@ -568,6 +572,8 @@ class _SuperAdminVehiclesScreenState extends State<SuperAdminVehiclesScreen> {
                   onChanged: (f) => setState(() => _filter = f),
                 ),
                 const SizedBox(height: 8),
+                const RentalTypeBadgeLegend(),
+                const SizedBox(height: 8),
                 FutureBuilder<List<SuperAdminComplex>>(
                   future: _complexesFuture,
                   builder: (context, cxSnap) {
@@ -633,6 +639,9 @@ class _SuperAdminVehiclesScreenState extends State<SuperAdminVehiclesScreen> {
                         final v = filtered[i];
                         return SuperAdminListCard(
                           icon: Icons.directions_car_outlined,
+                          titlePrefix: RentalTypeBadgeGroup(
+                            rentalTypes: v.rentalTypes,
+                          ),
                           title: '${v.modelName} · ${v.complexName}',
                           subtitle: '${v.carNumber ?? '번호 미등록'} · '
                               '${v.inUse ? '대여중' : (v.isAvailable ? '가용' : '비가용')} · '

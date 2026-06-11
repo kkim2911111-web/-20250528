@@ -12,6 +12,7 @@ import '../../widgets/admin_scaffold.dart';
 import '../../widgets/danji_app_bar.dart';
 import '../../widgets/admin_reservation_card_extras.dart';
 import '../../widgets/admin_reservation_timeline_view.dart';
+import '../../widgets/rental_type_badge.dart';
 import '../../widgets/reservation_times_panel.dart';
 import '../../widgets/section_card.dart';
 import '../../models/admin_timeline.dart';
@@ -418,6 +419,10 @@ class _AdminReservationListScreenState
                   ],
                 ),
               ),
+              const Padding(
+                padding: EdgeInsets.fromLTRB(16, 8, 16, 0),
+                child: RentalTypeBadgeLegend(),
+              ),
               if (_viewMode == _AdminReservationViewMode.list) ...[
               Padding(
                 padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
@@ -792,23 +797,26 @@ class _CompletedReservationCard extends StatelessWidget {
                       ),
                     ),
                   ),
-                  Wrap(
-                    spacing: 6,
-                    runSpacing: 4,
-                    crossAxisAlignment: WrapCrossAlignment.center,
-                    children: [
-                      if (hasSecondDriver)
-                        GestureDetector(
-                          onTap: () => showAdminSecondDriverInfoSheet(
-                            context,
-                            secondDriverName: secondDriverName,
-                            secondDriverLicense: secondDriverLicense,
-                          ),
-                          child: const AdminSecondDriverBadge(),
-                        ),
-                      _CompletedTabStatusBadge(row: row),
-                    ],
+            Wrap(
+              spacing: 6,
+              runSpacing: 4,
+              crossAxisAlignment: WrapCrossAlignment.center,
+              children: [
+                RentalTypeBadge(
+                  rentalTypeDb: row['rental_type']?.toString(),
+                ),
+                if (hasSecondDriver)
+                  GestureDetector(
+                    onTap: () => showAdminSecondDriverInfoSheet(
+                      context,
+                      secondDriverName: secondDriverName,
+                      secondDriverLicense: secondDriverLicense,
+                    ),
+                    child: const AdminSecondDriverBadge(),
                   ),
+                _CompletedTabStatusBadge(row: row),
+              ],
+            ),
                 ],
               ),
           if (carNumber != null && carNumber.isNotEmpty) ...[
@@ -1119,6 +1127,9 @@ class _CurrentReservationPanel extends StatelessWidget {
               runSpacing: 4,
               crossAxisAlignment: WrapCrossAlignment.center,
               children: [
+                RentalTypeBadge(
+                  rentalTypeDb: row['rental_type']?.toString(),
+                ),
                 if (hasSecondDriver)
                   GestureDetector(
                     onTap: () => showAdminSecondDriverInfoSheet(

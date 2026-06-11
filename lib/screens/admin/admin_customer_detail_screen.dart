@@ -10,6 +10,7 @@ import '../../utils/resident_display.dart';
 import '../../widgets/admin_scaffold.dart';
 import '../../widgets/danji_app_bar.dart';
 import '../../utils/rental_detail_navigation.dart';
+import '../../widgets/rental_type_badge.dart';
 import '../../widgets/section_card.dart';
 
 class AdminCustomerDetailScreen extends StatefulWidget {
@@ -261,9 +262,18 @@ class _AdminCustomerDetailScreenState extends State<AdminCustomerDetailScreen> {
                               reservationId: r.reservationId,
                               adminService: _admin,
                             ),
-                            title: Text(
-                              r.vehicleName,
-                              style: const TextStyle(fontWeight: FontWeight.w700),
+                            title: Row(
+                              children: [
+                                Expanded(
+                                  child: Text(
+                                    r.vehicleName,
+                                    style: const TextStyle(
+                                      fontWeight: FontWeight.w700,
+                                    ),
+                                  ),
+                                ),
+                                RentalTypeBadge(rentalType: r.rentalType),
+                              ],
                             ),
                             subtitle: Text(
                               '${r.statusLabel} · '

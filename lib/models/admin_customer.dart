@@ -1,3 +1,5 @@
+import '../utils/rental_pricing.dart';
+
 class AdminCustomer {
   final String userId;
   final String fullName;
@@ -68,6 +70,7 @@ class AdminCustomerReservation {
   final DateTime? endAt;
   final int totalPrice;
   final DateTime? returnCompletedAt;
+  final RentalType? rentalType;
 
   const AdminCustomerReservation({
     required this.reservationId,
@@ -78,6 +81,7 @@ class AdminCustomerReservation {
     this.endAt,
     required this.totalPrice,
     this.returnCompletedAt,
+    this.rentalType,
   });
 
   factory AdminCustomerReservation.fromMap(Map<String, dynamic> map) {
@@ -90,6 +94,7 @@ class AdminCustomerReservation {
       endAt: _parseDateTime(map['end_at']),
       totalPrice: (map['total_price'] as num?)?.toInt() ?? 0,
       returnCompletedAt: _parseDateTime(map['return_completed_at']),
+      rentalType: RentalType.fromDb(map['rental_type']?.toString()),
     );
   }
 

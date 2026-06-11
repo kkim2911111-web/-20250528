@@ -159,6 +159,7 @@ class SuperAdminListCard extends StatelessWidget {
   final IconData icon;
   final String title;
   final String subtitle;
+  final Widget? titlePrefix;
   final Widget? trailing;
   final VoidCallback? onTap;
 
@@ -167,6 +168,7 @@ class SuperAdminListCard extends StatelessWidget {
     required this.icon,
     required this.title,
     required this.subtitle,
+    this.titlePrefix,
     this.trailing,
     this.onTap,
   });
@@ -178,12 +180,22 @@ class SuperAdminListCard extends StatelessWidget {
       child: ListTile(
         contentPadding: EdgeInsets.zero,
         leading: Icon(icon, color: DanjiColors.buttonBlue, size: 26),
-        title: Text(
-          title,
-          style: const TextStyle(
-            fontWeight: FontWeight.w800,
-            color: DanjiColors.textPrimary,
-          ),
+        title: Row(
+          children: [
+            if (titlePrefix != null) ...[
+              titlePrefix!,
+              const SizedBox(width: 6),
+            ],
+            Expanded(
+              child: Text(
+                title,
+                style: const TextStyle(
+                  fontWeight: FontWeight.w800,
+                  color: DanjiColors.textPrimary,
+                ),
+              ),
+            ),
+          ],
         ),
         subtitle: Text(
           subtitle,

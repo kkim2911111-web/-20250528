@@ -14,6 +14,7 @@ import '../utils/rental_pricing.dart';
 import '../utils/reservation_display.dart';
 import '../utils/reservation_status_badge.dart';
 import '../widgets/month_filter_bar.dart';
+import '../widgets/rental_type_badge.dart';
 import '../widgets/reservation_times_panel.dart';
 
 enum _TimelineDisplayMode { month, day }
@@ -186,6 +187,7 @@ class _AdminReservationTimelineViewState
   int? _lastScrollKeyMonth;
   _TimelineDisplayMode? _lastScrollKeyMode;
   DateTime? _lastScrollKeyDay;
+  bool _vehicleSheetOpen = false;
 
   @override
   void initState() {
@@ -197,6 +199,10 @@ class _AdminReservationTimelineViewState
   void didUpdateWidget(covariant AdminReservationTimelineView oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.year != widget.year || oldWidget.month != widget.month) {
+      if (_vehicleSheetOpen && Navigator.of(context).canPop()) {
+        Navigator.of(context).pop();
+        _vehicleSheetOpen = false;
+      }
       if (_mode == _TimelineDisplayMode.day && _selectedDay != null) {
         final day = _selectedDay!;
         if (day.year != widget.year || day.month != widget.month) {
@@ -338,6 +344,195 @@ class _AdminReservationTimelineViewState
     _scheduleInitialScroll(force: true);
   }
 
+  String _formatReservationPeriod(AdminTimelineReservation reservation) {
+    final start = reservation.startAt;
+    final end = reservation.endAt;
+    if (start == null) return '-';
+    if (end == null) return _dateTime.format(start);
+    return '${_dateTime.format(start)} ~ ${_dateTime.format(end)}';
+  }
+
+  Future<void> _showVehicleReservationsSheet(
+    AdminVehicleDetail vehicle,
+  ) async {
+    final reservations = _reservationsForVehicle(vehicle.id)
+      ..sort((a, b) {
+        final aStart = a.startAt;
+        final bStart = b.startAt;
+        if (aStart == null && bStart == null) return 0;
+        if (aStart == null) return 1;
+        if (bStart == null) return -1;
+        return aStart.compareTo(bStart);
+      });
+
+    final count = reservations.length;
+    final noShowCount = reservations.where((r) => r.isNoShow).length;
+    final revenue = reservations.fold<int>(
+      0,
+      (sum, r) => sum + r.totalPrice,
+    );
+    final monthLabel = _monthHeaderFormat.format(
+      DateTime(widget.year, widget.month),
+    );
+
+    _vehicleSheetOpen = true;
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: DanjiColors.surface,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+      ),
+      builder: (ctx) {
+        final bottomInset = MediaQuery.viewInsetsOf(ctx).bottom;
+        return Padding(
+          padding: EdgeInsets.only(bottom: bottomInset),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Padding(
+                padding: const EdgeInsets.fromLTRB(20, 16, 20, 8),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      vehicle.name,
+                      style: const TextStyle(
+                        fontWeight: FontWeight.w800,
+                        fontSize: 18,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      monthLabel,
+                      style: const TextStyle(
+                        color: DanjiColors.textSecondary,
+                        fontSize: 13,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      count == 0
+                          ? '이번 달 예약 없음'
+                          : '예약 $count건 · 노쇼 $noShowCount건 · '
+                              '매출 ₩${_won.format(revenue)}',
+                      style: const TextStyle(
+                        fontWeight: FontWeight.w700,
+                        fontSize: 13,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const Divider(height: 1),
+              if (reservations.isEmpty)
+                const Padding(
+                  padding: EdgeInsets.all(24),
+                  child: Center(
+                    child: Text(
+                      '이번 달 예약 없음',
+                      style: TextStyle(color: DanjiColors.textSecondary),
+                    ),
+                  ),
+                )
+              else
+                ConstrainedBox(
+                  constraints: BoxConstraints(
+                    maxHeight: MediaQuery.sizeOf(ctx).height * 0.55,
+                  ),
+                  child: ListView.separated(
+                    padding: const EdgeInsets.fromLTRB(16, 8, 16, 20),
+                    itemCount: reservations.length,
+                    separatorBuilder: (_, __) => const SizedBox(height: 8),
+                    itemBuilder: (_, index) {
+                      final r = reservations[index];
+                      return Material(
+                        color: DanjiColors.surface,
+                        borderRadius: BorderRadius.circular(12),
+                        child: InkWell(
+                          borderRadius: BorderRadius.circular(12),
+                          onTap: () {
+                            Navigator.pop(ctx);
+                            _vehicleSheetOpen = false;
+                            openStaffRentalDetail(
+                              context,
+                              reservationId: r.id,
+                            );
+                          },
+                          child: Container(
+                            padding: const EdgeInsets.all(12),
+                            decoration: BoxDecoration(
+                              borderRadius: BorderRadius.circular(12),
+                              border: Border.all(color: DanjiColors.border),
+                            ),
+                            child: Row(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                RentalTypeBadge(rentalType: r.rentalType),
+                                const SizedBox(width: 8),
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        _formatReservationPeriod(r),
+                                        style: const TextStyle(
+                                          fontWeight: FontWeight.w700,
+                                          fontSize: 13,
+                                        ),
+                                      ),
+                                      const SizedBox(height: 4),
+                                      Text(
+                                        r.renterName,
+                                        style: const TextStyle(
+                                          color: DanjiColors.textSecondary,
+                                          fontSize: 13,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                                const SizedBox(width: 8),
+                                Column(
+                                  crossAxisAlignment: CrossAxisAlignment.end,
+                                  children: [
+                                    ReservationStatusBadge(
+                                      status: r.isNoShow
+                                          ? 'completed'
+                                          : r.status,
+                                      isNoShow: r.isNoShow,
+                                    ),
+                                    const SizedBox(height: 6),
+                                    Text(
+                                      '₩${_won.format(r.totalPrice)}',
+                                      style: const TextStyle(
+                                        fontWeight: FontWeight.w700,
+                                        fontSize: 13,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+                ),
+            ],
+          ),
+        );
+      },
+    ).whenComplete(() {
+      if (mounted) {
+        setState(() => _vehicleSheetOpen = false);
+      }
+    });
+  }
+
   Future<void> _showReservationPopup(AdminTimelineReservation reservation) async {
     final phone = reservation.renterPhone.trim();
     final canCall = phone.isNotEmpty && phone != '미등록';
@@ -372,6 +567,8 @@ class _AdminReservationTimelineViewState
                       ),
                     ),
                   ),
+                  RentalTypeBadge(rentalType: reservation.rentalType),
+                  const SizedBox(width: 6),
                   ReservationStatusBadge(
                     status:
                         reservation.isNoShow ? 'completed' : reservation.status,
@@ -668,33 +865,41 @@ class _AdminReservationTimelineViewState
   Widget _buildVehicleLabel(AdminVehicleDetail vehicle) {
     return SizedBox(
       height: AdminReservationTimelineLayout.rowHeight,
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Text(
-              vehicle.name,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: const TextStyle(
-                fontWeight: FontWeight.w700,
-                fontSize: 12,
-              ),
-            ),
-            if (vehicle.carNumber != null &&
-                vehicle.carNumber!.trim().isNotEmpty)
-              Text(
-                vehicle.carNumber!,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: const TextStyle(
-                  fontSize: 10,
-                  color: DanjiColors.textMuted,
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: () => _showVehicleReservationsSheet(vehicle),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Text(
+                  vehicle.name,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    fontWeight: FontWeight.w700,
+                    fontSize: 12,
+                    color: DanjiColors.buttonBlue,
+                    decoration: TextDecoration.underline,
+                  ),
                 ),
-              ),
-          ],
+                if (vehicle.carNumber != null &&
+                    vehicle.carNumber!.trim().isNotEmpty)
+                  Text(
+                    vehicle.carNumber!,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      fontSize: 10,
+                      color: DanjiColors.textMuted,
+                    ),
+                  ),
+              ],
+            ),
+          ),
         ),
       ),
     );
