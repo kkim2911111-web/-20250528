@@ -345,7 +345,10 @@ class SuperAdminVehicleFilterBar extends StatelessWidget {
           ),
         ],
         selected: {selected},
-        onSelectionChanged: (s) => onChanged(s.first),
+        onSelectionChanged: (s) {
+          if (s.isEmpty) return;
+          onChanged(s.first);
+        },
       ),
     );
   }

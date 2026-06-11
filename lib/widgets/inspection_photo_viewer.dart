@@ -65,6 +65,7 @@ class _InspectionPhotoViewerScreenState extends State<InspectionPhotoViewerScree
   late int _index = widget.initialIndex;
   bool _saving = false;
   double _dragOffset = 0;
+  bool _photoZoomed = false;
 
   InspectionPhotoEntry get _current => widget.photos[_index];
 
@@ -112,24 +113,26 @@ class _InspectionPhotoViewerScreenState extends State<InspectionPhotoViewerScree
     return Material(
       color: Colors.black.withValues(alpha: 0.96),
       child: SafeArea(
-        child: GestureDetector(
-          onVerticalDragUpdate: (details) {
-            if (details.delta.dy > 0 || _dragOffset > 0) {
-              setState(() => _dragOffset += details.delta.dy);
-            }
-          },
-          onVerticalDragEnd: (details) {
-            if (_dragOffset > 96 || (details.primaryVelocity ?? 0) > 700) {
-              _close();
-              return;
-            }
-            setState(() => _dragOffset = 0);
-          },
-          child: Transform.translate(
-            offset: Offset(0, _dragOffset),
-            child: Column(
-              children: [
-                Padding(
+        child: Transform.translate(
+          offset: Offset(0, _dragOffset),
+          child: Column(
+            children: [
+              GestureDetector(
+                onVerticalDragUpdate: (details) {
+                  if (_photoZoomed) return;
+                  if (details.delta.dy > 0 || _dragOffset > 0) {
+                    setState(() => _dragOffset += details.delta.dy);
+                  }
+                },
+                onVerticalDragEnd: (details) {
+                  if (_photoZoomed) return;
+                  if (_dragOffset > 96 || (details.primaryVelocity ?? 0) > 700) {
+                    _close();
+                    return;
+                  }
+                  setState(() => _dragOffset = 0);
+                },
+                child: Padding(
                   padding: const EdgeInsets.fromLTRB(8, 8, 8, 0),
                   child: Row(
                     children: [
@@ -167,29 +170,44 @@ class _InspectionPhotoViewerScreenState extends State<InspectionPhotoViewerScree
                     ],
                   ),
                 ),
-                Expanded(
-                  child: PageView.builder(
-                    controller: _pageController,
-                    itemCount: widget.photos.length,
-                    onPageChanged: (i) => setState(() => _index = i),
-                    itemBuilder: (_, i) {
-                      return _ZoomablePhotoPage(url: widget.photos[i].url);
-                    },
+              ),
+              Expanded(
+                child: PageView.builder(
+                  controller: _pageController,
+                  physics: _photoZoomed
+                      ? const NeverScrollableScrollPhysics()
+                      : const PageScrollPhysics(),
+                  itemCount: widget.photos.length,
+                  onPageChanged: (i) => setState(() {
+                    _index = i;
+                    _photoZoomed = false;
+                  }),
+                  itemBuilder: (_, i) {
+                    return _ZoomablePhotoPage(
+                      url: widget.photos[i].url,
+                      onZoomChanged: i == _index
+                          ? (zoomed) {
+                              if (_photoZoomed != zoomed) {
+                                setState(() => _photoZoomed = zoomed);
+                              }
+                            }
+                          : null,
+                    );
+                  },
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
+                child: Text(
+                  '${_index + 1} / ${widget.photos.length}',
+                  style: const TextStyle(
+                    color: Colors.white70,
+                    fontWeight: FontWeight.w600,
+                    fontSize: 14,
                   ),
                 ),
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
-                  child: Text(
-                    '${_index + 1} / ${widget.photos.length}',
-                    style: const TextStyle(
-                      color: Colors.white70,
-                      fontWeight: FontWeight.w600,
-                      fontSize: 14,
-                    ),
-                  ),
-                ),
-              ],
-            ),
+              ),
+            ],
           ),
         ),
       ),
@@ -199,8 +217,12 @@ class _InspectionPhotoViewerScreenState extends State<InspectionPhotoViewerScree
 
 class _ZoomablePhotoPage extends StatefulWidget {
   final String url;
+  final ValueChanged<bool>? onZoomChanged;
 
-  const _ZoomablePhotoPage({required this.url});
+  const _ZoomablePhotoPage({
+    required this.url,
+    this.onZoomChanged,
+  });
 
   @override
   State<_ZoomablePhotoPage> createState() => _ZoomablePhotoPageState();
@@ -210,12 +232,27 @@ class _ZoomablePhotoPageState extends State<_ZoomablePhotoPage>
     with SingleTickerProviderStateMixin {
   final TransformationController _controller = TransformationController();
   TapDownDetails? _doubleTapDetails;
-  static const _zoomedScale = 2.5;
+  static const _zoomedScale = 3.0;
+  bool _isZoomed = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller.addListener(_handleTransformChanged);
+  }
 
   @override
   void dispose() {
+    _controller.removeListener(_handleTransformChanged);
     _controller.dispose();
     super.dispose();
+  }
+
+  void _handleTransformChanged() {
+    final zoomed = _controller.value.getMaxScaleOnAxis() > 1.02;
+    if (zoomed == _isZoomed) return;
+    _isZoomed = zoomed;
+    widget.onZoomChanged?.call(zoomed);
   }
 
   void _handleDoubleTap() {
@@ -241,13 +278,16 @@ class _ZoomablePhotoPageState extends State<_ZoomablePhotoPage>
     return GestureDetector(
       onDoubleTapDown: (details) => _doubleTapDetails = details,
       onDoubleTap: _handleDoubleTap,
+      behavior: HitTestBehavior.deferToChild,
       child: InteractiveViewer(
         transformationController: _controller,
         minScale: 1,
-        maxScale: 4,
+        maxScale: 5,
         panEnabled: true,
         scaleEnabled: true,
-        child: Center(
+        clipBehavior: Clip.none,
+        boundaryMargin: const EdgeInsets.all(48),
+        child: SizedBox.expand(
           child: Image.network(
             widget.url,
             fit: BoxFit.contain,
@@ -257,9 +297,11 @@ class _ZoomablePhotoPageState extends State<_ZoomablePhotoPage>
                 child: CircularProgressIndicator(color: Colors.white),
               );
             },
-            errorBuilder: (_, __, ___) => const Text(
-              '사진을 불러올 수 없습니다.',
-              style: TextStyle(color: Colors.white70),
+            errorBuilder: (_, __, ___) => const Center(
+              child: Text(
+                '사진을 불러올 수 없습니다.',
+                style: TextStyle(color: Colors.white70),
+              ),
             ),
           ),
         ),
