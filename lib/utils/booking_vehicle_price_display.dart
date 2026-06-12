@@ -8,6 +8,8 @@ class BookingVehiclePriceLines {
   final RentalType periodType;
   final int? savings;
   final bool showMonthlyOnlyLabel;
+  final bool monthlyCapApplied;
+  final int periodDays;
 
   const BookingVehiclePriceLines({
     this.dailyCompareAmount,
@@ -15,12 +17,25 @@ class BookingVehiclePriceLines {
     required this.periodType,
     this.savings,
     this.showMonthlyOnlyLabel = false,
+    this.monthlyCapApplied = false,
+    this.periodDays = 0,
   });
 
   bool get showDailyCompare =>
       dailyCompareAmount != null && dailyCompareAmount! > 0;
 
   bool get showSavings => savings != null && savings! > 0;
+
+  /// 구간 총액 표기용 단위 — 산출 분기와 동일
+  String appliedAmountSuffix() {
+    if (monthlyCapApplied || periodType == RentalType.monthly) {
+      return '/월';
+    }
+    if (periodType == RentalType.daily && periodDays == 1) {
+      return '/일';
+    }
+    return '';
+  }
 }
 
 bool isMonthlyOnlyVehicle(Vehicle vehicle) {
@@ -34,29 +49,36 @@ BookingVehiclePriceLines? buildBookingVehiclePriceLines(
   required DateTime start,
   required DateTime end,
 }) {
-  final applied = RentalPricing.calculateBasePriceFromIntervalVehicle(
+  final breakdown = RentalPricing.calculateBasePriceBreakdownFromVehicle(
     vehicle,
     periodType,
     start: start,
     end: end,
   );
-  if (applied == null) return null;
+  if (breakdown == null) return null;
+
+  final applied = breakdown.amount;
+  final days = end.difference(start).inDays;
+  final monthlyCapApplied = breakdown.monthlyCapApplied;
 
   final hasDaily = vehicle.rentalTypes.contains(RentalType.daily);
   if (!hasDaily || periodType == RentalType.hourly) {
     return BookingVehiclePriceLines(
       appliedAmount: applied,
       periodType: periodType,
+      monthlyCapApplied: monthlyCapApplied,
+      periodDays: days,
       showMonthlyOnlyLabel:
           periodType == RentalType.monthly && isMonthlyOnlyVehicle(vehicle),
     );
   }
 
-  final days = end.difference(start).inDays;
   if (days < 1) {
     return BookingVehiclePriceLines(
       appliedAmount: applied,
       periodType: periodType,
+      monthlyCapApplied: monthlyCapApplied,
+      periodDays: days,
     );
   }
 
@@ -65,6 +87,8 @@ BookingVehiclePriceLines? buildBookingVehiclePriceLines(
     return BookingVehiclePriceLines(
       appliedAmount: applied,
       periodType: periodType,
+      monthlyCapApplied: monthlyCapApplied,
+      periodDays: days,
     );
   }
 
@@ -72,6 +96,8 @@ BookingVehiclePriceLines? buildBookingVehiclePriceLines(
     dailyCompareAmount: dailySum,
     appliedAmount: applied,
     periodType: periodType,
+    monthlyCapApplied: monthlyCapApplied,
+    periodDays: days,
     savings: dailySum - applied,
   );
 }

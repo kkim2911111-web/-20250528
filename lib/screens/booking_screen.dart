@@ -1973,68 +1973,82 @@ class _BookingVehicleCardPriceLines extends StatelessWidget {
     required this.won,
   });
 
+  TextStyle _priceStyle(Color color, {double size = 13}) => TextStyle(
+        fontSize: size,
+        fontWeight: FontWeight.w500,
+        color: color,
+        height: 1.3,
+      );
+
+  /// 금액+단위를 한 덩어리로 표시 (₩750,000/월 중간 줄바꿈 방지)
+  Widget _amountWithSuffix({
+    required int amount,
+    required String suffix,
+    required Color color,
+    double fontSize = 13,
+  }) {
+    return Text.rich(
+      TextSpan(
+        style: _priceStyle(color, size: fontSize),
+        children: [
+          TextSpan(text: '₩${won.format(amount)}'),
+          if (suffix.isNotEmpty) TextSpan(text: '\u2060$suffix'),
+        ],
+      ),
+      maxLines: 1,
+      softWrap: false,
+      overflow: TextOverflow.fade,
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final lines = priceLines;
-    final suffix = RentalPricing.rentalTypeUnitSuffix(periodType);
 
     if (lines == null || !lines.showDailyCompare) {
-      final label = lines != null
-          ? '₩${won.format(lines.appliedAmount)}$suffix'
-          : unitPriceLabel;
       return Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            label,
-            style: TextStyle(
-              fontSize: 13,
-              fontWeight: FontWeight.w500,
+          if (lines != null)
+            _amountWithSuffix(
+              amount: lines.appliedAmount,
+              suffix: lines.appliedAmountSuffix(),
               color: priceColor,
-              height: 1.3,
+            )
+          else
+            Text(
+              unitPriceLabel,
+              style: _priceStyle(priceColor),
             ),
-          ),
           if (lines?.showMonthlyOnlyLabel == true) ...[
             const SizedBox(height: 4),
             Text(
               '월 단위 전용 차량',
-              style: TextStyle(
-                fontSize: 12,
-                fontWeight: FontWeight.w500,
-                color: mutedColor,
-                height: 1.3,
-              ),
+              style: _priceStyle(mutedColor, size: 12),
             ),
           ],
         ],
       );
     }
 
-    final appliedLabel =
-        '₩${won.format(lines.appliedAmount)}$suffix';
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text.rich(
-          TextSpan(
-            style: TextStyle(
-              fontSize: 13,
-              fontWeight: FontWeight.w500,
-              color: priceColor,
-              height: 1.35,
-            ),
-            children: [
-              TextSpan(
-                text: '일 단가 ₩${won.format(lines.dailyCompareAmount)}',
-                style: TextStyle(
-                  color: mutedColor,
-                  decoration: TextDecoration.lineThrough,
-                ),
-              ),
-              const TextSpan(text: '  '),
-              TextSpan(text: appliedLabel),
-            ],
+        Text(
+          '일 단가 ₩${won.format(lines.dailyCompareAmount)}',
+          maxLines: 1,
+          softWrap: false,
+          overflow: TextOverflow.fade,
+          style: _priceStyle(mutedColor, size: 12).copyWith(
+            decoration: TextDecoration.lineThrough,
           ),
+        ),
+        const SizedBox(height: 3),
+        _amountWithSuffix(
+          amount: lines.appliedAmount,
+          suffix: lines.appliedAmountSuffix(),
+          color: priceColor,
+          fontSize: 12,
         ),
         if (lines.showSavings) ...[
           const SizedBox(height: 4),
