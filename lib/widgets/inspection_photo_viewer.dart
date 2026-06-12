@@ -173,6 +173,7 @@ class _InspectionPhotoViewerScreenState extends State<InspectionPhotoViewerScree
   }
 
   void _onPageChanged(int i) {
+    _resetZoomForPage(i);
     setState(() {
       _index = i;
       _photoZoomed = false;
@@ -182,6 +183,35 @@ class _InspectionPhotoViewerScreenState extends State<InspectionPhotoViewerScree
       _activePointerCount = 0;
     });
     _precacheAdjacent(i);
+  }
+
+  void _resetZoomForPage(int pageIndex) {
+    if (pageIndex < 0 || pageIndex >= widget.photos.length) return;
+    final controller = _photoControllers[pageIndex];
+    final scaleStateController = _scaleStateControllers[pageIndex];
+    controller.position = Offset.zero;
+    final base = _containedBaseScale[pageIndex];
+    if (base != null && base > 0) {
+      controller.scale = base;
+    } else {
+      controller.reset();
+    }
+    scaleStateController.scaleState = PhotoViewScaleState.initial;
+  }
+
+  void _goToPage(int target) {
+    if (target < 0 ||
+        target >= widget.photos.length ||
+        target == _index ||
+        !_pageController.hasClients) {
+      return;
+    }
+    _resetZoomForPage(_index);
+    _pageController.animateToPage(
+      target,
+      duration: const Duration(milliseconds: 220),
+      curve: Curves.easeOutCubic,
+    );
   }
 
   void _resetDismissDragState() {
@@ -305,6 +335,39 @@ class _InspectionPhotoViewerScreenState extends State<InspectionPhotoViewerScree
     }
   }
 
+  Widget _buildPageIndicator() {
+    final total = widget.photos.length;
+    final label = '${_index + 1} / $total';
+    const style = TextStyle(
+      color: Colors.white70,
+      fontWeight: FontWeight.w600,
+      fontSize: 14,
+    );
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
+      child: total <= 1
+          ? Text(label, textAlign: TextAlign.center, style: style)
+          : LayoutBuilder(
+              builder: (context, constraints) {
+                return GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onTapUp: (details) {
+                    final goPrevious =
+                        details.localPosition.dx < constraints.maxWidth / 2;
+                    _goToPage(goPrevious ? _index - 1 : _index + 1);
+                  },
+                  child: Text(
+                    label,
+                    textAlign: TextAlign.center,
+                    style: style,
+                  ),
+                );
+              },
+            ),
+    );
+  }
+
   Widget _loadingIndicator(BuildContext context, ImageChunkEvent? event) {
     final total = event?.expectedTotalBytes;
     final loaded = event?.cumulativeBytesLoaded;
@@ -371,79 +434,122 @@ class _InspectionPhotoViewerScreenState extends State<InspectionPhotoViewerScree
                 ),
               ),
               Expanded(
-                child: Listener(
-                  behavior: HitTestBehavior.translucent,
-                  onPointerDown: _handlePointerDown,
-                  onPointerUp: _handlePointerUp,
-                  onPointerCancel: _handlePointerCancel,
-                  onPointerMove: _handlePointerMove,
-                  child: PhotoViewGallery.builder(
-                    scrollPhysics: _photoZoomed
-                        ? const NeverScrollableScrollPhysics()
-                        : const BouncingScrollPhysics(),
-                    pageController: _pageController,
-                    itemCount: widget.photos.length,
-                    onPageChanged: _onPageChanged,
-                    backgroundDecoration: const BoxDecoration(color: Colors.transparent),
-                    loadingBuilder: _loadingIndicator,
-                    enableRotation: false,
-                    gaplessPlayback: true,
-                    scaleStateChangedCallback: (state) =>
-                        _onScaleStateChanged(state, _index),
-                    builder: (context, index) {
-                      final url = widget.photos[index].url;
-                      return PhotoViewGalleryPageOptions(
-                        imageProvider: NetworkImage(url),
-                        heroAttributes: PhotoViewHeroAttributes(
-                          tag: _inspectionPhotoHeroTag(url),
-                          transitionOnUserGestures: true,
-                        ),
-                        initialScale: PhotoViewComputedScale.contained,
-                        minScale: PhotoViewComputedScale.contained,
-                        maxScale: PhotoViewComputedScale.contained * 5.0,
-                        controller: _photoControllers[index],
-                        scaleStateController: _scaleStateControllers[index],
-                        scaleStateCycle: _inspectionDoubleTapScaleCycle,
-                        filterQuality: FilterQuality.high,
-                        onScaleEnd: (context, details, value) {
-                          if (index != _index) return;
-                          final base = _containedBaseScale[index] ??
-                              value.scale ??
-                              1.0;
-                          final zoomed = (value.scale ?? 1.0) > base * 1.02;
-                          if (_photoZoomed != zoomed) {
-                            setState(() => _photoZoomed = zoomed);
-                          }
-                          if (!zoomed) {
-                            _resetPhotoPosition(index);
-                          }
+                child: Stack(
+                  alignment: Alignment.center,
+                  children: [
+                    Listener(
+                      behavior: HitTestBehavior.translucent,
+                      onPointerDown: _handlePointerDown,
+                      onPointerUp: _handlePointerUp,
+                      onPointerCancel: _handlePointerCancel,
+                      onPointerMove: _handlePointerMove,
+                      child: PhotoViewGallery.builder(
+                        scrollPhysics: const NeverScrollableScrollPhysics(),
+                        pageController: _pageController,
+                        itemCount: widget.photos.length,
+                        onPageChanged: _onPageChanged,
+                        backgroundDecoration:
+                            const BoxDecoration(color: Colors.transparent),
+                        loadingBuilder: _loadingIndicator,
+                        enableRotation: false,
+                        gaplessPlayback: true,
+                        scaleStateChangedCallback: (state) =>
+                            _onScaleStateChanged(state, _index),
+                        builder: (context, index) {
+                          final url = widget.photos[index].url;
+                          return PhotoViewGalleryPageOptions(
+                            imageProvider: NetworkImage(url),
+                            heroAttributes: PhotoViewHeroAttributes(
+                              tag: _inspectionPhotoHeroTag(url),
+                              transitionOnUserGestures: true,
+                            ),
+                            initialScale: PhotoViewComputedScale.contained,
+                            minScale: PhotoViewComputedScale.contained,
+                            maxScale: PhotoViewComputedScale.contained * 5.0,
+                            controller: _photoControllers[index],
+                            scaleStateController:
+                                _scaleStateControllers[index],
+                            scaleStateCycle: _inspectionDoubleTapScaleCycle,
+                            filterQuality: FilterQuality.high,
+                            onScaleEnd: (context, details, value) {
+                              if (index != _index) return;
+                              final base = _containedBaseScale[index] ??
+                                  value.scale ??
+                                  1.0;
+                              final zoomed =
+                                  (value.scale ?? 1.0) > base * 1.02;
+                              if (_photoZoomed != zoomed) {
+                                setState(() => _photoZoomed = zoomed);
+                              }
+                              if (!zoomed) {
+                                _resetPhotoPosition(index);
+                              }
+                            },
+                            errorBuilder: (context, error, stackTrace) =>
+                                const Center(
+                              child: Text(
+                                '사진을 불러올 수 없습니다.',
+                                style: TextStyle(color: Colors.white70),
+                              ),
+                            ),
+                          );
                         },
-                        errorBuilder: (context, error, stackTrace) =>
-                            const Center(
-                          child: Text(
-                            '사진을 불러올 수 없습니다.',
-                            style: TextStyle(color: Colors.white70),
-                          ),
+                      ),
+                    ),
+                    if (widget.photos.length > 1 && _index > 0)
+                      Positioned(
+                        left: 6,
+                        child: _PageNavButton(
+                          icon: Icons.chevron_left,
+                          tooltip: '이전 사진',
+                          onPressed: () => _goToPage(_index - 1),
                         ),
-                      );
-                    },
-                  ),
+                      ),
+                    if (widget.photos.length > 1 &&
+                        _index < widget.photos.length - 1)
+                      Positioned(
+                        right: 6,
+                        child: _PageNavButton(
+                          icon: Icons.chevron_right,
+                          tooltip: '다음 사진',
+                          onPressed: () => _goToPage(_index + 1),
+                        ),
+                      ),
+                  ],
                 ),
               ),
-              Padding(
-                padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
-                child: Text(
-                  '${_index + 1} / ${widget.photos.length}',
-                  style: const TextStyle(
-                    color: Colors.white70,
-                    fontWeight: FontWeight.w600,
-                    fontSize: 14,
-                  ),
-                ),
-              ),
+              _buildPageIndicator(),
             ],
           ),
         ),
+      ),
+    );
+  }
+}
+
+class _PageNavButton extends StatelessWidget {
+  final IconData icon;
+  final String tooltip;
+  final VoidCallback onPressed;
+
+  const _PageNavButton({
+    required this.icon,
+    required this.tooltip,
+    required this.onPressed,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: Colors.black.withValues(alpha: 0.38),
+      shape: const CircleBorder(),
+      clipBehavior: Clip.antiAlias,
+      child: IconButton(
+        onPressed: onPressed,
+        icon: Icon(icon, color: Colors.white, size: 30),
+        tooltip: tooltip,
+        padding: const EdgeInsets.all(8),
+        constraints: const BoxConstraints(minWidth: 44, minHeight: 44),
       ),
     );
   }
