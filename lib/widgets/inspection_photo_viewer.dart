@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+import 'package:photo_view/photo_view.dart';
+import 'package:photo_view/photo_view_gallery.dart';
 
 import '../models/inspection_photo.dart';
 import '../services/inspection_photo_gallery_service.dart';
@@ -7,6 +9,16 @@ import '../theme/danji_colors.dart';
 import '../utils/danji_snackbar.dart';
 
 final _viewerDateTime = DateFormat('yyyy.MM.dd HH:mm');
+
+String _inspectionPhotoHeroTag(String url) => 'inspection_photo_$url';
+
+/// 더블탭: 2.5배 확대 ↔ 원상복귀 토글
+PhotoViewScaleState _inspectionDoubleTapScaleCycle(PhotoViewScaleState actual) {
+  if (actual == PhotoViewScaleState.initial) {
+    return PhotoViewScaleState.covering;
+  }
+  return PhotoViewScaleState.initial;
+}
 
 /// URL 목록 → 검수 사진 뷰어 (썸네일 탭 통일 진입점)
 Future<void> openInspectionPhotoViewer(
@@ -16,10 +28,12 @@ Future<void> openInspectionPhotoViewer(
 }) {
   if (photos.isEmpty) return Future.value();
   final index = initialIndex.clamp(0, photos.length - 1);
-  return Navigator.of(context).push(
+  return Navigator.of(context).push<void>(
     PageRouteBuilder<void>(
       opaque: false,
       barrierColor: Colors.black,
+      transitionDuration: const Duration(milliseconds: 220),
+      reverseTransitionDuration: const Duration(milliseconds: 180),
       pageBuilder: (_, __, ___) => InspectionPhotoViewerScreen(
         photos: photos,
         initialIndex: index,
@@ -60,12 +74,17 @@ class InspectionPhotoViewerScreen extends StatefulWidget {
 }
 
 class _InspectionPhotoViewerScreenState extends State<InspectionPhotoViewerScreen> {
+  static const _doubleTapZoomFactor = 2.5;
+
   late final PageController _pageController =
       PageController(initialPage: widget.initialIndex);
+  late final List<PhotoViewController> _photoControllers;
+  late final List<PhotoViewScaleStateController> _scaleStateControllers;
   late int _index = widget.initialIndex;
   bool _saving = false;
   double _dragOffset = 0;
   bool _photoZoomed = false;
+  final Map<int, double> _containedBaseScale = {};
 
   InspectionPhotoEntry get _current => widget.photos[_index];
 
@@ -73,6 +92,81 @@ class _InspectionPhotoViewerScreenState extends State<InspectionPhotoViewerScree
     final at = _current.capturedAt;
     if (at == null) return '촬영일시 미확인';
     return _viewerDateTime.format(at.toLocal());
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    final count = widget.photos.length;
+    _photoControllers = List.generate(count, (_) => PhotoViewController());
+    _scaleStateControllers =
+        List.generate(count, (_) => PhotoViewScaleStateController());
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _precacheAdjacent(_index);
+    });
+  }
+
+  @override
+  void dispose() {
+    _pageController.dispose();
+    for (final c in _photoControllers) {
+      c.dispose();
+    }
+    for (final c in _scaleStateControllers) {
+      c.dispose();
+    }
+    super.dispose();
+  }
+
+  void _precacheAdjacent(int index) {
+    if (!mounted) return;
+    for (final i in [index - 1, index, index + 1]) {
+      if (i < 0 || i >= widget.photos.length) continue;
+      precacheImage(NetworkImage(widget.photos[i].url), context);
+    }
+  }
+
+  void _onScaleStateChanged(PhotoViewScaleState state, int pageIndex) {
+    if (pageIndex != _index) return;
+
+    final controller = _photoControllers[pageIndex];
+    final scaleStateController = _scaleStateControllers[pageIndex];
+    final prev = scaleStateController.prevScaleState;
+
+    if (state == PhotoViewScaleState.initial) {
+      final scale = controller.scale;
+      if (scale != null && scale > 0) {
+        _containedBaseScale[pageIndex] = scale;
+      }
+    }
+
+    if (prev == PhotoViewScaleState.initial &&
+        state == PhotoViewScaleState.covering) {
+      final base = _containedBaseScale[pageIndex] ?? controller.scale;
+      if (base != null && base > 0) {
+        final target = (base * _doubleTapZoomFactor).clamp(base, base * 5.0);
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (!mounted) return;
+          controller.scale = target;
+          scaleStateController.scaleState = PhotoViewScaleState.zoomedIn;
+        });
+      }
+    }
+
+    final zoomed = state != PhotoViewScaleState.initial &&
+        state != PhotoViewScaleState.zoomedOut;
+    if (_photoZoomed != zoomed) {
+      setState(() => _photoZoomed = zoomed);
+    }
+  }
+
+  void _onPageChanged(int i) {
+    setState(() {
+      _index = i;
+      _photoZoomed = false;
+      _dragOffset = 0;
+    });
+    _precacheAdjacent(i);
   }
 
   Future<void> _saveCurrentPhoto() async {
@@ -102,10 +196,20 @@ class _InspectionPhotoViewerScreenState extends State<InspectionPhotoViewerScree
     }
   }
 
-  @override
-  void dispose() {
-    _pageController.dispose();
-    super.dispose();
+  Widget _loadingIndicator(BuildContext context, ImageChunkEvent? event) {
+    final total = event?.expectedTotalBytes;
+    final loaded = event?.cumulativeBytesLoaded;
+    return Center(
+      child: SizedBox(
+        width: 36,
+        height: 36,
+        child: CircularProgressIndicator(
+          color: Colors.white,
+          strokeWidth: 2.5,
+          value: total != null && total > 0 ? loaded! / total : null,
+        ),
+      ),
+    );
   }
 
   @override
@@ -117,83 +221,109 @@ class _InspectionPhotoViewerScreenState extends State<InspectionPhotoViewerScree
           offset: Offset(0, _dragOffset),
           child: Column(
             children: [
-              GestureDetector(
-                onVerticalDragUpdate: (details) {
-                  if (_photoZoomed) return;
-                  if (details.delta.dy > 0 || _dragOffset > 0) {
-                    setState(() => _dragOffset += details.delta.dy);
-                  }
-                },
-                onVerticalDragEnd: (details) {
-                  if (_photoZoomed) return;
-                  if (_dragOffset > 96 || (details.primaryVelocity ?? 0) > 700) {
-                    _close();
-                    return;
-                  }
-                  setState(() => _dragOffset = 0);
-                },
-                child: Padding(
-                  padding: const EdgeInsets.fromLTRB(8, 8, 8, 0),
-                  child: Row(
-                    children: [
-                      IconButton(
-                        onPressed: _close,
-                        icon: const Icon(Icons.close, color: Colors.white),
-                        tooltip: '닫기',
-                      ),
-                      Expanded(
-                        child: Text(
-                          _capturedAtLabel,
-                          textAlign: TextAlign.center,
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontWeight: FontWeight.w600,
-                            fontSize: 14,
-                          ),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(8, 8, 8, 0),
+                child: Row(
+                  children: [
+                    IconButton(
+                      onPressed: _close,
+                      icon: const Icon(Icons.close, color: Colors.white),
+                      tooltip: '닫기',
+                    ),
+                    Expanded(
+                      child: Text(
+                        _capturedAtLabel,
+                        textAlign: TextAlign.center,
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontWeight: FontWeight.w600,
+                          fontSize: 14,
                         ),
                       ),
-                      IconButton(
-                        onPressed: _saving ? null : _saveCurrentPhoto,
-                        icon: _saving
-                            ? const SizedBox(
-                                width: 20,
-                                height: 20,
-                                child: CircularProgressIndicator(
-                                  strokeWidth: 2,
-                                  color: Colors.white,
-                                ),
-                              )
-                            : const Icon(Icons.download_outlined,
-                                color: Colors.white),
-                        tooltip: '갤러리에 저장',
-                      ),
-                    ],
-                  ),
+                    ),
+                    IconButton(
+                      onPressed: _saving ? null : _saveCurrentPhoto,
+                      icon: _saving
+                          ? const SizedBox(
+                              width: 20,
+                              height: 20,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                color: Colors.white,
+                              ),
+                            )
+                          : const Icon(
+                              Icons.download_outlined,
+                              color: Colors.white,
+                            ),
+                      tooltip: '갤러리에 저장',
+                    ),
+                  ],
                 ),
               ),
               Expanded(
-                child: PageView.builder(
-                  controller: _pageController,
-                  physics: _photoZoomed
-                      ? const NeverScrollableScrollPhysics()
-                      : const PageScrollPhysics(),
-                  itemCount: widget.photos.length,
-                  onPageChanged: (i) => setState(() {
-                    _index = i;
-                    _photoZoomed = false;
-                  }),
-                  itemBuilder: (_, i) {
-                    return _ZoomablePhotoPage(
-                      url: widget.photos[i].url,
-                      onZoomChanged: i == _index
-                          ? (zoomed) {
-                              if (_photoZoomed != zoomed) {
-                                setState(() => _photoZoomed = zoomed);
-                              }
-                            }
-                          : null,
-                    );
+                child: GestureDetector(
+                  onVerticalDragUpdate: (details) {
+                    if (_photoZoomed) return;
+                    if (details.delta.dy > 0 || _dragOffset > 0) {
+                      setState(() => _dragOffset += details.delta.dy);
+                    }
                   },
+                  onVerticalDragEnd: (details) {
+                    if (_photoZoomed) return;
+                    if (_dragOffset > 96 ||
+                        (details.primaryVelocity ?? 0) > 700) {
+                      _close();
+                      return;
+                    }
+                    setState(() => _dragOffset = 0);
+                  },
+                  child: PhotoViewGallery.builder(
+                    scrollPhysics: const BouncingScrollPhysics(),
+                    pageController: _pageController,
+                    itemCount: widget.photos.length,
+                    onPageChanged: _onPageChanged,
+                    backgroundDecoration: const BoxDecoration(color: Colors.transparent),
+                    loadingBuilder: _loadingIndicator,
+                    enableRotation: false,
+                    gaplessPlayback: true,
+                    scaleStateChangedCallback: (state) =>
+                        _onScaleStateChanged(state, _index),
+                    builder: (context, index) {
+                      final url = widget.photos[index].url;
+                      return PhotoViewGalleryPageOptions(
+                        imageProvider: NetworkImage(url),
+                        heroAttributes: PhotoViewHeroAttributes(
+                          tag: _inspectionPhotoHeroTag(url),
+                          transitionOnUserGestures: true,
+                        ),
+                        initialScale: PhotoViewComputedScale.contained,
+                        minScale: PhotoViewComputedScale.contained,
+                        maxScale: PhotoViewComputedScale.contained * 5.0,
+                        controller: _photoControllers[index],
+                        scaleStateController: _scaleStateControllers[index],
+                        scaleStateCycle: _inspectionDoubleTapScaleCycle,
+                        filterQuality: FilterQuality.high,
+                        onScaleEnd: (context, details, value) {
+                          if (index != _index) return;
+                          final base = _containedBaseScale[index] ??
+                              value.scale ??
+                              1.0;
+                          final zoomed = (value.scale ?? 1.0) > base * 1.02;
+                          if (_photoZoomed != zoomed) {
+                            setState(() => _photoZoomed = zoomed);
+                          }
+                        },
+                        errorBuilder: (context, error, stackTrace) =>
+                            const Center(
+                          child: Text(
+                            '사진을 불러올 수 없습니다.',
+                            style: TextStyle(color: Colors.white70),
+                          ),
+                        ),
+                      );
+                    },
+                  ),
                 ),
               ),
               Padding(
@@ -208,101 +338,6 @@ class _InspectionPhotoViewerScreenState extends State<InspectionPhotoViewerScree
                 ),
               ),
             ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _ZoomablePhotoPage extends StatefulWidget {
-  final String url;
-  final ValueChanged<bool>? onZoomChanged;
-
-  const _ZoomablePhotoPage({
-    required this.url,
-    this.onZoomChanged,
-  });
-
-  @override
-  State<_ZoomablePhotoPage> createState() => _ZoomablePhotoPageState();
-}
-
-class _ZoomablePhotoPageState extends State<_ZoomablePhotoPage>
-    with SingleTickerProviderStateMixin {
-  final TransformationController _controller = TransformationController();
-  TapDownDetails? _doubleTapDetails;
-  static const _zoomedScale = 3.0;
-  bool _isZoomed = false;
-
-  @override
-  void initState() {
-    super.initState();
-    _controller.addListener(_handleTransformChanged);
-  }
-
-  @override
-  void dispose() {
-    _controller.removeListener(_handleTransformChanged);
-    _controller.dispose();
-    super.dispose();
-  }
-
-  void _handleTransformChanged() {
-    final zoomed = _controller.value.getMaxScaleOnAxis() > 1.02;
-    if (zoomed == _isZoomed) return;
-    _isZoomed = zoomed;
-    widget.onZoomChanged?.call(zoomed);
-  }
-
-  void _handleDoubleTap() {
-    final position = _doubleTapDetails?.localPosition;
-    if (position == null) return;
-
-    final current = _controller.value.getMaxScaleOnAxis();
-    if (current > 1.05) {
-      _controller.value = Matrix4.identity();
-      return;
-    }
-
-    final x = -position.dx * (_zoomedScale - 1);
-    final y = -position.dy * (_zoomedScale - 1);
-    final matrix = Matrix4.identity()
-      ..translateByDouble(x, y, 0, 1)
-      ..scaleByDouble(_zoomedScale, _zoomedScale, 1, 1);
-    _controller.value = matrix;
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return GestureDetector(
-      onDoubleTapDown: (details) => _doubleTapDetails = details,
-      onDoubleTap: _handleDoubleTap,
-      behavior: HitTestBehavior.deferToChild,
-      child: InteractiveViewer(
-        transformationController: _controller,
-        minScale: 1,
-        maxScale: 5,
-        panEnabled: true,
-        scaleEnabled: true,
-        clipBehavior: Clip.none,
-        boundaryMargin: const EdgeInsets.all(48),
-        child: SizedBox.expand(
-          child: Image.network(
-            widget.url,
-            fit: BoxFit.contain,
-            loadingBuilder: (_, child, progress) {
-              if (progress == null) return child;
-              return const Center(
-                child: CircularProgressIndicator(color: Colors.white),
-              );
-            },
-            errorBuilder: (_, __, ___) => const Center(
-              child: Text(
-                '사진을 불러올 수 없습니다.',
-                style: TextStyle(color: Colors.white70),
-              ),
-            ),
           ),
         ),
       ),
@@ -329,20 +364,23 @@ class InspectionPhotoThumb extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final image = ClipRRect(
-      borderRadius: BorderRadius.circular(10),
-      child: ColoredBox(
-        color: DanjiColors.skyLight,
-        child: Image.network(
-          entry.url,
-          width: expand ? double.infinity : width,
-          height: expand ? double.infinity : 96,
-          fit: BoxFit.cover,
-          errorBuilder: (_, __, ___) => const _EmptyPhotoBox(),
-          loadingBuilder: (context, child, progress) {
-            if (progress == null) return child;
-            return const _EmptyPhotoBox(showProgress: true);
-          },
+    final image = Hero(
+      tag: _inspectionPhotoHeroTag(entry.url),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(10),
+        child: ColoredBox(
+          color: DanjiColors.skyLight,
+          child: Image.network(
+            entry.url,
+            width: expand ? double.infinity : width,
+            height: expand ? double.infinity : 96,
+            fit: BoxFit.cover,
+            errorBuilder: (_, __, ___) => const _EmptyPhotoBox(),
+            loadingBuilder: (context, child, progress) {
+              if (progress == null) return child;
+              return const _EmptyPhotoBox(showProgress: true);
+            },
+          ),
         ),
       ),
     );
