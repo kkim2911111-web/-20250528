@@ -1,3 +1,4 @@
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:photo_view/photo_view.dart';
@@ -75,6 +76,8 @@ class InspectionPhotoViewerScreen extends StatefulWidget {
 
 class _InspectionPhotoViewerScreenState extends State<InspectionPhotoViewerScreen> {
   static const _doubleTapZoomFactor = 2.5;
+  static const _dismissDragThreshold = 30.0;
+  static const _dismissCloseOffset = 96.0;
 
   late final PageController _pageController =
       PageController(initialPage: widget.initialIndex);
@@ -84,6 +87,9 @@ class _InspectionPhotoViewerScreenState extends State<InspectionPhotoViewerScree
   bool _saving = false;
   double _dragOffset = 0;
   bool _photoZoomed = false;
+  int _activePointerCount = 0;
+  bool _dismissDragActive = false;
+  double _pendingDismissDy = 0;
   final Map<int, double> _containedBaseScale = {};
 
   InspectionPhotoEntry get _current => widget.photos[_index];
@@ -138,6 +144,12 @@ class _InspectionPhotoViewerScreenState extends State<InspectionPhotoViewerScree
       if (scale != null && scale > 0) {
         _containedBaseScale[pageIndex] = scale;
       }
+      if (pageIndex == _index && !_photoZoomed) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (!mounted || pageIndex != _index) return;
+          _resetPhotoPosition(pageIndex);
+        });
+      }
     }
 
     if (prev == PhotoViewScaleState.initial &&
@@ -165,8 +177,105 @@ class _InspectionPhotoViewerScreenState extends State<InspectionPhotoViewerScree
       _index = i;
       _photoZoomed = false;
       _dragOffset = 0;
+      _dismissDragActive = false;
+      _pendingDismissDy = 0;
+      _activePointerCount = 0;
     });
     _precacheAdjacent(i);
+  }
+
+  void _resetDismissDragState() {
+    _dismissDragActive = false;
+    _pendingDismissDy = 0;
+    _dragOffset = 0;
+  }
+
+  void _resetPhotoPosition(int pageIndex) {
+    final controller = _photoControllers[pageIndex];
+    if (controller.position != Offset.zero) {
+      controller.position = Offset.zero;
+    }
+  }
+
+  /// 둘째 손가락이 닿으면 닫기 추적을 끊고 핀치 줌에 양보합니다.
+  void _yieldToPinchZoom() {
+    _resetDismissDragState();
+    if (!_photoZoomed) {
+      _resetPhotoPosition(_index);
+    }
+  }
+
+  void _handlePointerDown(PointerDownEvent event) {
+    setState(() {
+      _activePointerCount++;
+      if (_activePointerCount >= 2) {
+        _yieldToPinchZoom();
+      }
+    });
+  }
+
+  void _handlePointerUp(PointerUpEvent event) {
+    setState(() {
+      _activePointerCount = (_activePointerCount - 1).clamp(0, 10);
+      if (_activePointerCount == 0) {
+        _finishDismissDrag();
+      }
+    });
+  }
+
+  void _handlePointerCancel(PointerCancelEvent event) {
+    setState(() {
+      _activePointerCount = (_activePointerCount - 1).clamp(0, 10);
+      if (_activePointerCount == 0) {
+        _finishDismissDrag();
+      } else if (_activePointerCount >= 2) {
+        _yieldToPinchZoom();
+      }
+    });
+  }
+
+  void _handlePointerMove(PointerMoveEvent event) {
+    if (_photoZoomed || _activePointerCount >= 2) {
+      if (_activePointerCount >= 2 &&
+          (_dismissDragActive || _dragOffset != 0 || _pendingDismissDy > 0)) {
+        setState(_yieldToPinchZoom);
+      }
+      return;
+    }
+    if (_activePointerCount != 1) return;
+
+    if (!_dismissDragActive) {
+      if (event.delta.dx.abs() > event.delta.dy.abs() * 1.2) {
+        _pendingDismissDy = 0;
+        return;
+      }
+      if (event.delta.dy <= 0) {
+        _pendingDismissDy = 0;
+        return;
+      }
+      _pendingDismissDy += event.delta.dy;
+      if (_pendingDismissDy < _dismissDragThreshold) return;
+      setState(() {
+        _dismissDragActive = true;
+        _dragOffset = _pendingDismissDy;
+      });
+      return;
+    }
+
+    setState(() {
+      _dragOffset += event.delta.dy;
+      if (_dragOffset < 0) _dragOffset = 0;
+    });
+  }
+
+  void _finishDismissDrag() {
+    if (_dragOffset > _dismissCloseOffset) {
+      _close();
+      return;
+    }
+    if (_dragOffset != 0 || _dismissDragActive || _pendingDismissDy > 0) {
+      setState(_resetDismissDragState);
+    }
   }
 
   Future<void> _saveCurrentPhoto() async {
@@ -262,24 +371,16 @@ class _InspectionPhotoViewerScreenState extends State<InspectionPhotoViewerScree
                 ),
               ),
               Expanded(
-                child: GestureDetector(
-                  onVerticalDragUpdate: (details) {
-                    if (_photoZoomed) return;
-                    if (details.delta.dy > 0 || _dragOffset > 0) {
-                      setState(() => _dragOffset += details.delta.dy);
-                    }
-                  },
-                  onVerticalDragEnd: (details) {
-                    if (_photoZoomed) return;
-                    if (_dragOffset > 96 ||
-                        (details.primaryVelocity ?? 0) > 700) {
-                      _close();
-                      return;
-                    }
-                    setState(() => _dragOffset = 0);
-                  },
+                child: Listener(
+                  behavior: HitTestBehavior.translucent,
+                  onPointerDown: _handlePointerDown,
+                  onPointerUp: _handlePointerUp,
+                  onPointerCancel: _handlePointerCancel,
+                  onPointerMove: _handlePointerMove,
                   child: PhotoViewGallery.builder(
-                    scrollPhysics: const BouncingScrollPhysics(),
+                    scrollPhysics: _photoZoomed
+                        ? const NeverScrollableScrollPhysics()
+                        : const BouncingScrollPhysics(),
                     pageController: _pageController,
                     itemCount: widget.photos.length,
                     onPageChanged: _onPageChanged,
@@ -312,6 +413,9 @@ class _InspectionPhotoViewerScreenState extends State<InspectionPhotoViewerScree
                           final zoomed = (value.scale ?? 1.0) > base * 1.02;
                           if (_photoZoomed != zoomed) {
                             setState(() => _photoZoomed = zoomed);
+                          }
+                          if (!zoomed) {
+                            _resetPhotoPosition(index);
                           }
                         },
                         errorBuilder: (context, error, stackTrace) =>
