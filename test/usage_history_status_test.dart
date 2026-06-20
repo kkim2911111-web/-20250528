@@ -33,6 +33,13 @@ void main() {
       expect(r.displayStatusLabel, '반납지연중');
     });
 
+    test('in_use + end_at 경과(미반납) — is_overdue 없어도 반납지연', () {
+      final r = _sample(status: 'in_use', endAt: pastEnd);
+
+      expect(r.isReturnOverdue, isTrue);
+      expect(r.displayStatusLabel, '반납지연중');
+    });
+
     test('in_use + !is_overdue — 이용내역 제외, 대여 중', () {
       final futureEnd = DateTime.now().add(const Duration(hours: 2));
       final r = _sample(status: 'in_use', endAt: futureEnd);

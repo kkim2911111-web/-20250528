@@ -68,7 +68,7 @@ export async function handleBillingExhausted(
   }
 
   const extensionHours = params.extensionHours ?? 1;
-  if (params.isOverdueOverage) {
+  if (chargeType === 'overdue_overage') {
     const customerTitle = '초과 이용 요금 결제 실패';
     const customerBody =
       '초과 이용 요금 자동결제에 실패했습니다. 카드 등록 상태를 확인해주세요.';
@@ -82,7 +82,7 @@ export async function handleBillingExhausted(
         data: {
           type: 'billing_payment_failed',
           reservation_id: reservationId,
-          charge_type: 'extension',
+          charge_type: 'overdue_overage',
         },
       });
       await admin.from('notifications').insert({

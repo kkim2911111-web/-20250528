@@ -6,6 +6,7 @@ import '../models/reservation.dart';
 import '../models/reservation_payment_pricing.dart';
 import '../supabase_client.dart';
 import '../utils/vehicle_insurance_status.dart';
+import '../utils/reservation_overlap.dart';
 import '../constants/payment_order_status.dart';
 import '../utils/booking_eligibility.dart';
 import '../utils/maintenance_error.dart';
@@ -45,10 +46,9 @@ class ReservationChangeException implements Exception {
   String toString() => message;
 }
 
-class ReservationService {
-  static const _startCols = ['start_time', 'start_at'];
-  static const _endCols = ['end_time', 'end_at'];
+enum _ReservationOverlapKind { none, inUse, time }
 
+class ReservationService {
   Future<Map<String, dynamic>?> _fetchMyResident() async {
     final user = supabase.auth.currentUser;
     if (user == null) return null;
@@ -156,12 +156,17 @@ class ReservationService {
       return VehicleBookingBlockReason.insuranceExpired;
     }
 
-    final overlaps = await _hasConfirmedOrPendingTimeOverlap(
+    final overlaps = await _hasActiveReservationOverlap(
       vehicleId: vehicleId,
       startAt: startAt,
       endAt: endAt,
     );
-    if (overlaps) return VehicleBookingBlockReason.timeOverlap;
+    if (overlaps == _ReservationOverlapKind.inUse) {
+      return VehicleBookingBlockReason.inUse;
+    }
+    if (overlaps == _ReservationOverlapKind.time) {
+      return VehicleBookingBlockReason.timeOverlap;
+    }
     return null;
   }
 
@@ -179,34 +184,74 @@ class ReservationService {
         null;
   }
 
-  Future<bool> _hasConfirmedOrPendingTimeOverlap({
+  Future<_ReservationOverlapKind> _hasActiveReservationOverlap({
     required String vehicleId,
     required DateTime startAt,
     required DateTime endAt,
   }) async {
-    final startUtc = startAt.toUtc().toIso8601String();
-    final endUtc = endAt.toUtc().toIso8601String();
+    final startUtc = startAt.toUtc();
+    final endUtc = endAt.toUtc();
     final vid = _vehicleIdForQuery(vehicleId);
 
-    for (final startCol in _startCols) {
-      for (final endCol in _endCols) {
-        try {
-          final rows = await supabase
-              .from('reservations')
-              .select('id')
-              .eq('vehicle_id', vid)
-              .inFilter('status', ['pending', 'confirmed', 'in_use'])
-              .lt(startCol, endUtc)
-              .gt(endCol, startUtc)
-              .limit(1);
-          if (rows.isNotEmpty) return true;
-        } on PostgrestException catch (e) {
-          if (e.code == '42703') continue;
-          rethrow;
+    const selectCols =
+        'id, status, start_at, start_time, end_at, end_time, actual_end_at, returned_at';
+
+    try {
+      final rows = await supabase
+          .from('reservations')
+          .select(selectCols)
+          .eq('vehicle_id', vid)
+          .inFilter('status', ['pending', 'confirmed', 'in_use'])
+          .limit(50);
+
+      var sawInUse = false;
+      var sawTime = false;
+      for (final raw in rows) {
+        final row = Map<String, dynamic>.from(raw as Map);
+        final status = row['status']?.toString() ?? '';
+        final otherStartRaw = row['start_at'] ?? row['start_time'];
+        final otherEndRaw = row['end_at'] ?? row['end_time'];
+        final otherStart =
+            DateTime.tryParse(otherStartRaw?.toString() ?? '');
+        final otherEnd = DateTime.tryParse(otherEndRaw?.toString() ?? '');
+        if (otherStart == null) continue;
+
+        final actualEndRaw = row['actual_end_at'];
+        final returnedRaw = row['returned_at'];
+        final actualEnd = actualEndRaw == null
+            ? null
+            : DateTime.tryParse(actualEndRaw.toString());
+        final returnedAt = returnedRaw == null
+            ? null
+            : DateTime.tryParse(returnedRaw.toString());
+
+        if (!ReservationOverlapLogic.overlaps(
+          otherStart: otherStart.toUtc(),
+          otherStatus: status,
+          otherScheduledEnd: otherEnd?.toUtc(),
+          otherActualEndAt: actualEnd?.toUtc(),
+          otherReturnedAt: returnedAt?.toUtc(),
+          requestStart: startUtc,
+          requestEnd: endUtc,
+        )) {
+          continue;
+        }
+
+        if (status == 'in_use') {
+          sawInUse = true;
+        } else {
+          sawTime = true;
         }
       }
+      if (sawInUse) return _ReservationOverlapKind.inUse;
+      if (sawTime) return _ReservationOverlapKind.time;
+      return _ReservationOverlapKind.none;
+    } on PostgrestException catch (e) {
+      if (e.code == '42703') {
+        return _ReservationOverlapKind.none;
+      }
+      rethrow;
     }
-    return false;
   }
 
   dynamic _vehicleIdForQuery(String vehicleId) {

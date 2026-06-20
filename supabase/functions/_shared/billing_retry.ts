@@ -3,7 +3,7 @@ import { dispatchPushScenario } from './push_scenarios.ts';
 import { sendPushToUser } from './fcm.ts';
 import { handleBillingExhausted } from './billing_exhausted.ts';
 
-export type BillingChargeType = 'deductible' | 'extension';
+export type BillingChargeType = 'deductible' | 'extension' | 'overdue_overage';
 
 const RETRY_INTERVAL_MS = 60 * 60 * 1000;
 const MAX_RETRIES = 3;
@@ -74,7 +74,7 @@ export async function notifyBillingPaymentFailed(
 ): Promise<void> {
   const label = params.chargeType === 'deductible'
     ? '면책금'
-    : params.chargeType === 'extension' && params.isOverdueOverage
+    : params.chargeType === 'overdue_overage'
     ? '초과 이용 요금'
     : '연장 요금';
   const amountStr = `₩${params.amount.toLocaleString('ko-KR')}`;

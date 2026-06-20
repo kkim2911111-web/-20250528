@@ -413,8 +413,10 @@ class Reservation {
     return statusLabel;
   }
 
-  /// 반납 지연 중 — in_use + is_overdue
-  bool get isReturnOverdue => isInUse && isOverdue;
+  /// 반납 지연 중 — in_use + (is_overdue 또는 미반납·종료시각 경과)
+  bool get isReturnOverdue =>
+      isInUse &&
+      (isOverdue || (returnedAt == null && isUsageTimeExpired));
 
   /// 초과 이용 요금 안내 문구 (반납 후)
   String? get overdueOverageChargeLabel {

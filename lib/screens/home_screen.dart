@@ -468,11 +468,28 @@ enum _HomeReservationMode {
 }
 
 _HomeCardBadgeStyle _homeCardBadgeStyle(Reservation reservation) {
+  if (reservation.isReturnOverdue) {
+    // 뱃지 영역은 ReturnOverdueBadge 단독 표시 (_ReservationInfoCard)
+    return const _HomeCardBadgeStyle(
+      label: '반납지연중',
+      background: Color(0xFFFFEBEE),
+      textColor: Color(0xFFC62828),
+    );
+  }
+
   if (reservation.isInUse) {
     return const _HomeCardBadgeStyle(
       label: '대여중',
       background: DanjiColors.tagRentingBg,
       textColor: DanjiColors.tagRentingText,
+    );
+  }
+
+  if (reservation.status == 'completed') {
+    return const _HomeCardBadgeStyle(
+      label: '이용완료',
+      background: Color(0xFFDCFCE7),
+      textColor: Color(0xFF16A34A),
     );
   }
 
@@ -539,9 +556,9 @@ String _rentalEndLine(DateTime? end) {
   return '대여 종료 ${DateFormat('M/d').format(end)} $time';
 }
 
-/// 대여 중(in_use)일 때만 종료까지 남은 시간 — 시작 전 문구는 뱃지로만 표시
+/// 대여 중(in_use)일 때만 종료까지 남은 시간 — 반납 지연·시작 전은 뱃지로만 표시
 String? _remainingTimeLine(Reservation reservation) {
-  if (!reservation.isInUse) return null;
+  if (!reservation.isInUse || reservation.isReturnOverdue) return null;
   final end = reservation.endAt;
   if (end == null) return null;
   return _formatTimeRemaining(end);
@@ -1585,13 +1602,14 @@ class _ReservationInfoCard extends StatelessWidget {
                       spacing: 6,
                       runSpacing: 4,
                       children: [
-                        _HomeStatusBadge(
-                          label: badgeStyle.label,
-                          background: badgeStyle.background,
-                          textColor: badgeStyle.textColor,
-                        ),
                         if (reservation.isReturnOverdue)
-                          const ReturnOverdueBadge(),
+                          const ReturnOverdueBadge()
+                        else
+                          _HomeStatusBadge(
+                            label: badgeStyle.label,
+                            background: badgeStyle.background,
+                            textColor: badgeStyle.textColor,
+                          ),
                       ],
                     ),
                   ],
