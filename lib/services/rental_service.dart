@@ -30,7 +30,7 @@ class RentalService {
 id,reservation_number,user_id,vehicle_id,start_at,end_at,start_time,end_time,total_price,status,
 payment_key,order_id,payment_status,rental_type,refund_amount,cancelled_at,
 rental_started_at,returned_at,actual_end_at,
-return_type,is_no_show,is_overdue,overdue_overage_amount,overdue_overage_charged,early_return_confirmed_at,
+return_type,is_no_show,is_overdue,overdue_overage_amount,overdue_overage_charged,extension_price_total,early_return_confirmed_at,
 pickup_photos,return_photos,mileage_start,mileage_end,
 fuel_level_start,fuel_level_end,is_accident,accident_note,door_unlocked,
 contract_content,second_driver_name,second_driver_license
@@ -97,14 +97,14 @@ contract_content,second_driver_name,second_driver_license
     }
 
     const attempts = <(String, String?)>[
-      (_selectBare, null),
-      (_selectBare, 'start_time'),
-      (_selectCore, 'start_time'),
-      (_selectMinimal, 'start_time'),
+      (_selectFull, 'start_at'),
       (_selectFull, 'start_time'),
       (_selectCore, 'start_at'),
+      (_selectCore, 'start_time'),
       (_selectMinimal, 'start_at'),
-      (_selectFull, 'start_at'),
+      (_selectMinimal, 'start_time'),
+      (_selectBare, 'start_time'),
+      (_selectBare, null),
     ];
 
     PostgrestException? lastError;
@@ -276,39 +276,7 @@ contract_content,second_driver_name,second_driver_license
           .map(
             (r) => r.vehicle != null
                 ? r
-                : Reservation(
-                    id: r.id,
-                    userId: r.userId,
-                    vehicleId: r.vehicleId,
-                    startAt: r.startAt,
-                    endAt: r.endAt,
-                    totalPrice: r.totalPrice,
-                    status: r.status,
-                    paymentKey: r.paymentKey,
-                    paymentStatus: r.paymentStatus,
-                    orderId: r.orderId,
-                    rentalStartedAt: r.rentalStartedAt,
-                    returnedAt: r.returnedAt,
-                    actualEndAt: r.actualEndAt,
-                    cancelledAt: r.cancelledAt,
-                    pickupPhotos: r.pickupPhotos,
-                    returnPhotos: r.returnPhotos,
-                    mileageStart: r.mileageStart,
-                    mileageEnd: r.mileageEnd,
-                    fuelLevelStart: r.fuelLevelStart,
-                    fuelLevelEnd: r.fuelLevelEnd,
-                    isAccident: r.isAccident,
-                    accidentNote: r.accidentNote,
-                    doorUnlocked: r.doorUnlocked,
-                    photosUploaded: r.photosUploaded,
-                    licenseVerified: r.licenseVerified,
-                    contractContent: r.contractContent,
-                    secondDriverName: r.secondDriverName,
-                    secondDriverLicense: r.secondDriverLicense,
-                    isNoShow: r.isNoShow,
-                    reservationNumber: r.reservationNumber,
-                    vehicle: byId[r.vehicleId],
-                  ),
+                : r.copyWith(vehicle: byId[r.vehicleId]),
           )
           .toList();
     } catch (_) {

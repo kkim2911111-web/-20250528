@@ -1039,15 +1039,24 @@ class _ReservationCard extends StatelessWidget {
           ],
           if (variant != _CardVariant.cancelled &&
               (reservation.totalPrice > 0 ||
+                  reservation.chargedOverdueOverage > 0 ||
                   (pricing != null && pricing!.finalPrice > 0))) ...[
             const SizedBox(height: 4),
-            ReservationPriceDisplay(
-              reservationTotalPrice: reservation.totalPrice,
-              pricing: pricing,
-              won: won,
-            ),
+            if (showReservationId && reservation.showHistoryPriceBreakdown)
+              ReservationHistoryPriceDisplay(
+                reservation: reservation,
+                pricing: pricing,
+                won: won,
+              )
+            else
+              ReservationPriceDisplay(
+                reservationTotalPrice: reservation.totalPrice,
+                pricing: pricing,
+                won: won,
+              ),
           ],
-          if (reservation.overdueOverageChargeLabel != null) ...[
+          if (reservation.overdueOverageChargeLabel != null &&
+              !(showReservationId && reservation.showHistoryPriceBreakdown)) ...[
             const SizedBox(height: 6),
             Text(
               reservation.overdueOverageChargeLabel!,

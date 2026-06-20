@@ -65,5 +65,36 @@ void main() {
         isFalse,
       );
     });
+
+    test('순차 confirmed 예약은 시간 겹치지 않음 (18:00~19:00 / 19:00~20:00)', () {
+      final firstStart = DateTime.utc(2026, 6, 20, 9, 0); // 18:00 KST
+      final firstEnd = DateTime.utc(2026, 6, 20, 10, 0); // 19:00 KST
+      final secondStart = DateTime.utc(2026, 6, 20, 10, 0); // 19:00 KST
+      final secondEnd = DateTime.utc(2026, 6, 20, 11, 0); // 20:00 KST
+
+      expect(
+        ReservationOverlapLogic.overlaps(
+          otherStart: firstStart,
+          otherStatus: 'confirmed',
+          otherScheduledEnd: firstEnd,
+          requestStart: secondStart,
+          requestEnd: secondEnd,
+        ),
+        isFalse,
+      );
+
+      // 18:00 예약이 in_use여도, 이미 잡힌 19:00 구간과는 RPC/앱 겹침 검사 대상이 아님
+      // (신규 19:00 예약 시도만 in_use와 충돌 — 별도 케이스)
+      expect(
+        ReservationOverlapLogic.overlaps(
+          otherStart: secondStart,
+          otherStatus: 'confirmed',
+          otherScheduledEnd: secondEnd,
+          requestStart: firstStart,
+          requestEnd: firstEnd,
+        ),
+        isFalse,
+      );
+    });
   });
 }

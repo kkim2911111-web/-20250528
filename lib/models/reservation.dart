@@ -39,6 +39,7 @@ class Reservation {
   final bool isOverdue;
   final int? overdueOverageAmount;
   final bool overdueOverageCharged;
+  final int extensionPriceTotal;
   final String? reservationNumber;
   final RentalType? rentalType;
   final int refundAmount;
@@ -77,10 +78,53 @@ class Reservation {
     this.isOverdue = false,
     this.overdueOverageAmount,
     this.overdueOverageCharged = false,
+    this.extensionPriceTotal = 0,
     this.reservationNumber,
     this.rentalType,
     this.refundAmount = 0,
   });
+
+  Reservation copyWith({Vehicle? vehicle}) {
+    return Reservation(
+      id: id,
+      userId: userId,
+      vehicleId: vehicleId,
+      startAt: startAt,
+      endAt: endAt,
+      totalPrice: totalPrice,
+      status: status,
+      paymentKey: paymentKey,
+      paymentStatus: paymentStatus,
+      orderId: orderId,
+      rentalStartedAt: rentalStartedAt,
+      returnedAt: returnedAt,
+      actualEndAt: actualEndAt,
+      cancelledAt: cancelledAt,
+      pickupPhotos: pickupPhotos,
+      returnPhotos: returnPhotos,
+      mileageStart: mileageStart,
+      mileageEnd: mileageEnd,
+      fuelLevelStart: fuelLevelStart,
+      fuelLevelEnd: fuelLevelEnd,
+      isAccident: isAccident,
+      accidentNote: accidentNote,
+      doorUnlocked: doorUnlocked,
+      photosUploaded: photosUploaded,
+      licenseVerified: licenseVerified,
+      vehicle: vehicle ?? this.vehicle,
+      contractContent: contractContent,
+      secondDriverName: secondDriverName,
+      secondDriverLicense: secondDriverLicense,
+      isNoShow: isNoShow,
+      isOverdue: isOverdue,
+      overdueOverageAmount: overdueOverageAmount,
+      overdueOverageCharged: overdueOverageCharged,
+      extensionPriceTotal: extensionPriceTotal,
+      reservationNumber: reservationNumber,
+      rentalType: rentalType,
+      refundAmount: refundAmount,
+    );
+  }
 
   bool get hasSecondDriver {
     final name = secondDriverName?.trim();
@@ -128,6 +172,7 @@ class Reservation {
       isOverdue: map['is_overdue'] == true,
       overdueOverageAmount: (map['overdue_overage_amount'] as num?)?.toInt(),
       overdueOverageCharged: map['overdue_overage_charged'] == true,
+      extensionPriceTotal: (map['extension_price_total'] as num?)?.toInt() ?? 0,
       reservationNumber: map['reservation_number']?.toString(),
       rentalType: RentalType.fromDb(map['rental_type']?.toString()),
       refundAmount: (map['refund_amount'] as num?)?.toInt() ?? 0,
@@ -417,6 +462,41 @@ class Reservation {
   bool get isReturnOverdue =>
       isInUse &&
       (isOverdue || (returnedAt == null && isUsageTimeExpired));
+
+  /// 예약 기본요금 — total_price에서 연장 합계 제외
+  int get baseRentalPrice {
+    if (extensionPriceTotal <= 0) return totalPrice;
+    return (totalPrice - extensionPriceTotal).clamp(0, totalPrice);
+  }
+
+  /// 반납 지연 초과요금 — 청구 완료분만
+  int get chargedOverdueOverage =>
+      overdueOverageCharged && (overdueOverageAmount ?? 0) > 0
+          ? overdueOverageAmount!
+          : 0;
+
+  /// 이용내역 실제 결제 합계 (연장은 total_price 포함, 초과요금 별도 합산)
+  int get historyPaidTotal => totalPrice + chargedOverdueOverage;
+
+  /// 이용내역 — 기본/연장/초과요금 분해 표시
+  bool get showHistoryPriceBreakdown =>
+      chargedOverdueOverage > 0 || extensionPriceTotal > 0;
+
+  /// 이용내역 금액 분해 라벨
+  List<({String label, int amount})> get historyPriceParts {
+    final parts = <({String label, int amount})>[];
+    final base = baseRentalPrice;
+    if (base > 0) {
+      parts.add((label: '기본요금', amount: base));
+    }
+    if (extensionPriceTotal > 0) {
+      parts.add((label: '연장요금', amount: extensionPriceTotal));
+    }
+    if (chargedOverdueOverage > 0) {
+      parts.add((label: '초과요금', amount: chargedOverdueOverage));
+    }
+    return parts;
+  }
 
   /// 초과 이용 요금 안내 문구 (반납 후)
   String? get overdueOverageChargeLabel {

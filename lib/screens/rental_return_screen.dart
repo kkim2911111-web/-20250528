@@ -493,7 +493,7 @@ class _RentalReturnScreenState extends State<RentalReturnScreen> {
                           ),
                           const SizedBox(height: 14),
                           SmartKeyDoorButton(
-                            label: '문닫힘',
+                            label: '문 잠그기',
                             icon: Icons.lock_rounded,
                             variant: SmartKeyDoorButtonVariant.lock,
                             enabled: !_doorLockConfirmed && !_doorLockLoading,
