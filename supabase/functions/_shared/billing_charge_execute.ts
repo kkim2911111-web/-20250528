@@ -256,3 +256,165 @@ export async function executeExtensionCharge(
     throw e;
   }
 }
+
+type OverdueRetryRow = {
+  reservation_id: string;
+  user_id: string;
+  amount: number;
+  extension_hours?: number | null;
+};
+
+export async function executeOverdueOverageCharge(
+  admin: SupabaseClient,
+  row: OverdueRetryRow,
+): Promise<{ ok: true; paymentKey: string; orderId: string }> {
+  const reservationId = row.reservation_id?.toString();
+  const renterUserId = row.user_id?.toString();
+  const amount = Number(row.amount ?? 0);
+  const billedHours = Number(row.extension_hours ?? 0);
+
+  if (!reservationId || !renterUserId) {
+    throw new Error('예약 정보가 없습니다.');
+  }
+  if (!Number.isInteger(amount) || amount <= 0) {
+    throw new Error('초과 이용 요금이 없습니다.');
+  }
+
+  const { data: reservation, error } = await admin
+    .from('reservations')
+    .select(
+      'id, user_id, vehicle_id, overdue_overage_charged, overdue_overage_amount, start_at, start_time, end_at, end_time, vehicles(complex_id, model_name)',
+    )
+    .eq('id', reservationId)
+    .maybeSingle();
+
+  if (error || !reservation) {
+    throw new Error('예약을 찾을 수 없습니다.');
+  }
+
+  const resRow = reservation as ReservationRow & {
+    overdue_overage_charged?: boolean;
+    overdue_overage_amount?: number | null;
+  };
+
+  if (resRow.overdue_overage_charged === true) {
+    throw new Error('이미 초과 이용 요금이 청구되었습니다.');
+  }
+
+  const expectedAmount = Number(resRow.overdue_overage_amount ?? amount);
+  const chargeAmount = expectedAmount > 0 ? expectedAmount : amount;
+
+  const { data: renterProfile } = await admin
+    .from('user_profiles')
+    .select('toss_billing_key, payment_card_registered')
+    .eq('user_id', renterUserId)
+    .maybeSingle();
+
+  const billingKey = renterProfile?.toss_billing_key?.toString()?.trim();
+  if (!billingKey || renterProfile?.payment_card_registered !== true) {
+    const err = new Error('고객에게 등록된 결제카드가 없습니다.') as Error & {
+      code?: string;
+    };
+    err.code = 'billing_key_missing';
+    throw err;
+  }
+
+  const vehicleName = resRow.vehicles?.model_name?.toString()?.trim() || '단지카';
+  const orderId = `ovd_${reservationId}_${makeOrderId()}`;
+  const orderName = billedHours > 0
+    ? `초과 이용 요금 ${billedHours}시간`
+    : '초과 이용 요금';
+
+  let paymentKey: string | null = null;
+  try {
+    const charge = await chargeTossBilling({
+      billingKey,
+      customerKey: renterUserId,
+      amount: chargeAmount,
+      orderId,
+      orderName,
+    });
+    paymentKey = charge.paymentKey;
+    if (!paymentKey) throw new Error('결제 승인 키를 받지 못했습니다.');
+
+    const startTime = resRow.start_at ?? resRow.start_time ?? null;
+    const endTime = resRow.end_at ?? resRow.end_time ?? null;
+
+    const { error: orderErr } = await admin.from('payment_orders').insert({
+      order_id: orderId,
+      user_id: renterUserId,
+      vehicle_id: String(resRow.vehicle_id),
+      vehicle_name: vehicleName,
+      start_time: startTime,
+      end_time: endTime,
+      total_price: chargeAmount,
+      status: 'paid',
+      payment_key: paymentKey,
+      reservation_id: reservationId,
+      has_payment_key: true,
+    });
+
+    if (orderErr) {
+      await cancelTossPayment({
+        paymentKey,
+        cancelReason: '결제 내역 저장 실패',
+        cancelAmount: chargeAmount,
+      });
+      throw new Error(orderErr.message);
+    }
+
+    const { error: updateErr } = await admin.rpc(
+      'mark_overdue_overage_charged_for_service',
+      {
+        p_reservation_id: reservationId,
+        p_amount: chargeAmount,
+      },
+    );
+
+    if (updateErr) {
+      await cancelTossPayment({
+        paymentKey,
+        cancelReason: '초과 이용 요금 상태 저장 실패',
+        cancelAmount: chargeAmount,
+      });
+      throw new Error(updateErr.message);
+    }
+
+    const amountStr = `₩${chargeAmount.toLocaleString('ko-KR')}`;
+    const pushTitle = '초과 이용 요금 청구 안내';
+    const pushBody = `초과 이용 요금 ${amountStr}이 자동결제되었습니다`;
+    try {
+      await sendPushToUser({
+        admin,
+        userId: renterUserId,
+        title: pushTitle,
+        body: pushBody,
+        data: {
+          type: 'overdue_overage_charged',
+          reservation_id: reservationId,
+        },
+      });
+      await admin.from('notifications').insert({
+        user_id: renterUserId,
+        title: pushTitle,
+        body: pushBody,
+        type: 'overdue_overage_charged',
+        reservation_id: reservationId,
+        is_read: false,
+      });
+    } catch (_) {}
+
+    return { ok: true, paymentKey, orderId };
+  } catch (e) {
+    if (paymentKey) {
+      try {
+        await cancelTossPayment({
+          paymentKey,
+          cancelReason: '초과 이용 요금 처리 오류',
+          cancelAmount: chargeAmount,
+        });
+      } catch (_) {}
+    }
+    throw e;
+  }
+}

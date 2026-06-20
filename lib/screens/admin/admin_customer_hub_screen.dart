@@ -3,6 +3,7 @@ import 'package:intl/intl.dart';
 
 import '../../models/admin_customer.dart';
 import '../../models/license_review_item.dart';
+import '../../models/resident_review_item.dart';
 import '../../models/staff_profile.dart';
 import '../../services/admin_service.dart';
 import '../../theme/danji_colors.dart';
@@ -14,8 +15,15 @@ import '../../widgets/admin_scaffold.dart';
 import '../../widgets/danji_app_bar.dart';
 import '../../widgets/section_card.dart';
 import 'admin_customer_detail_screen.dart';
+import 'admin_resident_review_screen.dart';
 
-enum AdminCustomerHubTab { residents, license, usageHistory, blacklist }
+enum AdminCustomerHubTab {
+  residents,
+  residentReview,
+  license,
+  usageHistory,
+  blacklist,
+}
 
 class AdminCustomerHubScreen extends StatefulWidget {
   final StaffProfile profile;
@@ -39,6 +47,7 @@ class _AdminCustomerHubScreenState extends State<AdminCustomerHubScreen> {
 
   Future<List<AdminCustomer>>? _customersFuture;
   Future<List<LicenseReviewItem>>? _licenseFuture;
+  Future<List<ResidentReviewItem>>? _residentReviewFuture;
   Future<List<Map<String, dynamic>>>? _usageFuture;
 
   @override
@@ -51,7 +60,14 @@ class _AdminCustomerHubScreenState extends State<AdminCustomerHubScreen> {
     setState(() {
       _customersFuture = _admin.fetchCustomers();
       _licenseFuture = _admin.fetchLicenseReviews();
+      _residentReviewFuture = _admin.fetchResidentReviews();
       _usageFuture = _admin.getAdminCompletedReservations();
+    });
+  }
+
+  void _reloadResidentReviews() {
+    setState(() {
+      _residentReviewFuture = _admin.fetchResidentReviews();
     });
   }
 
@@ -112,7 +128,7 @@ class _AdminCustomerHubScreenState extends State<AdminCustomerHubScreen> {
   @override
   Widget build(BuildContext context) {
     return DefaultTabController(
-      length: 4,
+      length: 5,
       initialIndex: widget.initialTab.index,
       child: AdminScaffold(
         appBar: PreferredSize(
@@ -138,6 +154,7 @@ class _AdminCustomerHubScreenState extends State<AdminCustomerHubScreen> {
                   ),
                   tabs: const [
                     Tab(text: '입주민'),
+                    Tab(text: '입주민 심사'),
                     Tab(text: '면허심사'),
                     Tab(text: '이용이력'),
                     Tab(text: '블랙리스트'),
@@ -155,6 +172,14 @@ class _AdminCustomerHubScreenState extends State<AdminCustomerHubScreen> {
               won: _won,
               profile: widget.profile,
               onReload: _reloadCustomers,
+            ),
+            RefreshIndicator(
+              onRefresh: () async => _reloadResidentReviews(),
+              child: AdminResidentReviewScreen(
+                admin: _admin,
+                future: _residentReviewFuture,
+                onReload: _reloadResidentReviews,
+              ),
             ),
             RefreshIndicator(
               onRefresh: () async => _reloadLicense(),

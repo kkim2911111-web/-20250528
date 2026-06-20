@@ -3,6 +3,7 @@ import { getAdminClient } from '../_shared/payment.ts';
 import {
   executeDeductibleCharge,
   executeExtensionCharge,
+  executeOverdueOverageCharge,
 } from '../_shared/billing_charge_execute.ts';
 import {
   markRetryFailed,
@@ -52,16 +53,31 @@ Deno.serve(async (req) => {
 
     for (const raw of rows ?? []) {
       const row = raw as RetryRow;
+      let isOverdueOverage = false;
       try {
         if (row.charge_type === 'deductible') {
           await executeDeductibleCharge(admin, row.reservation_id);
         } else {
-          const hours = row.extension_hours ?? 1;
-          await executeExtensionCharge(admin, {
-            reservationId: row.reservation_id,
-            userId: row.user_id,
-            extensionHours: hours,
-          });
+          const { data: resRow } = await admin
+            .from('reservations')
+            .select('overdue_overage_amount, overdue_overage_charged')
+            .eq('id', row.reservation_id)
+            .maybeSingle();
+
+          const overdueAmount = Number(resRow?.overdue_overage_amount ?? 0);
+          isOverdueOverage =
+            overdueAmount > 0 && resRow?.overdue_overage_charged !== true;
+
+          if (isOverdueOverage) {
+            await executeOverdueOverageCharge(admin, row);
+          } else {
+            const hours = row.extension_hours ?? 1;
+            await executeExtensionCharge(admin, {
+              reservationId: row.reservation_id,
+              userId: row.user_id,
+              extensionHours: hours,
+            });
+          }
         }
         await markRetrySucceeded(admin, row.id);
         results[row.id] = 'succeeded';
@@ -77,6 +93,7 @@ Deno.serve(async (req) => {
           amount: row.amount,
           complexId: row.complex_id,
           extensionHours: row.extension_hours,
+          isOverdueOverage,
         });
         results[row.id] = status;
       }

@@ -360,6 +360,28 @@ class SuperAdminVehicleFilterBar extends StatelessWidget {
   }
 }
 
+String superAdminVehicleFilterCountLabel(
+  SuperAdminVehicleFilter filter,
+  int count,
+) {
+  switch (filter) {
+    case SuperAdminVehicleFilter.all:
+      return '전체 차량 $count대';
+    case SuperAdminVehicleFilter.available:
+      return '가용 차량 $count대';
+    case SuperAdminVehicleFilter.inUse:
+      return '대여중 차량 $count대';
+  }
+}
+
+String superAdminResidentSummaryLabel({
+  required int total,
+  required int approved,
+  required int pending,
+}) {
+  return '전체 $total명 (승인 $approved명 · 대기 $pending명)';
+}
+
 class SuperAdminEmptyState extends StatelessWidget {
   final String message;
 

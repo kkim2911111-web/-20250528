@@ -11,6 +11,7 @@ class VehicleRentalTypesSaveData {
   final int? dailyPrice;
   final int? monthlyPrice;
   final int? monthlyExcessDailyPrice;
+  final int? dailyOverageHourlyRate;
 
   const VehicleRentalTypesSaveData({
     required this.rentalTypes,
@@ -18,6 +19,7 @@ class VehicleRentalTypesSaveData {
     this.dailyPrice,
     this.monthlyPrice,
     this.monthlyExcessDailyPrice,
+    this.dailyOverageHourlyRate,
   });
 }
 
@@ -28,6 +30,7 @@ abstract final class VehicleRentalTypesSaveHelper {
     required String dailyText,
     required String monthlyText,
     required String excessText,
+    required String dailyOverageText,
   }) {
     if (rentalTypes.isEmpty) {
       return '대여 유형을 1개 이상 선택해주세요.';
@@ -47,6 +50,11 @@ abstract final class VehicleRentalTypesSaveHelper {
     if (excessPrice != null && excessPrice < 0) {
       return '초과 일요금을 올바르게 입력해주세요.';
     }
+    final dailyOveragePrice =
+        dailyOverageText.isEmpty ? null : int.tryParse(dailyOverageText);
+    if (dailyOveragePrice != null && dailyOveragePrice < 0) {
+      return '1일 렌트 초과 시간당 요금을 올바르게 입력해주세요.';
+    }
     return null;
   }
 
@@ -57,6 +65,7 @@ abstract final class VehicleRentalTypesSaveHelper {
     required String dailyText,
     required String monthlyText,
     required String excessText,
+    required String dailyOverageText,
   }) async {
     final validationError = validateFields(
       rentalTypes: rentalTypes,
@@ -64,6 +73,7 @@ abstract final class VehicleRentalTypesSaveHelper {
       dailyText: dailyText,
       monthlyText: monthlyText,
       excessText: excessText,
+      dailyOverageText: dailyOverageText,
     );
     if (validationError != null) {
       return null;
@@ -95,6 +105,9 @@ abstract final class VehicleRentalTypesSaveHelper {
         monthlyText.isEmpty ? null : int.tryParse(monthlyText.trim());
     final excessPrice =
         excessText.isEmpty ? null : int.tryParse(excessText.trim());
+    final dailyOveragePrice = dailyOverageText.isEmpty
+        ? null
+        : int.tryParse(dailyOverageText.trim());
 
     return VehicleRentalTypesSaveData(
       rentalTypes: types,
@@ -102,6 +115,7 @@ abstract final class VehicleRentalTypesSaveHelper {
       dailyPrice: dailyPrice,
       monthlyPrice: monthlyPrice,
       monthlyExcessDailyPrice: excessPrice,
+      dailyOverageHourlyRate: dailyOveragePrice,
     );
   }
 
@@ -120,6 +134,7 @@ abstract final class VehicleRentalTypesSaveHelper {
       dailyPrice: data.dailyPrice,
       monthlyPrice: data.monthlyPrice,
       monthlyExcessDailyPrice: data.monthlyExcessDailyPrice,
+      dailyOverageHourlyRate: data.dailyOverageHourlyRate,
       rentalTypes: data.rentalTypes.toList(),
       parkingLocation: vehicle.parkingLocation,
       carNumber: vehicle.carNumber,

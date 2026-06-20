@@ -22,8 +22,12 @@ class _MyPersonalInfoScreenState extends State<MyPersonalInfoScreen> {
   late final TextEditingController _name;
   late final TextEditingController _phone;
   late final TextEditingController _address;
+  late final TextEditingController _building;
+  late final TextEditingController _unit;
   bool _saving = false;
   String? _error;
+
+  bool get _hasResidentRegistration => widget.profile.hasResidentRegistration;
 
   @override
   void initState() {
@@ -31,6 +35,8 @@ class _MyPersonalInfoScreenState extends State<MyPersonalInfoScreen> {
     _name = TextEditingController(text: widget.profile.name ?? '');
     _phone = TextEditingController(text: widget.profile.phone ?? '');
     _address = TextEditingController(text: widget.profile.address ?? '');
+    _building = TextEditingController(text: widget.profile.residentBuilding ?? '');
+    _unit = TextEditingController(text: widget.profile.residentUnit ?? '');
   }
 
   @override
@@ -38,6 +44,8 @@ class _MyPersonalInfoScreenState extends State<MyPersonalInfoScreen> {
     _name.dispose();
     _phone.dispose();
     _address.dispose();
+    _building.dispose();
+    _unit.dispose();
     super.dispose();
   }
 
@@ -51,6 +59,15 @@ class _MyPersonalInfoScreenState extends State<MyPersonalInfoScreen> {
       return;
     }
 
+    if (_hasResidentRegistration) {
+      if (_building.text.trim().isEmpty || _unit.text.trim().isEmpty) {
+        setState(() {
+          _error = '동과 호수를 모두 입력해주세요.';
+        });
+        return;
+      }
+    }
+
     setState(() {
       _saving = true;
       _error = null;
@@ -62,12 +79,18 @@ class _MyPersonalInfoScreenState extends State<MyPersonalInfoScreen> {
         phone: _phone.text,
         address: _address.text,
       );
+      if (_hasResidentRegistration) {
+        await _service.updateResidentDongHo(
+          building: _building.text,
+          unit: _unit.text,
+        );
+      }
       if (mounted) Navigator.of(context).pop(true);
     } catch (e) {
       if (!mounted) return;
       setState(() {
         _saving = false;
-        _error = e.toString();
+        _error = e.toString().replaceFirst('AuthException: ', '');
       });
     }
   }
@@ -128,6 +151,43 @@ class _MyPersonalInfoScreenState extends State<MyPersonalInfoScreen> {
               ),
             ),
           ),
+          if (_hasResidentRegistration) ...[
+            if (widget.profile.residentComplexName?.trim().isNotEmpty == true)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 8),
+                child: Text(
+                  '단지: ${widget.profile.residentComplexName!.trim()}',
+                  style: const TextStyle(
+                    color: DanjiColors.textMuted,
+                    fontSize: 13,
+                  ),
+                ),
+              ),
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Expanded(
+                  child: _Field(
+                    label: '동',
+                    child: _input(
+                      _building,
+                      keyboardType: TextInputType.text,
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: _Field(
+                    label: '호',
+                    child: _input(
+                      _unit,
+                      keyboardType: TextInputType.text,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ],
           if (_error != null) ...[
             const SizedBox(height: 8),
             Text(

@@ -1,4 +1,5 @@
 import '../models/vehicle.dart';
+import 'daily_rental_duration.dart';
 import 'rental_interval_billing.dart' as interval_billing;
 
 enum RentalType {
@@ -312,9 +313,23 @@ class RentalPricing {
     return interval_billing.vehicleSupportsBookingPeriod(
       rentalTypes: vehicle.rentalTypes,
       monthlyExcessDailyPrice: vehicle.monthlyExcessDailyPrice,
+      dailyOverageHourlyRate: vehicle.dailyOverageHourlyRate,
       type: type,
       start: start,
       end: end,
+    );
+  }
+
+  static bool fleetAllowsDailyReturnTime(Iterable<Vehicle> vehicles) {
+    return interval_billing.fleetAllowsDailyReturnTime(
+      vehicles: vehicles
+          .map(
+            (v) => (
+              rentalTypes: v.rentalTypes,
+              dailyOverageHourlyRate: v.dailyOverageHourlyRate,
+            ),
+          )
+          .toList(),
     );
   }
 
@@ -392,7 +407,9 @@ class RentalPricing {
         final hours = inferHoursBetween(start, end);
         return hours != null ? '${hours}시간' : '';
       case RentalType.daily:
-        return '${end.difference(start).inDays}일';
+        final split = DailyRentalDurationSplit.fromInterval(start: start, end: end);
+        if (split.hasOverage) return split.formatLabel();
+        return '${split.fullDays}일';
       case RentalType.monthly:
         return formatDurationLabelFromDays(end.difference(start).inDays);
     }
@@ -493,6 +510,7 @@ class RentalPricing {
     int? dailyPrice,
     int? monthlyPrice,
     int? monthlyExcessDailyPrice,
+    int? dailyOverageHourlyRate,
     required List<RentalType> rentalTypes,
     required RentalType type,
     required DateTime start,
@@ -503,6 +521,7 @@ class RentalPricing {
       dailyPrice: dailyPrice,
       monthlyPrice: monthlyPrice,
       monthlyExcessDailyPrice: monthlyExcessDailyPrice,
+      dailyOverageHourlyRate: dailyOverageHourlyRate,
       rentalTypes: rentalTypes,
       type: type,
       start: start,
@@ -516,6 +535,7 @@ class RentalPricing {
     int? dailyPrice,
     int? monthlyPrice,
     int? monthlyExcessDailyPrice,
+    int? dailyOverageHourlyRate,
     required List<RentalType> rentalTypes,
     required RentalType type,
     required DateTime start,
@@ -526,6 +546,7 @@ class RentalPricing {
       dailyPrice: dailyPrice,
       monthlyPrice: monthlyPrice,
       monthlyExcessDailyPrice: monthlyExcessDailyPrice,
+      dailyOverageHourlyRate: dailyOverageHourlyRate,
       rentalTypes: rentalTypes,
       type: type,
       start: start,
@@ -544,6 +565,7 @@ class RentalPricing {
       dailyPrice: vehicle.dailyPrice,
       monthlyPrice: vehicle.monthlyPrice,
       monthlyExcessDailyPrice: vehicle.monthlyExcessDailyPrice,
+      dailyOverageHourlyRate: vehicle.dailyOverageHourlyRate,
       rentalTypes: vehicle.rentalTypes,
       type: type,
       start: start,

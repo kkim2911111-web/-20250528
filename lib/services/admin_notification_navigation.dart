@@ -67,7 +67,10 @@ class AdminNotificationNavigation {
       case 'admin':
         Navigator.of(context).push(
           MaterialPageRoute<void>(
-            builder: (_) => AdminCustomerHubScreen(profile: profile),
+            builder: (_) => AdminCustomerHubScreen(
+              profile: profile,
+              initialTab: AdminCustomerHubTab.residentReview,
+            ),
           ),
         );
         return;

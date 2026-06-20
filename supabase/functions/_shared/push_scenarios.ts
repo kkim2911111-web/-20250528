@@ -251,13 +251,13 @@ export function buildPushMessage(
     case 'staff_rental_started':
       return {
         title: '대여가 시작됐습니다',
-        body: `[${vehicle}] ${renter}`,
+        body: `[${vehicle}] 대여가 시작됐습니다. (임차인: ${renter})`,
         data: { ...data, type: 'admin_reservation' },
       };
     case 'staff_return_completed':
       return {
-        title: '반납이 완료됐습니다',
-        body: `[${vehicle}] 반납 완료`,
+        title: '반납이 접수됐습니다',
+        body: `[${vehicle}] 반납이 접수됐습니다. 검수해주세요. (임차인: ${renter})`,
         data: { ...data, type: 'admin_reservation' },
       };
     case 'staff_return_overdue':
@@ -312,10 +312,9 @@ export function buildPushMessage(
         data: { ...data, type: 'admin_vehicle' },
       };
     case 'staff_no_show_auto_completed': {
-      const num = payload.reservationNumber?.trim() || payload.reservationId?.trim() || '';
       return {
-        title: '노쇼 자동 처리',
-        body: num ? `예약 #${num} 노쇼 자동 처리되었습니다.` : '노쇼 예약이 자동 처리되었습니다.',
+        title: '노쇼 처리됐습니다',
+        body: `[${vehicle}] 예약이 노쇼로 처리됐습니다. (임차인: ${renter})`,
         data: { ...data, type: 'admin_reservation' },
       };
     }

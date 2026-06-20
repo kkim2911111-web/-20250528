@@ -2,12 +2,14 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
 import '../../models/license_review_item.dart';
+import '../../models/resident_review_item.dart';
 import '../../models/staff_profile.dart';
 import '../../services/admin_service.dart';
 import '../../services/auth_service.dart';
 import '../../theme/danji_colors.dart';
 import '../../services/admin_notification_navigation.dart';
 import '../../widgets/admin_scaffold.dart';
+import '../../widgets/logout_confirm_dialog.dart';
 import '../../widgets/notification_bell_button.dart';
 import '../../widgets/section_card.dart';
 import '../notification_list_screen.dart';
@@ -65,27 +67,33 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
   Future<_DashboardBadges> _loadBadges(String complexId) async {
     final results = await Future.wait([
       _admin.fetchLicenseReviews(),
+      _admin.fetchResidentReviews(),
       _admin.fetchReturnInspections(complexId, status: 'returned'),
       _admin.fetchVehicles(complexId),
     ]);
     final licenses = results[0] as List<LicenseReviewItem>;
-    final inspections = results[1] as List;
-    final vehicles = results[2] as List<AdminVehicleDetail>;
+    final residentReviews = results[1] as List<ResidentReviewItem>;
+    final inspections = results[2] as List;
+    final vehicles = results[3] as List<AdminVehicleDetail>;
 
     final licensePending =
         licenses.where((e) => e.isPendingReview).length;
+    final residentReviewPending = residentReviews.length;
     final insuranceLevel = VehicleInsuranceStatus.menuBadgeLevel(
       vehicles.map((v) => v.insuranceExpiresAt),
     );
 
     return _DashboardBadges(
       licensePending: licensePending,
+      residentReviewPending: residentReviewPending,
       inspectionPending: inspections.length,
       insuranceLevel: insuranceLevel,
     );
   }
 
   Future<void> _logout() async {
+    final confirmed = await showLogoutConfirmDialog(context);
+    if (!confirmed || !mounted) return;
     await _auth.signOut();
   }
 
@@ -327,7 +335,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                       icon: Icons.people_outline,
                       title: '고객관리',
                       subtitle: '입주민·면허심사·이용이력·블랙리스트',
-                      badgeCount: badges.licensePending,
+                      badgeCount: badges.customerHubPendingCount,
                       onTap: () =>
                           _open(AdminCustomerHubScreen(profile: profile)),
                     ),
@@ -675,17 +683,23 @@ class _CompactStatCard extends StatelessWidget {
 
 class _DashboardBadges {
   final int licensePending;
+  final int residentReviewPending;
   final int inspectionPending;
   final VehicleInsuranceMenuBadgeLevel insuranceLevel;
 
   const _DashboardBadges({
     required this.licensePending,
+    required this.residentReviewPending,
     required this.inspectionPending,
     required this.insuranceLevel,
   });
 
+  int get customerHubPendingCount =>
+      licensePending + residentReviewPending;
+
   static const empty = _DashboardBadges(
     licensePending: 0,
+    residentReviewPending: 0,
     inspectionPending: 0,
     insuranceLevel: VehicleInsuranceMenuBadgeLevel.none,
   );

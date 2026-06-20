@@ -233,6 +233,7 @@ class PushNotificationService {
     required String complexId,
     required String reservationId,
     required String vehicleName,
+    String? renterName,
   }) =>
       dispatch(
         'staff_return_completed',
@@ -240,6 +241,58 @@ class PushNotificationService {
           'complexId': complexId,
           'reservationId': reservationId,
           'vehicleName': vehicleName,
+          if (renterName != null && renterName.isNotEmpty)
+            'renterName': renterName,
+        },
+      );
+
+  Future<void> staffNoShowAutoCompleted({
+    required String complexId,
+    required String reservationId,
+    required String vehicleName,
+    String? renterName,
+  }) =>
+      dispatch(
+        'staff_no_show_auto_completed',
+        payload: {
+          'complexId': complexId,
+          'reservationId': reservationId,
+          'vehicleName': vehicleName,
+          if (renterName != null && renterName.isNotEmpty)
+            'renterName': renterName,
+        },
+      );
+
+  Future<void> customerReturnOverdue({
+    required String userId,
+    required String reservationId,
+    required String vehicleName,
+    String? endAt,
+  }) =>
+      dispatch(
+        'customer_return_overdue',
+        payload: {
+          'userId': userId,
+          'reservationId': reservationId,
+          'vehicleName': vehicleName,
+          if (endAt != null && endAt.isNotEmpty) 'endAt': endAt,
+        },
+      );
+
+  Future<void> staffReturnOverdue({
+    required String complexId,
+    required String reservationId,
+    required String vehicleName,
+    String? renterName,
+  }) =>
+      dispatch(
+        'staff_return_overdue',
+        payload: {
+          'complexId': complexId,
+          'reservationId': reservationId,
+          'vehicleName': vehicleName,
+          if (renterName != null && renterName.isNotEmpty)
+            'renterName': renterName,
         },
       );
 }

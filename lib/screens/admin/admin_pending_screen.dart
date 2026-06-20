@@ -6,6 +6,7 @@ import '../../services/auth_service.dart';
 import '../../theme/danji_colors.dart';
 import '../../widgets/admin_scaffold.dart';
 import '../../widgets/danji_app_bar.dart';
+import '../../widgets/logout_confirm_dialog.dart';
 
 /// 지점 관리자 승인 대기 — 입주민 온보딩/인증 화면으로 넘어가지 않음
 class AdminPendingScreen extends StatelessWidget {
@@ -46,6 +47,8 @@ class AdminPendingScreen extends StatelessWidget {
         extraActions: [
           TextButton(
             onPressed: () async {
+              final confirmed = await showLogoutConfirmDialog(context);
+              if (!confirmed || !context.mounted) return;
               await AuthService.instance.signOut();
             },
             child: const Text('로그아웃'),

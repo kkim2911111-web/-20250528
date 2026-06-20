@@ -18,21 +18,17 @@ bool isNoShowSuspectRow(Map<String, dynamic> row) {
   return !start.isAfter(DateTime.now());
 }
 
-/// 반납 직후·근접 다음 예약 (종료 ±5분 ~ +30분)
+const _activeConflictStatuses = {'pending', 'confirmed', 'in_use'};
+
+/// 동일 차량 겹침·연속 예약 충돌 위험 (예약 확정 즉시, in_use 한정 아님)
 bool isBackToBackConflictRow(Map<String, dynamic> row) {
-  if (adminReservationStatus(row) != 'in_use') return false;
+  if (row['is_conflict_risk'] == true) return true;
+
+  final status = adminReservationStatus(row);
+  if (!_activeConflictStatuses.contains(status)) return false;
   if (isNoShowSuspectRow(row)) return false;
 
-  final end = parseAdminReservationDate(row['end_at']);
-  final nextStart = parseAdminReservationDate(row['next_start_at']);
-  if (end == null || nextStart == null) return false;
-
-  final endUtc = end.toUtc();
-  final nextUtc = nextStart.toUtc();
-  final lower = endUtc.subtract(const Duration(minutes: 5));
-  final upper = endUtc.add(const Duration(minutes: 30));
-
-  return !nextUtc.isBefore(lower) && !nextUtc.isAfter(upper);
+  return parseAdminReservationDate(row['next_start_at']) != null;
 }
 
 int countBackToBackConflicts(List<Map<String, dynamic>> rows) =>

@@ -193,6 +193,40 @@ class _RentalReturnScreenState extends State<RentalReturnScreen> {
     }
   }
 
+  bool _isEarlyReturnAttempt() {
+    final scheduledEnd = _reservation?.endAt;
+    if (scheduledEnd == null) return false;
+    return DateTime.now().isBefore(scheduledEnd);
+  }
+
+  Future<bool> _confirmEarlyReturnIfNeeded() async {
+    if (!_isEarlyReturnAttempt()) return true;
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => AlertDialog(
+        title: const Text('조기반납 확인'),
+        content: const Text(
+          '예정 종료 시각보다 일찍 반납합니다. '
+          '남은 기간에 대한 요금은 환불되지 않습니다. 반납하시겠습니까?',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('취소'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('반납하기'),
+          ),
+        ],
+      ),
+    );
+
+    return confirmed == true;
+  }
+
   Future<void> _submit() async {
     if (!_doorLockConfirmed) {
       setState(() => _error = '문 잠금 확인 후 반납할 수 있습니다.');
@@ -224,6 +258,12 @@ class _RentalReturnScreenState extends State<RentalReturnScreen> {
       return;
     }
 
+    final isEarlyReturn = _isEarlyReturnAttempt();
+    if (isEarlyReturn) {
+      final acknowledged = await _confirmEarlyReturnIfNeeded();
+      if (!acknowledged) return;
+    }
+
     setState(() {
       _submitting = true;
       _error = null;
@@ -238,6 +278,8 @@ class _RentalReturnScreenState extends State<RentalReturnScreen> {
         isAccident: _isAccident,
         accidentNote:
             _isAccident ? _accidentNoteController.text.trim() : null,
+        isEarlyReturn: isEarlyReturn,
+        earlyReturnAcknowledged: isEarlyReturn,
       );
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(

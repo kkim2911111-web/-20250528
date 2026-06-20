@@ -8,6 +8,7 @@ import '../models/admin_customer.dart';
 import '../models/admin_timeline.dart';
 import '../models/inspection_photo.dart';
 import '../models/license_review_item.dart';
+import '../models/resident_review_item.dart';
 import '../models/vehicle_maintenance.dart';
 import '../models/notice.dart';
 import '../models/staff_profile.dart';
@@ -696,12 +697,12 @@ class AdminService {
     const baseSelect =
         'id, reservation_number, user_id, status, total_price, start_at, start_time, end_at, end_time, '
         'rental_started_at, returned_at, actual_end_at, updated_at, return_type, '
-        'is_no_show, '
+        'is_no_show, mileage_start, mileage_end, '
         'second_driver_name, '
         'second_driver_license, is_accident, accident_note, deductible_charged, '
         'deductible_amount, deductible_charged_at, deductible_waived, '
         'deductible_unpaid, deductible_unpaid_at, '
-        'pickup_photos, return_photos, vehicles(model_name, car_number)';
+        'pickup_photos, return_photos, vehicles(model_name, car_number, total_mileage)';
 
     final orderColumn = status == 'completed' ? 'updated_at' : 'returned_at';
     final orderAscending = status != 'completed';
@@ -1468,6 +1469,21 @@ class AdminService {
         .toList();
   }
 
+  Future<List<ResidentReviewItem>> fetchResidentReviews() async {
+    try {
+      final rows = await supabase.rpc('list_resident_reviews_for_staff');
+      return (rows as List)
+          .map(
+            (e) => ResidentReviewItem.fromMap(
+              Map<String, dynamic>.from(e as Map),
+            ),
+          )
+          .toList();
+    } on PostgrestException catch (e) {
+      throw AdminException(mapAdminPostgrestError(e));
+    }
+  }
+
   Future<List<AdminCustomer>> fetchCustomers() async {
     try {
       final rows = await supabase.rpc('get_admin_customers_for_staff');
@@ -1580,6 +1596,7 @@ class AdminService {
     }
   }
 
+  /// 입주민 승인/거절 — RPC 후 관리자 세션으로 고객 푸시 (예약확정과 동일 패턴)
   Future<void> reviewResident({
     required String userId,
     required bool approved,
@@ -1591,19 +1608,20 @@ class AdminService {
         'p_approved': approved,
         'p_rejection_reason': rejectionReason,
       });
-      final push = PushNotificationService.instance;
-      if (approved) {
-        await push.customerResidentApproved(userId);
-      } else {
-        await push.customerResidentRejected(
-          userId,
-          reason: rejectionReason?.trim().isNotEmpty == true
-              ? rejectionReason!.trim()
-              : '입주민 인증 정보 확인 불가',
-        );
-      }
     } on PostgrestException catch (e) {
       throw AdminException(mapAdminPostgrestError(e));
+    }
+
+    final push = PushNotificationService.instance;
+    if (approved) {
+      await push.customerResidentApproved(userId);
+    } else {
+      await push.customerResidentRejected(
+        userId,
+        reason: rejectionReason?.trim().isNotEmpty == true
+            ? rejectionReason!.trim()
+            : '입주민 인증 정보 확인 불가',
+      );
     }
   }
 
@@ -1661,7 +1679,16 @@ class AdminService {
     }
   }
 
+  /// 반납 검수 완료 — RPC 후 관리자 세션으로 고객 푸시 (예약확정과 동일 패턴)
   Future<void> completeReturnInspection(String reservationId) async {
+    try {
+      await supabase.rpc('complete_return_inspection_for_staff', params: {
+        'p_reservation_id': reservationId,
+      });
+    } on PostgrestException catch (e) {
+      throw AdminException(mapAdminPostgrestError(e));
+    }
+
     String? userId;
     try {
       final row = await supabase
@@ -1670,22 +1697,18 @@ class AdminService {
           .eq('id', reservationId)
           .maybeSingle();
       userId = row?['user_id']?.toString();
-    } catch (_) {}
-
-    try {
-      await supabase.rpc('complete_return_inspection_for_staff', params: {
-        'p_reservation_id': reservationId,
-      });
-      if (userId != null && userId.isNotEmpty) {
-        await PushNotificationService.instance
-            .customerReturnInspectionComplete(
-          userId: userId,
-          reservationId: reservationId,
-        );
-      }
-    } on PostgrestException catch (e) {
-      throw AdminException(mapAdminPostgrestError(e));
+    } catch (e, st) {
+      debugPrint(
+        '[admin] return inspection user lookup failed (non-fatal): $e\n$st',
+      );
     }
+
+    if (userId == null || userId.isEmpty) return;
+
+    await PushNotificationService.instance.customerReturnInspectionComplete(
+      userId: userId,
+      reservationId: reservationId,
+    );
   }
 
   /// 공지사항 목록 (본인 단지 + 전체 공지)

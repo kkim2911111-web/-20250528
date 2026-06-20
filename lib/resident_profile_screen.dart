@@ -9,6 +9,7 @@ import 'services/push_notification_service.dart';
 import 'theme/danji_colors.dart';
 import 'utils/network_retry.dart';
 import 'widgets/danji_app_bar.dart';
+import 'widgets/logout_confirm_dialog.dart';
 import 'widgets/resident_verification_pending.dart';
 
 class ResidentProfile {
@@ -313,6 +314,8 @@ class _ResidentProfileScreenState extends State<ResidentProfileScreen> {
                 IconButton(
                   tooltip: '로그아웃',
                   onPressed: () async {
+                    final confirmed = await showLogoutConfirmDialog(context);
+                    if (!confirmed || !context.mounted) return;
                     await AuthService.instance.signOut();
                   },
                   icon: const Icon(Icons.logout),

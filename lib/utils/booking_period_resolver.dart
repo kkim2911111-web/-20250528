@@ -1,3 +1,4 @@
+import 'daily_rental_duration.dart';
 import 'rental_pricing.dart';
 
 enum BookingPeriodInquiry {
@@ -67,6 +68,7 @@ abstract final class BookingPeriodResolver {
     required DateTime returnDay,
     required int startHour,
     int? endHour,
+    int? returnHour,
   }) {
     if (isSameCalendarDay(startDay, returnDay)) {
       if (endHour == null) return null;
@@ -77,7 +79,11 @@ abstract final class BookingPeriodResolver {
       }
       return end;
     }
-    return DateTime(returnDay.year, returnDay.month, returnDay.day, startHour);
+    final hour = returnHour ?? startHour;
+    final end = DateTime(returnDay.year, returnDay.month, returnDay.day, hour);
+    final start = buildStart(startDay, startHour);
+    if (start != null && !end.isAfter(start)) return null;
+    return end;
   }
 
   static BookingPeriodResult resolve({
@@ -85,6 +91,7 @@ abstract final class BookingPeriodResolver {
     required DateTime returnDay,
     required int startHour,
     int? endHour,
+    int? returnHour,
   }) {
     final start = buildStart(startDay, startHour);
     final end = buildEnd(
@@ -92,6 +99,7 @@ abstract final class BookingPeriodResolver {
       returnDay: returnDay,
       startHour: startHour,
       endHour: endHour,
+      returnHour: returnHour,
     );
     if (end == null || !end.isAfter(start)) {
       return BookingPeriodResult.invalid();
@@ -123,14 +131,14 @@ abstract final class BookingPeriodResolver {
 
     final type = RentalPricing.inferRentalTypeFromInterval(start: start, end: end);
     if (type == RentalType.daily) {
-      final days = RentalPricing.inferDaysBetween(start, end);
-      if (days == null) {
+      final split = DailyRentalDurationSplit.fromInterval(start: start, end: end);
+      if (split.fullDays < 1 || split.fullDays > RentalPricing.maxDailyDays) {
         return BookingPeriodResult.invalid();
       }
       return BookingPeriodResult(
         rentalType: RentalType.daily,
         hours: 0,
-        days: days,
+        days: split.fullDays,
         months: 1,
         start: start,
         end: end,

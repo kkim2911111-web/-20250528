@@ -366,6 +366,9 @@ class _SuperAdminVehiclesScreenState extends State<SuperAdminVehiclesScreen> {
     final monthlyExcessDailyPrice = TextEditingController(
       text: v?.monthlyExcessDailyPrice?.toString() ?? '',
     );
+    final dailyOverageHourlyRate = TextEditingController(
+      text: v?.dailyOverageHourlyRate?.toString() ?? '',
+    );
     var complexId = v?.complexId ?? (complexes.isNotEmpty ? complexes.first.id : '');
     var available = v?.isAvailable ?? true;
     var rentalTypes = v?.rentalTypes.toSet() ?? {RentalType.hourly};
@@ -395,6 +398,7 @@ class _SuperAdminVehiclesScreenState extends State<SuperAdminVehiclesScreen> {
                 dailyPriceController: dailyPrice,
                 monthlyPriceController: monthlyPrice,
                 monthlyExcessDailyPriceController: monthlyExcessDailyPrice,
+                dailyOverageHourlyRateController: dailyOverageHourlyRate,
               ),
               SwitchListTile(
                 contentPadding: EdgeInsets.zero,
@@ -416,6 +420,7 @@ class _SuperAdminVehiclesScreenState extends State<SuperAdminVehiclesScreen> {
     final dailyText = dailyPrice.text.trim();
     final monthlyText = monthlyPrice.text.trim();
     final excessText = monthlyExcessDailyPrice.text.trim();
+    final dailyOverageText = dailyOverageHourlyRate.text.trim();
     if (ok != true || complexId.isEmpty) {
       name.dispose();
       carNo.dispose();
@@ -423,6 +428,7 @@ class _SuperAdminVehiclesScreenState extends State<SuperAdminVehiclesScreen> {
       dailyPrice.dispose();
       monthlyPrice.dispose();
       monthlyExcessDailyPrice.dispose();
+      dailyOverageHourlyRate.dispose();
       return;
     }
 
@@ -446,6 +452,7 @@ class _SuperAdminVehiclesScreenState extends State<SuperAdminVehiclesScreen> {
         dailyPrice.dispose();
         monthlyPrice.dispose();
         monthlyExcessDailyPrice.dispose();
+        dailyOverageHourlyRate.dispose();
         return;
       }
       typesToSave.removeAll(missingPrices);
@@ -459,6 +466,7 @@ class _SuperAdminVehiclesScreenState extends State<SuperAdminVehiclesScreen> {
         dailyPrice.dispose();
         monthlyPrice.dispose();
         monthlyExcessDailyPrice.dispose();
+        dailyOverageHourlyRate.dispose();
         return;
       }
     }
@@ -475,6 +483,8 @@ class _SuperAdminVehiclesScreenState extends State<SuperAdminVehiclesScreen> {
         monthlyPrice: monthlyText.isEmpty ? null : int.tryParse(monthlyText),
         monthlyExcessDailyPrice:
             excessText.isEmpty ? null : int.tryParse(excessText),
+        dailyOverageHourlyRate:
+            dailyOverageText.isEmpty ? null : int.tryParse(dailyOverageText),
         rentalTypes: RentalPricing.rentalTypesToDb(typesToSave),
       );
       _reload();
@@ -487,6 +497,7 @@ class _SuperAdminVehiclesScreenState extends State<SuperAdminVehiclesScreen> {
       dailyPrice.dispose();
       monthlyPrice.dispose();
       monthlyExcessDailyPrice.dispose();
+      dailyOverageHourlyRate.dispose();
     }
   }
 
@@ -615,6 +626,25 @@ class _SuperAdminVehiclesScreenState extends State<SuperAdminVehiclesScreen> {
                 SuperAdminVehicleFilterBar(
                   selected: _filter,
                   onChanged: (f) => setState(() => _filter = f),
+                ),
+                const SizedBox(height: 8),
+                FutureBuilder<List<SuperAdminVehicle>>(
+                  future: _vehiclesFuture,
+                  builder: (context, snap) {
+                    final list = snap.data ?? [];
+                    final count = _applyFilter(list).length;
+                    return Align(
+                      alignment: Alignment.centerLeft,
+                      child: Text(
+                        superAdminVehicleFilterCountLabel(_filter, count),
+                        style: const TextStyle(
+                          color: DanjiColors.textSecondary,
+                          fontSize: 13,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    );
+                  },
                 ),
                 const SizedBox(height: 8),
                 const RentalTypeBadgeLegend(),
@@ -1120,6 +1150,8 @@ class _SuperAdminResidentsScreenState extends State<SuperAdminResidentsScreen> {
     }
 
     final filtered = _filter(_allResidents);
+    final approvedCount = filtered.where((r) => r.approved).length;
+    final pendingCount = filtered.length - approvedCount;
     final sortedComplexes = List<SuperAdminComplex>.from(_complexes)
       ..sort((a, b) => a.name.compareTo(b.name));
 
@@ -1188,6 +1220,22 @@ class _SuperAdminResidentsScreenState extends State<SuperAdminResidentsScreen> {
                         if (v == null) return;
                         setState(() => _approvalFilter = v);
                       },
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: Text(
+                    superAdminResidentSummaryLabel(
+                      total: filtered.length,
+                      approved: approvedCount,
+                      pending: pendingCount,
+                    ),
+                    style: const TextStyle(
+                      color: DanjiColors.textSecondary,
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
                     ),
                   ),
                 ),

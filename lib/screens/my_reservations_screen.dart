@@ -15,6 +15,7 @@ import 'support_pages.dart';
 import '../widgets/reservation_price_display.dart';
 import '../utils/rental_navigation.dart';
 import '../utils/reservation_display.dart';
+import '../utils/reservation_status_badge.dart';
 import 'rental_contract_screen.dart';
 import '../models/reservation_payment_pricing.dart';
 class MyReservationsScreen extends StatefulWidget {
@@ -924,6 +925,10 @@ class _ReservationCard extends StatelessWidget {
                   style: DanjiTypography.subtitle,
                 ),
               ),
+              if (reservation.isReturnOverdue) ...[
+                const ReturnOverdueBadge(),
+                const SizedBox(width: 6),
+              ],
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                 decoration: BoxDecoration(
@@ -1014,6 +1019,16 @@ class _ReservationCard extends StatelessWidget {
               reservationTotalPrice: reservation.totalPrice,
               pricing: pricing,
               won: won,
+            ),
+          ],
+          if (reservation.overdueOverageChargeLabel != null) ...[
+            const SizedBox(height: 6),
+            Text(
+              reservation.overdueOverageChargeLabel!,
+              style: DanjiTypography.caption.copyWith(
+                color: DanjiColors.accentRed,
+                fontWeight: FontWeight.w700,
+              ),
             ),
           ],
           if (onUseVehicle != null || onReturn != null) ...[

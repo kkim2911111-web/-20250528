@@ -20,6 +20,7 @@ import '../utils/booking_period_resolver.dart';
 import '../utils/feature_kill_switch_guard.dart';
 import '../utils/booking_vehicle_price_display.dart';
 import '../utils/rental_inquiry_flow.dart';
+import '../utils/rental_interval_billing.dart' as interval_billing;
 import '../utils/rental_pricing.dart';
 import '../widgets/danji_app_bar.dart';
 import '../widgets/payment_method_sheet.dart';
@@ -92,6 +93,8 @@ class _BookingScreenState extends State<BookingScreen> {
   int _startHour = 9;
   int _endHour = 10;
   bool _endHourManuallySet = false;
+  int _returnHour = 9;
+  bool _returnHourManuallySet = false;
   RentalType _rentalType = RentalType.hourly;
   int _durationDays = 1;
   int _durationMonths = 1;
@@ -137,6 +140,8 @@ class _BookingScreenState extends State<BookingScreen> {
       _endHour = _startHour + 1;
     }
     _endHourManuallySet = false;
+    _returnHour = _startHour;
+    _returnHourManuallySet = false;
     _normalizeHoursForSelectedDay();
     if (!_endHourManuallySet) {
       _syncEndHourFromStart(force: true);
@@ -160,6 +165,8 @@ class _BookingScreenState extends State<BookingScreen> {
     _startHour = 0;
     _endHour = 1;
     _endHourManuallySet = false;
+    _returnHour = _startHour;
+    _returnHourManuallySet = false;
     _normalizeHoursForSelectedDay();
     if (!_endHourManuallySet) {
       _syncEndHourFromStart(force: true);
@@ -236,6 +243,12 @@ class _BookingScreenState extends State<BookingScreen> {
       _returnDay != null &&
       BookingPeriodResolver.isSameCalendarDay(_startDay!, _returnDay!);
 
+  bool get _fleetAllowsDailyReturnTime =>
+      RentalPricing.fleetAllowsDailyReturnTime(_allVehicles);
+
+  bool get _allowsDailyReturnTimePick =>
+      !_isSameDayBooking && _fleetAllowsDailyReturnTime;
+
   BookingPeriodResult? get _resolvedPeriod {
     final startDay = _startDay;
     final returnDay = _returnDay;
@@ -245,6 +258,7 @@ class _BookingScreenState extends State<BookingScreen> {
       returnDay: returnDay,
       startHour: _startHour,
       endHour: _isSameDayBooking ? _endHour : null,
+      returnHour: _allowsDailyReturnTimePick ? _returnHour : null,
     );
   }
 
@@ -368,7 +382,6 @@ class _BookingScreenState extends State<BookingScreen> {
     return options.where((h) => _isStartHourSelectable(day, h)).toList();
   }
 
-  /// 종료 시각 목록 — 시작 시각 다음부터 순환 (예: 21:00 시작 → 22:00, 23:00, 00:00(익일)…)
   List<int> get _endHourOptions {
     final day = _startDay;
     if (day == null) return const [];
@@ -380,6 +393,51 @@ class _BookingScreenState extends State<BookingScreen> {
       for (final h in ordered)
         if (_isValidEndHour(day, h)) h,
     ];
+  }
+
+  List<int> get _returnHourOptions {
+    return [
+      for (var h = _minHour; h <= _maxHour; h++)
+        if (_isValidReturnHour(h)) h,
+    ];
+  }
+
+  bool _isValidReturnHour(int hour) {
+    final startDay = _startDay;
+    final returnDay = _returnDay;
+    if (startDay == null || returnDay == null) return false;
+    final period = BookingPeriodResolver.resolve(
+      startDay: startDay,
+      returnDay: returnDay,
+      startHour: _startHour,
+      returnHour: hour,
+    );
+    return period.valid && period.inquiry == null;
+  }
+
+  void _syncReturnHourFromStart({bool force = false}) {
+    if (!force && _returnHourManuallySet) return;
+    final options = _returnHourOptions;
+    if (options.isEmpty) return;
+    if (options.contains(_startHour)) {
+      _returnHour = _startHour;
+      return;
+    }
+    _returnHour = options.first;
+  }
+
+  void _normalizeReturnHourForSelectedPeriod() {
+    if (!_allowsDailyReturnTimePick) {
+      _returnHour = _startHour;
+      _returnHourManuallySet = false;
+      return;
+    }
+    final options = _returnHourOptions;
+    if (options.isEmpty) return;
+    if (!options.contains(_returnHour)) {
+      _returnHour = options.first;
+      _returnHourManuallySet = false;
+    }
   }
 
   bool _isValidEndHour(DateTime day, int endHour) {
@@ -492,17 +550,29 @@ class _BookingScreenState extends State<BookingScreen> {
     return _formatHourLabel(hour);
   }
 
-  int? get _originalPrice {
+  interval_billing.RentalPriceBreakdown? get _priceBreakdown {
     final vehicle = _selected;
     final period = _resolvedPeriod;
     if (vehicle == null || period == null || !_hasValidDuration) return null;
-    return RentalPricing.calculateBasePriceFromIntervalVehicle(
+    return RentalPricing.calculateBasePriceBreakdownFromVehicle(
       vehicle,
       period.rentalType,
       start: period.start,
       end: period.end,
     );
   }
+
+  String? get _dailyOveragePriceLabel {
+    final breakdown = _priceBreakdown;
+    final period = _resolvedPeriod;
+    if (breakdown == null || period == null) return null;
+    return breakdown.dailyOverageConfirmationLabel(
+      fullDays: period.days,
+      formatWon: _formatWon,
+    );
+  }
+
+  int? get _originalPrice => _priceBreakdown?.amount;
 
   bool get _monthlyCapApplied {
     final vehicle = _selected;
@@ -799,6 +869,7 @@ class _BookingScreenState extends State<BookingScreen> {
   void _onDateTimeChanged() {
     setState(() {
       _normalizeHoursForSelectedDay();
+      _normalizeReturnHourForSelectedPeriod();
       _applyResolvedPeriod(_resolvedPeriod);
       _error = null;
       _validateCouponForCurrentPrice();
@@ -894,6 +965,7 @@ class _BookingScreenState extends State<BookingScreen> {
           endHour: BookingPeriodResolver.isSameCalendarDay(start, picked)
               ? _endHour
               : null,
+          returnHour: _allowsDailyReturnTimePick ? _returnHour : null,
         );
         if (preview.inquiry != null) {
           if (!mounted) return;
@@ -1321,7 +1393,9 @@ class _BookingScreenState extends State<BookingScreen> {
                         time: _formatHourLabel(_startHour),
                         subtitle: _isSameDayBooking
                             ? '당일 대여 시작 시각'
-                            : '반납 시각도 동일하게 적용',
+                            : _allowsDailyReturnTimePick
+                                ? '반납 시각은 아래에서 별도 선택'
+                                : '반납 시각도 동일하게 적용',
                         onTap: () => _openHourPicker(
                           title: '출고 시각',
                           hours: _startHourOptions,
@@ -1331,11 +1405,34 @@ class _BookingScreenState extends State<BookingScreen> {
                             setState(() => _startHour = hour);
                             if (_isSameDayBooking) {
                               _syncEndHourFromStart();
+                            } else if (!_returnHourManuallySet) {
+                              _returnHour = hour;
                             }
                             _onDateTimeChanged();
                           },
                         ),
                       ),
+                      if (_allowsDailyReturnTimePick) ...[
+                        const SizedBox(height: 12),
+                        _TimeSelectCard(
+                          title: '반납 시각',
+                          time: _formatHourLabel(_returnHour),
+                          subtitle: '출고 시각과 별도로 선택 가능',
+                          onTap: () => _openHourPicker(
+                            title: '반납 시각',
+                            hours: _returnHourOptions,
+                            current: _returnHour,
+                            labelBuilder: _formatHourLabel,
+                            onSelected: (hour) {
+                              setState(() {
+                                _returnHour = hour;
+                                _returnHourManuallySet = true;
+                              });
+                              _onDateTimeChanged();
+                            },
+                          ),
+                        ),
+                      ],
                       if (_isSameDayBooking) ...[
                         const SizedBox(height: 12),
                         _TimeSelectCard(
@@ -1475,7 +1572,16 @@ class _BookingScreenState extends State<BookingScreen> {
               if (_showCheckoutDiscounts)
                 Padding(
                   padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
-                  child: _BookingCheckoutDiscounts(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      if (_dailyOveragePriceLabel != null) ...[
+                        _BookingDailyOveragePriceBanner(
+                          label: _dailyOveragePriceLabel!,
+                        ),
+                        const SizedBox(height: 8),
+                      ],
+                      _BookingCheckoutDiscounts(
                     loading: _loadingCheckoutExtras,
                     coupons: _availableCoupons,
                     selectedUserCouponId: _selectedUserCouponId,
@@ -1491,6 +1597,8 @@ class _BookingScreenState extends State<BookingScreen> {
                     onPointsAmountChanged: _onPointsAmountChanged,
                     formatWon: _formatWon,
                     extrasLoaded: _checkoutExtrasLoaded,
+                      ),
+                    ],
                   ),
                 ),
               _BookingBottomBar(
@@ -1630,6 +1738,46 @@ class _StepConnector extends StatelessWidget {
           thickness: 2,
           color: filled ? DanjiColors.buttonBlue : DanjiColors.border,
         ),
+      ),
+    );
+  }
+}
+
+class _BookingDailyOveragePriceBanner extends StatelessWidget {
+  final String label;
+
+  const _BookingDailyOveragePriceBanner({required this.label});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      decoration: BoxDecoration(
+        color: DanjiColors.skyLight,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: DanjiColors.buttonBlue.withValues(alpha: 0.25)),
+      ),
+      child: Row(
+        children: [
+          const Icon(
+            Icons.receipt_long_outlined,
+            size: 18,
+            color: DanjiColors.buttonBlue,
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              label,
+              style: const TextStyle(
+                color: DanjiColors.textPrimary,
+                fontSize: 13,
+                fontWeight: FontWeight.w700,
+                height: 1.45,
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }

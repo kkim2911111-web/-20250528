@@ -5,6 +5,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../models/reservation.dart';
 import '../supabase_client.dart';
+import 'push_notification_service.dart';
 import 'rental_service.dart';
 
 /// 대여하기 3단계 — 사진 · 면허 · 문열림 전용
@@ -298,6 +299,11 @@ pickup_photos,photos_uploaded,license_verified,rental_started_at
     }
 
     RentalService.signalListRefresh();
+    try {
+      await RentalService.notifyStaffRentalStarted(updated);
+    } catch (e) {
+      debugPrint('[rental-start] staff rental push skipped (non-fatal): $e');
+    }
     return updated;
   }
 

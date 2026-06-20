@@ -392,6 +392,7 @@ class SuperAdminService {
     int? dailyPrice,
     int? monthlyPrice,
     int? monthlyExcessDailyPrice,
+    int? dailyOverageHourlyRate,
     List<String>? rentalTypes,
   }) =>
       _rpc(
@@ -408,6 +409,7 @@ class SuperAdminService {
           'p_daily_price': dailyPrice,
           'p_monthly_price': monthlyPrice,
           'p_monthly_excess_daily_price': monthlyExcessDailyPrice,
+          'p_daily_overage_hourly_rate': dailyOverageHourlyRate,
           if (rentalTypes != null) 'p_rental_types': rentalTypes,
         },
         parse: (d) => d?.toString() ?? '',

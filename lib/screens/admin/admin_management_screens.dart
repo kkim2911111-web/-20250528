@@ -1632,6 +1632,28 @@ class _ReturnInspectionPhotoSection extends StatelessWidget {
   }
 }
 
+class _ReturnInspectionMileageSection extends StatelessWidget {
+  final AdminReservationRow row;
+
+  const _ReturnInspectionMileageSection({required this.row});
+
+  String _displayKm(int? value) {
+    if (value == null) return '미입력';
+    return '${NumberFormat('#,###').format(value)} km';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Text(
+      '주행거리: ${_displayKm(row.mileageEnd)}',
+      style: const TextStyle(
+        color: DanjiColors.textSecondary,
+        height: 1.45,
+      ),
+    );
+  }
+}
+
 class _ReturnInspectionCard extends StatefulWidget {
   final AdminReservationRow row;
   final DateFormat dateFormat;
@@ -1851,6 +1873,8 @@ class _ReturnInspectionCardState extends State<_ReturnInspectionCard> {
             secondDriverName: r.secondDriverName,
             secondDriverLicense: r.secondDriverLicense,
           ),
+          const SizedBox(height: 10),
+          _ReturnInspectionMileageSection(row: r),
           const SizedBox(height: 10),
           AdminReservationContractButton(
             admin: widget.admin,

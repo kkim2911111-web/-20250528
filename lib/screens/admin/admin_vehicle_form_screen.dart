@@ -36,6 +36,7 @@ class _AdminVehicleFormScreenState extends State<AdminVehicleFormScreen> {
   final _dailyPrice = TextEditingController();
   final _monthlyPrice = TextEditingController();
   final _monthlyExcessDailyPrice = TextEditingController();
+  final _dailyOverageHourlyRate = TextEditingController();
   final _parking = TextEditingController();
   final _insuranceCompany = TextEditingController();
   final _insurancePolicy = TextEditingController();
@@ -65,6 +66,9 @@ class _AdminVehicleFormScreenState extends State<AdminVehicleFormScreen> {
       if (v.monthlyExcessDailyPrice != null) {
         _monthlyExcessDailyPrice.text = v.monthlyExcessDailyPrice.toString();
       }
+      if (v.dailyOverageHourlyRate != null) {
+        _dailyOverageHourlyRate.text = v.dailyOverageHourlyRate.toString();
+      }
       _rentalTypes = v.rentalTypes.toSet();
       _parking.text = v.parkingLocation ?? '';
       _insuranceCompany.text = v.insuranceCompany ?? '';
@@ -86,6 +90,7 @@ class _AdminVehicleFormScreenState extends State<AdminVehicleFormScreen> {
     _dailyPrice.dispose();
     _monthlyPrice.dispose();
     _monthlyExcessDailyPrice.dispose();
+    _dailyOverageHourlyRate.dispose();
     _parking.dispose();
     _insuranceCompany.dispose();
     _insurancePolicy.dispose();
@@ -112,6 +117,7 @@ class _AdminVehicleFormScreenState extends State<AdminVehicleFormScreen> {
     final dailyText = _dailyPrice.text.trim();
     final monthlyText = _monthlyPrice.text.trim();
     final excessText = _monthlyExcessDailyPrice.text.trim();
+    final dailyOverageText = _dailyOverageHourlyRate.text.trim();
 
     if (name.isEmpty) {
       setState(() => _error = '차종(모델명)을 입력해주세요.');
@@ -123,6 +129,7 @@ class _AdminVehicleFormScreenState extends State<AdminVehicleFormScreen> {
       dailyText: dailyText,
       monthlyText: monthlyText,
       excessText: excessText,
+      dailyOverageText: dailyOverageText,
     );
     if (fieldError != null) {
       setState(() => _error = fieldError);
@@ -136,6 +143,7 @@ class _AdminVehicleFormScreenState extends State<AdminVehicleFormScreen> {
       dailyText: dailyText,
       monthlyText: monthlyText,
       excessText: excessText,
+      dailyOverageText: dailyOverageText,
     );
     if (rentalData == null) {
       if (_rentalTypes.isEmpty) {
@@ -162,6 +170,7 @@ class _AdminVehicleFormScreenState extends State<AdminVehicleFormScreen> {
       dailyPrice: rentalData.dailyPrice,
       monthlyPrice: rentalData.monthlyPrice,
       monthlyExcessDailyPrice: rentalData.monthlyExcessDailyPrice,
+      dailyOverageHourlyRate: rentalData.dailyOverageHourlyRate,
       rentalTypes: rentalData.rentalTypes.toList(),
       parkingLocation: _parking.text.trim().isEmpty ? null : _parking.text.trim(),
       ownerName: _ownerName.text.trim().isEmpty ? null : _ownerName.text.trim(),
@@ -263,6 +272,7 @@ class _AdminVehicleFormScreenState extends State<AdminVehicleFormScreen> {
             dailyPriceController: _dailyPrice,
             monthlyPriceController: _monthlyPrice,
             monthlyExcessDailyPriceController: _monthlyExcessDailyPrice,
+            dailyOverageHourlyRateController: _dailyOverageHourlyRate,
           ),
           if (_error != null) ...[
             const SizedBox(height: 8),

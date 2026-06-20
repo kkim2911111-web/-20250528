@@ -8,6 +8,7 @@ import '../services/payment_service.dart';
 import '../theme/danji_colors.dart';
 import '../theme/danji_typography.dart';
 import '../widgets/danji_app_bar.dart';
+import '../widgets/logout_confirm_dialog.dart';
 import 'license_info_readonly_screen.dart';
 import 'my_personal_info_screen.dart';
 import 'coupon_screen.dart';
@@ -92,39 +93,8 @@ class _MyPageScreenState extends State<MyPageScreen> {
   }
 
   Future<void> _logout() async {
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        backgroundColor: DanjiColors.surface,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        title: const Text(
-          '로그아웃',
-          style: TextStyle(
-            color: DanjiColors.textPrimary,
-            fontWeight: FontWeight.w800,
-          ),
-        ),
-        content: const Text(
-          '로그아웃 하시겠습니까?',
-          style: TextStyle(color: DanjiColors.textSecondary),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('취소'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            style: FilledButton.styleFrom(
-              backgroundColor: DanjiColors.accentRed,
-              foregroundColor: Colors.white,
-            ),
-            child: const Text('로그아웃'),
-          ),
-        ],
-      ),
-    );
-    if (confirmed != true || !mounted) return;
+    final confirmed = await showLogoutConfirmDialog(context);
+    if (!confirmed || !mounted) return;
     await _auth.signOut();
   }
 

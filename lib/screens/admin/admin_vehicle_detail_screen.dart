@@ -47,6 +47,7 @@ class _AdminVehicleDetailScreenState extends State<AdminVehicleDetailScreen> {
   final _dailyPrice = TextEditingController();
   final _monthlyPrice = TextEditingController();
   final _monthlyExcessDailyPrice = TextEditingController();
+  final _dailyOverageHourlyRate = TextEditingController();
   Set<RentalType> _rentalTypes = {RentalType.hourly};
   bool _rentalTypesSaving = false;
   String? _rentalTypesError;
@@ -65,6 +66,7 @@ class _AdminVehicleDetailScreenState extends State<AdminVehicleDetailScreen> {
     _dailyPrice.dispose();
     _monthlyPrice.dispose();
     _monthlyExcessDailyPrice.dispose();
+    _dailyOverageHourlyRate.dispose();
     super.dispose();
   }
 
@@ -74,6 +76,8 @@ class _AdminVehicleDetailScreenState extends State<AdminVehicleDetailScreen> {
     _monthlyPrice.text = _vehicle.monthlyPrice?.toString() ?? '';
     _monthlyExcessDailyPrice.text =
         _vehicle.monthlyExcessDailyPrice?.toString() ?? '';
+    _dailyOverageHourlyRate.text =
+        _vehicle.dailyOverageHourlyRate?.toString() ?? '';
     _rentalTypes = _vehicle.rentalTypes.toSet();
   }
 
@@ -245,6 +249,7 @@ class _AdminVehicleDetailScreenState extends State<AdminVehicleDetailScreen> {
     final dailyText = _dailyPrice.text.trim();
     final monthlyText = _monthlyPrice.text.trim();
     final excessText = _monthlyExcessDailyPrice.text.trim();
+    final dailyOverageText = _dailyOverageHourlyRate.text.trim();
 
     final fieldError = VehicleRentalTypesSaveHelper.validateFields(
       rentalTypes: _rentalTypes,
@@ -252,6 +257,7 @@ class _AdminVehicleDetailScreenState extends State<AdminVehicleDetailScreen> {
       dailyText: dailyText,
       monthlyText: monthlyText,
       excessText: excessText,
+      dailyOverageText: dailyOverageText,
     );
     if (fieldError != null) {
       setState(() => _rentalTypesError = fieldError);
@@ -265,6 +271,7 @@ class _AdminVehicleDetailScreenState extends State<AdminVehicleDetailScreen> {
       dailyText: dailyText,
       monthlyText: monthlyText,
       excessText: excessText,
+      dailyOverageText: dailyOverageText,
     );
     if (data == null) {
       if (mounted && _rentalTypes.isEmpty) {
@@ -571,6 +578,8 @@ class _AdminVehicleDetailScreenState extends State<AdminVehicleDetailScreen> {
                           monthlyPriceController: _monthlyPrice,
                           monthlyExcessDailyPriceController:
                               _monthlyExcessDailyPrice,
+                          dailyOverageHourlyRateController:
+                              _dailyOverageHourlyRate,
                         ),
                         if (_rentalTypesError != null) ...[
                           const SizedBox(height: 8),

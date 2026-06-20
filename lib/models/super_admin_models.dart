@@ -112,6 +112,7 @@ class SuperAdminVehicle {
   final int? dailyPrice;
   final int? monthlyPrice;
   final int? monthlyExcessDailyPrice;
+  final int? dailyOverageHourlyRate;
   final List<RentalType> rentalTypes;
   final String serviceType;
   final bool isAvailable;
@@ -131,6 +132,7 @@ class SuperAdminVehicle {
     this.dailyPrice,
     this.monthlyPrice,
     this.monthlyExcessDailyPrice,
+    this.dailyOverageHourlyRate,
     this.rentalTypes = const [RentalType.hourly],
     this.serviceType = VehicleServiceType.sharing,
     this.isAvailable = true,
@@ -157,6 +159,8 @@ class SuperAdminVehicle {
       monthlyPrice: (m['monthly_price'] as num?)?.toInt(),
       monthlyExcessDailyPrice:
           (m['monthly_excess_daily_price'] as num?)?.toInt(),
+      dailyOverageHourlyRate:
+          (m['daily_overage_hourly_rate'] as num?)?.toInt(),
       rentalTypes: RentalPricing.parseRentalTypes(m['rental_types']),
       isAvailable: m['is_available'] == true,
       inUse: m['in_use'] == true,

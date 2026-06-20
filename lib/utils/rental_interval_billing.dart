@@ -1,14 +1,36 @@
+import 'daily_rental_duration.dart';
 import 'rental_pricing.dart';
 
 /// 구간 요금 산출 결과 (서버 calc_rental_base_price 와 동일 규칙)
 class RentalPriceBreakdown {
   final int amount;
   final bool monthlyCapApplied;
+  final int? baseAmount;
+  final int? overageAmount;
+  final int? billedOverageHours;
 
   const RentalPriceBreakdown({
     required this.amount,
     this.monthlyCapApplied = false,
+    this.baseAmount,
+    this.overageAmount,
+    this.billedOverageHours,
   });
+
+  bool get hasDailyOverage => (overageAmount ?? 0) > 0;
+
+  String? dailyOverageConfirmationLabel({
+    required int fullDays,
+    required String Function(int) formatWon,
+  }) {
+    if (!hasDailyOverage ||
+        billedOverageHours == null ||
+        overageAmount == null ||
+        baseAmount == null) {
+      return null;
+    }
+    return '$fullDays일 ₩${formatWon(baseAmount!)} + 초과 $billedOverageHours시간 ₩${formatWon(overageAmount!)}';
+  }
 }
 
 /// 월만 운영 + 초과 일요금: 30일 블록은 월요금, 잔여일은 초과 일요금(월요금 캡)
@@ -64,6 +86,7 @@ RentalPriceBreakdown? calculateRentalPriceBreakdown({
   int? dailyPrice,
   int? monthlyPrice,
   int? monthlyExcessDailyPrice,
+  int? dailyOverageHourlyRate,
   required List<RentalType> rentalTypes,
   required RentalType type,
   required DateTime start,
@@ -96,16 +119,37 @@ RentalPriceBreakdown? calculateRentalPriceBreakdown({
 
   if (type == RentalType.daily) {
     if (!hasDaily) return null;
-    if (days > RentalPricing.maxDailyDays) return null;
+    final split = DailyRentalDurationSplit.fromInterval(start: start, end: end);
+    if (split.fullDays < 1 || split.fullDays > RentalPricing.maxDailyDays) {
+      return null;
+    }
+    if (split.hasOverage) {
+      if (dailyOverageHourlyRate == null || dailyOverageHourlyRate <= 0) {
+        return null;
+      }
+    }
+    final base = split.fullDays * effectiveDaily;
+    final overage = split.billedOverageHours *
+        (dailyOverageHourlyRate ?? 0);
+    final raw = base + overage;
     if (hasMonthly) {
-      final raw = days * effectiveDaily;
       final capped = raw > effectiveMonthly ? effectiveMonthly : raw;
       return RentalPriceBreakdown(
         amount: capped,
         monthlyCapApplied: raw > effectiveMonthly,
+        baseAmount: base,
+        overageAmount: overage > 0 ? overage : null,
+        billedOverageHours:
+            split.billedOverageHours > 0 ? split.billedOverageHours : null,
       );
     }
-    return RentalPriceBreakdown(amount: days * effectiveDaily);
+    return RentalPriceBreakdown(
+      amount: raw,
+      baseAmount: base,
+      overageAmount: overage > 0 ? overage : null,
+      billedOverageHours:
+          split.billedOverageHours > 0 ? split.billedOverageHours : null,
+    );
   }
 
   // monthly (30일+)
@@ -148,13 +192,22 @@ RentalPriceBreakdown? calculateRentalPriceBreakdown({
 bool vehicleSupportsBookingPeriod({
   required List<RentalType> rentalTypes,
   int? monthlyExcessDailyPrice,
+  int? dailyOverageHourlyRate,
   required RentalType type,
   required DateTime start,
   required DateTime end,
 }) {
   if (!rentalTypes.contains(type)) return false;
   if (type == RentalType.daily) {
-    return rentalTypes.contains(RentalType.daily);
+    if (!rentalTypes.contains(RentalType.daily)) return false;
+    final split = DailyRentalDurationSplit.fromInterval(start: start, end: end);
+    if (split.fullDays < 1 || split.fullDays > RentalPricing.maxDailyDays) {
+      return false;
+    }
+    if (split.hasOverage) {
+      return dailyOverageHourlyRate != null && dailyOverageHourlyRate > 0;
+    }
+    return true;
   }
   if (type == RentalType.monthly) {
     if (!rentalTypes.contains(RentalType.monthly)) return false;
@@ -178,4 +231,16 @@ bool fleetAllowsPartialMonthlyReturn({
     if (v.rentalTypes.contains(RentalType.daily)) return true;
     return v.monthlyExcessDailyPrice != null && v.monthlyExcessDailyPrice! > 0;
   });
+}
+
+bool fleetAllowsDailyReturnTime({
+  required List<({List<RentalType> rentalTypes, int? dailyOverageHourlyRate})>
+      vehicles,
+}) {
+  return vehicles.any(
+    (v) =>
+        v.rentalTypes.contains(RentalType.daily) &&
+        v.dailyOverageHourlyRate != null &&
+        v.dailyOverageHourlyRate! > 0,
+  );
 }

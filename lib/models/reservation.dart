@@ -36,6 +36,9 @@ class Reservation {
   final String? secondDriverName;
   final String? secondDriverLicense;
   final bool isNoShow;
+  final bool isOverdue;
+  final int? overdueOverageAmount;
+  final bool overdueOverageCharged;
   final String? reservationNumber;
   final RentalType? rentalType;
   final int refundAmount;
@@ -71,6 +74,9 @@ class Reservation {
     this.secondDriverName,
     this.secondDriverLicense,
     this.isNoShow = false,
+    this.isOverdue = false,
+    this.overdueOverageAmount,
+    this.overdueOverageCharged = false,
     this.reservationNumber,
     this.rentalType,
     this.refundAmount = 0,
@@ -119,6 +125,9 @@ class Reservation {
       secondDriverName: map['second_driver_name']?.toString(),
       secondDriverLicense: map['second_driver_license']?.toString(),
       isNoShow: map['is_no_show'] == true,
+      isOverdue: map['is_overdue'] == true,
+      overdueOverageAmount: (map['overdue_overage_amount'] as num?)?.toInt(),
+      overdueOverageCharged: map['overdue_overage_charged'] == true,
       reservationNumber: map['reservation_number']?.toString(),
       rentalType: RentalType.fromDb(map['rental_type']?.toString()),
       refundAmount: (map['refund_amount'] as num?)?.toInt() ?? 0,
@@ -388,6 +397,20 @@ class Reservation {
     if (status == 'returned') return '반납 처리됨';
     if (status == 'completed') return '이용 완료';
     return statusLabel;
+  }
+
+  /// 반납 지연 중 — in_use + is_overdue
+  bool get isReturnOverdue => isInUse && isOverdue;
+
+  /// 초과 이용 요금 안내 문구 (반납 후)
+  String? get overdueOverageChargeLabel {
+    final amount = overdueOverageAmount;
+    if (amount == null || amount <= 0) return null;
+    final formatted = NumberFormat('#,###', 'ko_KR').format(amount);
+    if (overdueOverageCharged) {
+      return '초과 이용 요금 ₩$formatted 자동결제됨';
+    }
+    return '초과 이용 요금 자동결제 예정';
   }
 
   String get statusLabel {

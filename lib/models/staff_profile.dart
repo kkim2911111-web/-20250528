@@ -192,6 +192,7 @@ class AdminVehicleDetail {
   final int? dailyPrice;
   final int? monthlyPrice;
   final int? monthlyExcessDailyPrice;
+  final int? dailyOverageHourlyRate;
   final List<RentalType> rentalTypes;
   final String? parkingLocation;
   final String? carNumber;
@@ -219,6 +220,7 @@ class AdminVehicleDetail {
     this.dailyPrice,
     this.monthlyPrice,
     this.monthlyExcessDailyPrice,
+    this.dailyOverageHourlyRate,
     this.rentalTypes = const [RentalType.hourly],
     this.parkingLocation,
     this.carNumber,
@@ -255,6 +257,8 @@ class AdminVehicleDetail {
       monthlyPrice: (map['monthly_price'] as num?)?.toInt(),
       monthlyExcessDailyPrice:
           (map['monthly_excess_daily_price'] as num?)?.toInt(),
+      dailyOverageHourlyRate:
+          (map['daily_overage_hourly_rate'] as num?)?.toInt(),
       rentalTypes: RentalPricing.parseRentalTypes(map['rental_types']),
       parkingLocation: map['parking_location']?.toString(),
       carNumber: map['car_number']?.toString(),
@@ -290,6 +294,7 @@ class AdminVehicleDetail {
       'daily_price': dailyPrice,
       'monthly_price': monthlyPrice,
       'monthly_excess_daily_price': monthlyExcessDailyPrice,
+      'daily_overage_hourly_rate': dailyOverageHourlyRate,
       'rental_types': RentalPricing.rentalTypesToDb(rentalTypes),
       'parking_location': parkingLocation,
       'car_number': carNumber,
@@ -314,6 +319,7 @@ class AdminVehicleDetail {
       'daily_price': dailyPrice,
       'monthly_price': monthlyPrice,
       'monthly_excess_daily_price': monthlyExcessDailyPrice,
+      'daily_overage_hourly_rate': dailyOverageHourlyRate,
       'rental_types': RentalPricing.rentalTypesToDb(rentalTypes),
       'parking_location': parkingLocation,
       'car_number': carNumber,
@@ -421,6 +427,9 @@ class AdminReservationRow {
   final bool deductibleUnpaid;
   final DateTime? deductibleUnpaidAt;
   final RentalType? rentalType;
+  final int? mileageStart;
+  final int? mileageEnd;
+  final int? vehicleTotalMileage;
 
   const AdminReservationRow({
     required this.id,
@@ -452,6 +461,9 @@ class AdminReservationRow {
     this.deductibleUnpaid = false,
     this.deductibleUnpaidAt,
     this.rentalType,
+    this.mileageStart,
+    this.mileageEnd,
+    this.vehicleTotalMileage,
   });
 
   static const int defaultDeductibleAmount = 500000;
@@ -484,6 +496,20 @@ class AdminReservationRow {
         status: status,
         updatedAt: updatedAt,
       );
+
+  int? get mileageUsed {
+    final start = mileageStart;
+    final end = mileageEnd;
+    if (start == null || end == null) return null;
+    return end - start;
+  }
+
+  /// 반납검수 — 차량에 기재된 주행거리(이전 대여·정비 기록)
+  int? get previousRecordedMileage {
+    final recorded = vehicleTotalMileage;
+    if (recorded == null || recorded <= 0) return null;
+    return recorded;
+  }
 
   /// UI 표시용 — [renterName] 없으면 '이름 미등록'
   String get renterDisplayName {
@@ -614,6 +640,9 @@ class AdminReservationRow {
         map['deductible_unpaid_at']?.toString() ?? '',
       )?.toLocal(),
       rentalType: RentalType.fromDb(map['rental_type']?.toString()),
+      mileageStart: (map['mileage_start'] as num?)?.toInt(),
+      mileageEnd: (map['mileage_end'] as num?)?.toInt(),
+      vehicleTotalMileage: (vehicle?['total_mileage'] as num?)?.toInt(),
     );
   }
 }

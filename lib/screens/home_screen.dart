@@ -18,6 +18,7 @@ import '../services/notification_inbox_service.dart';
 import '../services/rental_service.dart';
 import '../services/reservation_refresh_bus.dart';
 import '../theme/danji_theme.dart';
+import '../utils/reservation_status_badge.dart';
 import '../utils/network_retry.dart';
 import 'booking_screen.dart';
 import 'my_reservations_screen.dart';
@@ -1580,10 +1581,18 @@ class _ReservationInfoCard extends StatelessWidget {
                       ),
                     ],
                     const SizedBox(height: 7),
-                    _HomeStatusBadge(
-                      label: badgeStyle.label,
-                      background: badgeStyle.background,
-                      textColor: badgeStyle.textColor,
+                    Wrap(
+                      spacing: 6,
+                      runSpacing: 4,
+                      children: [
+                        _HomeStatusBadge(
+                          label: badgeStyle.label,
+                          background: badgeStyle.background,
+                          textColor: badgeStyle.textColor,
+                        ),
+                        if (reservation.isReturnOverdue)
+                          const ReturnOverdueBadge(),
+                      ],
                     ),
                   ],
                 ),

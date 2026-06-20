@@ -11,6 +11,7 @@ class Vehicle {
   final int? dailyPrice;
   final int? monthlyPrice;
   final int? monthlyExcessDailyPrice;
+  final int? dailyOverageHourlyRate;
   final List<RentalType> rentalTypes;
   final String? parkingLocation;
   final String? parkingPhotoUrl;
@@ -33,6 +34,7 @@ class Vehicle {
     this.dailyPrice,
     this.monthlyPrice,
     this.monthlyExcessDailyPrice,
+    this.dailyOverageHourlyRate,
     this.rentalTypes = const [RentalType.hourly],
     this.parkingLocation,
     this.parkingPhotoUrl,
@@ -78,6 +80,8 @@ class Vehicle {
       monthlyPrice: (map['monthly_price'] as num?)?.toInt(),
       monthlyExcessDailyPrice:
           (map['monthly_excess_daily_price'] as num?)?.toInt(),
+      dailyOverageHourlyRate:
+          (map['daily_overage_hourly_rate'] as num?)?.toInt(),
       rentalTypes: rentalTypes,
       parkingLocation: _readString(map, ['parking_location', 'parking_spot']),
       parkingPhotoUrl: _readString(map, ['parking_photo_url', 'photo_url']),

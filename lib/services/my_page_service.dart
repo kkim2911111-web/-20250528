@@ -238,6 +238,34 @@ class MyPageService {
     });
   }
 
+  /// 입주민 동·호수만 수정 (complex_id·approved 유지, 재심사 없음)
+  Future<void> updateResidentDongHo({
+    required String building,
+    required String unit,
+  }) async {
+    final user = supabase.auth.currentUser;
+    if (user == null) throw const AuthException('로그인이 필요합니다.');
+
+    final b = building.trim();
+    final u = unit.trim();
+    if (b.isEmpty || u.isEmpty) {
+      throw const AuthException('동과 호수를 모두 입력해주세요.');
+    }
+
+    final rows = await supabase
+        .from('residents')
+        .update({
+          'building': b,
+          'unit': u,
+        })
+        .eq('user_id', user.id)
+        .select('user_id');
+
+    if (rows.isEmpty) {
+      throw const AuthException('입주민 정보를 찾을 수 없습니다.');
+    }
+  }
+
   Future<void> saveLicense({
     required String licenseNumber,
     required String licenseExpiry,

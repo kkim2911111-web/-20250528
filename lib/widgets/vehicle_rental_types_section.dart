@@ -12,6 +12,7 @@ class VehicleRentalTypesSection extends StatefulWidget {
   final TextEditingController dailyPriceController;
   final TextEditingController monthlyPriceController;
   final TextEditingController monthlyExcessDailyPriceController;
+  final TextEditingController dailyOverageHourlyRateController;
 
   const VehicleRentalTypesSection({
     super.key,
@@ -21,6 +22,7 @@ class VehicleRentalTypesSection extends StatefulWidget {
     required this.dailyPriceController,
     required this.monthlyPriceController,
     required this.monthlyExcessDailyPriceController,
+    required this.dailyOverageHourlyRateController,
   });
 
   @override
@@ -38,6 +40,7 @@ class _VehicleRentalTypesSectionState extends State<VehicleRentalTypesSection> {
     widget.dailyPriceController.addListener(_rebuild);
     widget.monthlyPriceController.addListener(_rebuild);
     widget.monthlyExcessDailyPriceController.addListener(_rebuild);
+    widget.dailyOverageHourlyRateController.addListener(_rebuild);
   }
 
   @override
@@ -46,6 +49,7 @@ class _VehicleRentalTypesSectionState extends State<VehicleRentalTypesSection> {
     widget.dailyPriceController.removeListener(_rebuild);
     widget.monthlyPriceController.removeListener(_rebuild);
     widget.monthlyExcessDailyPriceController.removeListener(_rebuild);
+    widget.dailyOverageHourlyRateController.removeListener(_rebuild);
     super.dispose();
   }
 
@@ -157,6 +161,21 @@ class _VehicleRentalTypesSectionState extends State<VehicleRentalTypesSection> {
             ),
           ],
           const SizedBox(height: 12),
+          _priceField(
+            label: '1일 렌트 초과 시간당 요금 (원)',
+            controller: widget.dailyOverageHourlyRateController,
+            hint: '선택 입력',
+          ),
+          const SizedBox(height: 6),
+          const Text(
+            '설정 시 입주민이 1일 렌트 반납 시각을 자유롭게 선택할 수 있습니다. '
+            '24시간 단위를 넘는 시간은 이 요금으로 시간 단위(올림) 청구됩니다.',
+            style: TextStyle(
+              color: DanjiColors.textMuted,
+              fontSize: 12,
+              height: 1.4,
+            ),
+          ),
         ],
         if (widget.selectedTypes.contains(RentalType.monthly)) ...[
           _priceField(

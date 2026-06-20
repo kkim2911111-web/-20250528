@@ -69,9 +69,14 @@ export async function notifyBillingPaymentFailed(
     retryCount: number;
     maxRetries: number;
     isFinal: boolean;
+    isOverdueOverage?: boolean;
   },
 ): Promise<void> {
-  const label = params.chargeType === 'deductible' ? '면책금' : '연장 요금';
+  const label = params.chargeType === 'deductible'
+    ? '면책금'
+    : params.chargeType === 'extension' && params.isOverdueOverage
+    ? '초과 이용 요금'
+    : '연장 요금';
   const amountStr = `₩${params.amount.toLocaleString('ko-KR')}`;
   const retryNote = params.isFinal
     ? '자동 재시도가 모두 실패했습니다. 카드 등록 상태를 확인해주세요.'
@@ -148,6 +153,7 @@ export async function markRetryFailed(
     amount: number;
     complexId?: string | null;
     extensionHours?: number | null;
+    isOverdueOverage?: boolean;
   },
 ): Promise<'pending' | 'exhausted'> {
   const nextCount = params.retryCount + 1;
@@ -178,6 +184,7 @@ export async function markRetryFailed(
         amount: params.amount,
         complexId: params.complexId,
         extensionHours: params.extensionHours,
+        isOverdueOverage: params.isOverdueOverage,
       });
     } catch (e) {
       console.error('[billing_retry] exhausted handling', e);

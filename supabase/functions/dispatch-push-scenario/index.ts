@@ -10,6 +10,7 @@ const USER_TRIGGER_SCENARIOS: Set<PushScenario> = new Set([
   'customer_reservation_confirmed',
   'customer_reservation_cancelled',
   'customer_rental_started',
+  'customer_no_show_auto_completed',
   'staff_new_signup',
   'staff_license_review_request',
   'staff_resident_review_request',
@@ -17,6 +18,9 @@ const USER_TRIGGER_SCENARIOS: Set<PushScenario> = new Set([
   'staff_reservation_cancelled',
   'staff_rental_started',
   'staff_return_completed',
+  'staff_no_show_auto_completed',
+  'customer_return_overdue',
+  'staff_return_overdue',
 ]);
 
 const STAFF_ONLY_SCENARIOS: Set<PushScenario> = new Set([
@@ -26,7 +30,6 @@ const STAFF_ONLY_SCENARIOS: Set<PushScenario> = new Set([
   'customer_resident_rejected',
   'customer_payment_completed',
   'customer_return_inspection_complete',
-  'staff_return_overdue',
   'staff_conflict_risk',
 ]);
 

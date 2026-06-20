@@ -12,6 +12,7 @@ export async function handleBillingExhausted(
     amount: number;
     complexId?: string | null;
     extensionHours?: number | null;
+    isOverdueOverage?: boolean;
   },
 ): Promise<void> {
   const { chargeType, reservationId, userId, amount } = params;
@@ -67,6 +68,54 @@ export async function handleBillingExhausted(
   }
 
   const extensionHours = params.extensionHours ?? 1;
+  if (params.isOverdueOverage) {
+    const customerTitle = '초과 이용 요금 결제 실패';
+    const customerBody =
+      '초과 이용 요금 자동결제에 실패했습니다. 카드 등록 상태를 확인해주세요.';
+
+    try {
+      await sendPushToUser({
+        admin,
+        userId,
+        title: customerTitle,
+        body: customerBody,
+        data: {
+          type: 'billing_payment_failed',
+          reservation_id: reservationId,
+          charge_type: 'extension',
+        },
+      });
+      await admin.from('notifications').insert({
+        user_id: userId,
+        title: customerTitle,
+        body: customerBody,
+        type: 'billing_payment_failed',
+        reservation_id: reservationId,
+        is_read: false,
+      });
+    } catch (e) {
+      console.error('[billing_exhausted] customer overdue notify', e);
+    }
+
+    if (complexId) {
+      try {
+        await dispatchPushScenario({
+          admin,
+          scenario: 'staff_billing_payment_failed',
+          payload: {
+            complexId,
+            reservationId,
+            vehicleName,
+            reason: `초과 이용 요금 ${amountStr} — 수동 결제 처리가 필요합니다.`,
+          },
+        });
+      } catch (e) {
+        console.error('[billing_exhausted] staff overdue notify', e);
+      }
+    }
+    return;
+  }
+
   try {
     await admin.rpc('cancel_extension_charge_exhausted_for_service', {
       p_reservation_id: reservationId,

@@ -185,34 +185,6 @@ Deno.serve(async (req) => {
         }
       }
 
-      if (endMs < overdueCutoff) {
-        const scenario = 'customer_return_overdue';
-        if (!(await hasSent(admin, row.id, scenario))) {
-          const sent = await dispatchIfSent(admin, scenario, {
-            userId: row.user_id,
-            reservationId: row.id,
-            vehicleName: vehicleName(row),
-            endAt: end,
-          });
-          if (sent) {
-            await markSent(admin, row.id, scenario);
-            dispatched++;
-          }
-        }
-
-        if (!(await hasSent(admin, row.id, 'staff_return_overdue'))) {
-          const staffSent = await dispatchIfSent(admin, 'staff_return_overdue', {
-            reservationId: row.id,
-            vehicleName: vehicleName(row),
-            userId: row.user_id,
-          });
-          if (staffSent) {
-            await markSent(admin, row.id, 'staff_return_overdue');
-            dispatched++;
-          }
-        }
-      }
-
       if (endMs >= overdueCutoff && endMs <= conflictEnd) {
         const next = await hasNextReservation(admin, row.vehicle_id, end);
         if (!next.exists) continue;

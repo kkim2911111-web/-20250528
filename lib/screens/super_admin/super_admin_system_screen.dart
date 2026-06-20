@@ -295,7 +295,8 @@ class _SuperAdminSystemScreenState extends State<SuperAdminSystemScreen> {
                 const SuperAdminSectionTitle('기능별 차단'),
                 const SizedBox(height: 4),
                 const Text(
-                  '전체 점검모드가 켜져 있으면 아래 설정과 관계없이 전체 차단됩니다.',
+                  '전체 점검모드가 켜져 있으면 아래 설정과 관계없이 전체 차단됩니다.\n'
+                  '각 토글을 켜면 해당 기능이 정상 운영되고, 끄면 차단됩니다.',
                   style: TextStyle(
                     color: DanjiColors.textSecondary,
                     fontSize: 13,
@@ -307,6 +308,16 @@ class _SuperAdminSystemScreenState extends State<SuperAdminSystemScreen> {
                   SwitchListTile(
                     contentPadding: EdgeInsets.zero,
                     title: Text(featureLabelKo(key)),
+                    subtitle: Text(
+                      (_featureEnabled[key] ?? true) ? '운영중' : '차단됨',
+                      style: TextStyle(
+                        color: (_featureEnabled[key] ?? true)
+                            ? SuperAdminUiColors.availableGreen
+                            : DanjiColors.danger,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
                     value: _featureEnabled[key] ?? true,
                     onChanged: (v) => _onFeatureToggle(key, v),
                   ),
@@ -358,6 +369,12 @@ class _SuperAdminSystemScreenState extends State<SuperAdminSystemScreen> {
                               icon: Icons.view_carousel_outlined,
                               title: b.mainTitle,
                               subtitle: b.subTitle,
+                              titleSuffix: SuperAdminChip(
+                                label: b.isActive ? '노출중' : '중지',
+                                color: b.isActive
+                                    ? SuperAdminUiColors.availableGreen
+                                    : DanjiColors.textMuted,
+                              ),
                               onTap: () => _editBanner(b),
                             ),
                           )

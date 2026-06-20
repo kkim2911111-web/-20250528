@@ -7,6 +7,7 @@ import '../../theme/danji_colors.dart';
 import '../../services/admin_notification_navigation.dart';
 import '../../utils/super_admin_settlement_dashboard.dart';
 import '../../widgets/admin_scaffold.dart';
+import '../../widgets/logout_confirm_dialog.dart';
 import '../../widgets/notification_bell_button.dart';
 import '../../widgets/section_card.dart';
 import '../notification_list_screen.dart';
@@ -93,6 +94,12 @@ class _SuperAdminDashboardScreenState extends State<SuperAdminDashboardScreen> {
     _open(SuperAdminVehiclesScreen(service: _service, initialFilter: filter));
   }
 
+  Future<void> _logout() async {
+    final confirmed = await showLogoutConfirmDialog(context);
+    if (!confirmed || !mounted) return;
+    await _auth.signOut();
+  }
+
   void _openNotifications() {
     Navigator.of(context).push(
       MaterialPageRoute<void>(
@@ -148,7 +155,7 @@ class _SuperAdminDashboardScreenState extends State<SuperAdminDashboardScreen> {
             onPressed: _openNotifications,
           ),
           TextButton.icon(
-            onPressed: () => _auth.signOut(),
+            onPressed: _logout,
             icon: const Icon(Icons.logout, size: 16),
             label: const Text('로그아웃'),
             style: TextButton.styleFrom(

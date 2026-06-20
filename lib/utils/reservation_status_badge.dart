@@ -143,3 +143,30 @@ class ReservationDisplayBadgeRow extends StatelessWidget {
     );
   }
 }
+
+/// 반납 지연 중 배지 — in_use + is_overdue
+class ReturnOverdueBadge extends StatelessWidget {
+  const ReturnOverdueBadge({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+      decoration: BoxDecoration(
+        color: const Color(0xFFFFEBEE),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(
+          color: const Color(0xFFD32F2F).withValues(alpha: 0.45),
+        ),
+      ),
+      child: const Text(
+        '반납지연중',
+        style: TextStyle(
+          color: Color(0xFFC62828),
+          fontWeight: FontWeight.w700,
+          fontSize: 12,
+        ),
+      ),
+    );
+  }
+}

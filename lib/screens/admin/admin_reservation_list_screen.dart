@@ -213,6 +213,28 @@ class _AdminReservationListScreenState
     );
   }
 
+  ({
+    List<Map<String, dynamic>> completed,
+    List<Map<String, dynamic>> inProgress,
+    List<Map<String, dynamic>> scheduled,
+  }) _groupAllTabRows(_AdminReservationLists data) {
+    final completed = _applyPeriodFilter(
+      List<Map<String, dynamic>>.from(data.completed),
+      completedTab: true,
+    );
+    final active = _applyPeriodFilter(
+      List<Map<String, dynamic>>.from(data.active),
+      completedTab: false,
+    );
+    final scheduled = active.where(_isScheduledTabRow).toList();
+    final inProgress = active.where((row) => !_isScheduledTabRow(row)).toList();
+    return (
+      completed: completed,
+      inProgress: inProgress,
+      scheduled: scheduled,
+    );
+  }
+
   Widget _buildPeriodFilterBar() {
     final monthTitle = '$_year년 $_month월';
 
@@ -552,6 +574,10 @@ class _AdminReservationListScreenState
         ],
       );
     }
+    if (_filter == _ReservationFilter.all) {
+      return _buildGroupedAllTabList(snap.data!);
+    }
+
     final filtered = _applyFilter(snap.data!);
     if (filtered.isEmpty) {
       final hasData = snap.data!.active.isNotEmpty ||
@@ -607,6 +633,124 @@ class _AdminReservationListScreenState
                   : null,
         );
       },
+    );
+  }
+
+  Widget _buildGroupedAllTabList(_AdminReservationLists data) {
+    final grouped = _groupAllTabRows(data);
+    final totalCount = grouped.completed.length +
+        grouped.inProgress.length +
+        grouped.scheduled.length;
+
+    if (totalCount == 0) {
+      final hasData = data.active.isNotEmpty || data.completed.isNotEmpty;
+      return ListView(
+        physics: const AlwaysScrollableScrollPhysics(),
+        children: [
+          SizedBox(height: hasData ? 80 : 40),
+          Center(
+            child: Text(
+              hasData ? '조건에 맞는 예약이 없습니다.' : '표시할 예약이 없습니다.',
+            ),
+          ),
+        ],
+      );
+    }
+
+    final sections = <({
+      String title,
+      List<Map<String, dynamic>> rows,
+      bool isCompleted,
+    })>[
+      (title: '완료', rows: grouped.completed, isCompleted: true),
+      (title: '진행중', rows: grouped.inProgress, isCompleted: false),
+      (title: '예정', rows: grouped.scheduled, isCompleted: false),
+    ];
+
+    return ListView(
+      physics: const AlwaysScrollableScrollPhysics(),
+      padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
+      children: [
+        for (var i = 0; i < sections.length; i++) ...[
+          if (i > 0) const SizedBox(height: 20),
+          _AllTabSectionHeader(
+            title: sections[i].title,
+            count: sections[i].rows.length,
+          ),
+          if (sections[i].rows.isNotEmpty)
+            for (var j = 0; j < sections[i].rows.length; j++) ...[
+              if (j > 0) const SizedBox(height: 10),
+              sections[i].isCompleted
+                  ? _CompletedReservationCard(
+                      row: sections[i].rows[j],
+                      dateTime: _dateTime,
+                      won: _won,
+                      admin: _admin,
+                      onOpenDetail: () =>
+                          _openRentalDetail(sections[i].rows[j]),
+                    )
+                  : _buildActiveReservationCard(sections[i].rows[j]),
+            ],
+        ],
+      ],
+    );
+  }
+
+  Widget _buildActiveReservationCard(Map<String, dynamic> row) {
+    final isNoShowSuspect = _isNoShowSuspect(row);
+    final isBackToBack = conflict.isBackToBackConflictRow(row);
+    final status = _status(row);
+
+    return _ReservationCard(
+      row: row,
+      dateTime: _dateTime,
+      timeOnly: _timeOnly,
+      won: _won,
+      showConflictHighlight: isBackToBack,
+      showNoShowSuspect: isNoShowSuspect,
+      onOpenDetail: () => _openRentalDetail(row),
+      onForceReturn: () => _confirmForceReturn(row),
+      onForcePaymentCancel: status == 'confirmed' || status == 'in_use'
+          ? () => _confirmForcePaymentCancel(row)
+          : null,
+    );
+  }
+}
+
+class _AllTabSectionHeader extends StatelessWidget {
+  final String title;
+  final int count;
+
+  const _AllTabSectionHeader({
+    required this.title,
+    required this.count,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 10),
+      child: Row(
+        children: [
+          Text(
+            title,
+            style: const TextStyle(
+              fontSize: 15,
+              fontWeight: FontWeight.w800,
+              color: DanjiColors.textPrimary,
+            ),
+          ),
+          const SizedBox(width: 6),
+          Text(
+            '$count건',
+            style: const TextStyle(
+              fontSize: 14,
+              fontWeight: FontWeight.w700,
+              color: DanjiColors.textSecondary,
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
@@ -1141,6 +1285,7 @@ class _CurrentReservationPanel extends StatelessWidget {
                   ),
                 _StatusBadge(status: status),
                 if (showNoShowSuspect) const _NoShowSuspectBadge(),
+                if (_isReturnOverdue(row)) const ReturnOverdueBadge(),
               ],
             ),
           ],
@@ -1172,6 +1317,17 @@ class _CurrentReservationPanel extends StatelessWidget {
           formatter: dateTime,
           mode: ReservationTimesMode.admin,
         ),
+        if (_overdueOverageChargeLabel(row) != null) ...[
+          const SizedBox(height: 6),
+          Text(
+            _overdueOverageChargeLabel(row)!,
+            style: const TextStyle(
+              color: DanjiColors.accentRed,
+              fontWeight: FontWeight.w700,
+              fontSize: 13,
+            ),
+          ),
+        ],
         if (_reservationId(row) != null) ...[
           const SizedBox(height: 8),
           Text(
@@ -1422,6 +1578,21 @@ bool _isScheduledTabRow(Map<String, dynamic> row) {
 
 bool _isNoShowCompleted(Map<String, dynamic> row) {
   return row['is_no_show'] == true;
+}
+
+bool _isReturnOverdue(Map<String, dynamic> row) {
+  return _status(row) == 'in_use' && row['is_overdue'] == true;
+}
+
+String? _overdueOverageChargeLabel(Map<String, dynamic> row) {
+  final amount = (row['overdue_overage_amount'] as num?)?.toInt();
+  if (amount == null || amount <= 0) return null;
+  final charged = row['overdue_overage_charged'] == true;
+  final formatted = NumberFormat('#,###', 'ko_KR').format(amount);
+  if (charged) {
+    return '초과 이용 요금 ₩$formatted 자동결제됨';
+  }
+  return '초과 이용 요금 자동결제 예정';
 }
 
 String? _str(Map<String, dynamic> row, String key) {

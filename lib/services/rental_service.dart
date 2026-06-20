@@ -30,7 +30,7 @@ class RentalService {
 id,reservation_number,user_id,vehicle_id,start_at,end_at,start_time,end_time,total_price,status,
 payment_key,order_id,payment_status,rental_type,refund_amount,cancelled_at,
 rental_started_at,returned_at,actual_end_at,
-return_type,is_no_show,early_return_confirmed_at,
+return_type,is_no_show,is_overdue,overdue_overage_amount,overdue_overage_charged,early_return_confirmed_at,
 pickup_photos,return_photos,mileage_start,mileage_end,
 fuel_level_start,fuel_level_end,is_accident,accident_note,door_unlocked,
 contract_content,second_driver_name,second_driver_license
@@ -55,7 +55,8 @@ contract_content,second_driver_name,second_driver_license
     if (user == null) return;
 
     try {
-      await supabase.rpc('auto_complete_expired_reservations_for_me');
+      final data = await supabase.rpc('auto_complete_expired_reservations_for_me');
+      await _notifyAutoProcessedReturns(data);
     } on PostgrestException catch (e) {
       final msg = e.message.toLowerCase();
       if (msg.contains('could not find the function') ||
@@ -160,12 +161,18 @@ contract_content,second_driver_name,second_driver_license
 
   static const _selectCancelled =
       'id, reservation_number, user_id, vehicle_id, order_id, total_price, updated_at, '
-      'start_at, end_at, status';
+      'start_at, end_at, status, cancelled_at';
 
   /// 취소 탭 — reservations.status = cancelled 직접 조회 (숫자 id 그대로 사용)
   Future<List<Reservation>> _fetchCancelledReservations(String userId) async {
     const attempts = <(String select, String? orderCol)>[
+      (_selectCancelled, 'cancelled_at'),
       (_selectCancelled, 'updated_at'),
+      (
+        'id, reservation_number, user_id, vehicle_id, order_id, total_price, updated_at, '
+            'start_time, end_time, status, cancelled_at',
+        'cancelled_at',
+      ),
       (
         'id, reservation_number, user_id, vehicle_id, order_id, total_price, updated_at, '
             'start_time, end_time, status',
@@ -436,7 +443,13 @@ contract_content,second_driver_name,second_driver_license
           finished.add(r);
           existingIds.add(r.id);
         }
-        finished.sort(_compareByStartDesc);
+        final completedOnly =
+            finished.where((r) => !r.isCancelled).toList()
+              ..sort(_compareByStartDesc);
+        final cancelledOnly =
+            finished.where((r) => r.isCancelled).toList()
+              ..sort(_compareByCancelledDesc);
+        finished = [...completedOnly, ...cancelledOnly];
       }
 
       final pricing = await ReservationService()
@@ -470,6 +483,14 @@ contract_content,second_driver_name,second_driver_license
 
   static int _compareByStartDesc(Reservation a, Reservation b) =>
       b.sortByStart.compareTo(a.sortByStart);
+
+  static DateTime _cancelledSortKey(Reservation reservation) =>
+      reservation.cancelledAt ??
+      reservation.startAt ??
+      DateTime.fromMillisecondsSinceEpoch(0);
+
+  static int _compareByCancelledDesc(Reservation a, Reservation b) =>
+      _cancelledSortKey(b).compareTo(_cancelledSortKey(a));
 
   static int _compareSmartKey(Reservation a, Reservation b) {
     if (a.isOperating && !b.isOperating) return -1;
@@ -881,20 +902,7 @@ contract_content,second_driver_name,second_driver_license
   }
 
   Future<void> _notifyRentalStarted(Reservation reservation) async {
-    final vehicle = reservation.vehicle;
-    if (vehicle == null || vehicle.complexId.isEmpty) return;
-    final profile = await supabase
-        .from('user_profiles')
-        .select('full_name')
-        .eq('user_id', reservation.userId)
-        .maybeSingle();
-    final renterName = profile?['full_name']?.toString();
-    await PushNotificationService.instance.staffRentalStarted(
-      complexId: vehicle.complexId,
-      reservationId: reservation.id,
-      vehicleName: vehicle.name,
-      renterName: renterName,
-    );
+    await notifyStaffRentalStarted(reservation);
     await PushNotificationService.instance.customerRentalStarted(
       userId: reservation.userId,
       reservationId: reservation.id,
@@ -902,14 +910,164 @@ contract_content,second_driver_name,second_driver_license
     );
   }
 
-  Future<void> _notifyReturnCompleted(Reservation reservation) async {
+  /// 대여 시작 — 단지 관리자 알림 (start_rental_for_me 성공 후)
+  static Future<void> notifyStaffRentalStarted(Reservation reservation) async {
     final vehicle = reservation.vehicle;
     if (vehicle == null || vehicle.complexId.isEmpty) return;
+
+    final renterName = await _fetchRenterDisplayName(reservation.userId);
+    await PushNotificationService.instance.staffRentalStarted(
+      complexId: vehicle.complexId,
+      reservationId: reservation.id,
+      vehicleName: vehicle.name,
+      renterName: renterName,
+    );
+  }
+
+  Future<void> _notifyReturnCompleted(Reservation reservation) async {
+    await notifyStaffReturnReceived(reservation);
+  }
+
+  /// 반납 접수(검수대기) — 단지 관리자 알림
+  static Future<void> notifyStaffReturnReceived(Reservation reservation) async {
+    final vehicle = reservation.vehicle;
+    if (vehicle == null || vehicle.complexId.isEmpty) return;
+
+    final renterName = await _fetchRenterDisplayName(reservation.userId);
     await PushNotificationService.instance.staffReturnCompleted(
       complexId: vehicle.complexId,
       reservationId: reservation.id,
       vehicleName: vehicle.name,
+      renterName: renterName,
     );
+  }
+
+  static Future<String?> _fetchRenterDisplayName(String userId) async {
+    try {
+      final profile = await supabase
+          .from('user_profiles')
+          .select('full_name')
+          .eq('user_id', userId)
+          .maybeSingle();
+      final name = profile?['full_name']?.toString().trim();
+      return name != null && name.isNotEmpty ? name : null;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  Future<void> _notifyAutoProcessedReturns(Object? data) async {
+    if (data is! Map) return;
+
+    final overdues = data['overdues'];
+    if (overdues is List) {
+      for (final item in overdues) {
+        if (item is! Map) continue;
+        final reservationId = item['reservationId']?.toString();
+        final userId = item['userId']?.toString();
+        final vehicleId = item['vehicleId']?.toString();
+        if (reservationId == null ||
+            reservationId.isEmpty ||
+            userId == null ||
+            userId.isEmpty) {
+          continue;
+        }
+        try {
+          var complexId = '';
+          var vehicleName = '차량';
+          String? endAt;
+          if (vehicleId != null && vehicleId.isNotEmpty) {
+            final vehicleRow = await supabase
+                .from('vehicles')
+                .select('model_name, complex_id')
+                .eq('id', vehicleId)
+                .maybeSingle();
+            complexId = vehicleRow?['complex_id']?.toString() ?? '';
+            vehicleName =
+                vehicleRow?['model_name']?.toString().trim().isNotEmpty == true
+                    ? vehicleRow!['model_name'].toString()
+                    : vehicleName;
+          }
+
+          final resRow = await supabase
+              .from('reservations')
+              .select('overdue_notified_at, end_at, end_time')
+              .eq('id', reservationId)
+              .maybeSingle();
+          if (resRow?['overdue_notified_at'] != null) continue;
+
+          endAt = resRow?['end_at']?.toString() ?? resRow?['end_time']?.toString();
+
+          await PushNotificationService.instance.customerReturnOverdue(
+            userId: userId,
+            reservationId: reservationId,
+            vehicleName: vehicleName,
+            endAt: endAt,
+          );
+
+          if (complexId.isNotEmpty) {
+            final renterName = await _fetchRenterDisplayName(userId);
+            await PushNotificationService.instance.staffReturnOverdue(
+              complexId: complexId,
+              reservationId: reservationId,
+              vehicleName: vehicleName,
+              renterName: renterName,
+            );
+          }
+
+          try {
+            await supabase.rpc('mark_overdue_notified_for_me', params: {
+              'p_reservation_id': reservationId,
+            });
+          } catch (_) {}
+        } catch (e) {
+          debugPrint('[rental] overdue push skipped: $e');
+        }
+      }
+    }
+
+    final noShows = data['noShows'];
+    if (noShows is List) {
+      for (final item in noShows) {
+        if (item is! Map) continue;
+        final reservationId = item['reservationId']?.toString();
+        final userId = item['userId']?.toString();
+        final vehicleId = item['vehicleId']?.toString();
+        if (reservationId == null ||
+            reservationId.isEmpty ||
+            userId == null ||
+            userId.isEmpty) {
+          continue;
+        }
+        try {
+          var complexId = '';
+          var vehicleName = '차량';
+          if (vehicleId != null && vehicleId.isNotEmpty) {
+            final vehicleRow = await supabase
+                .from('vehicles')
+                .select('model_name, complex_id')
+                .eq('id', vehicleId)
+                .maybeSingle();
+            complexId = vehicleRow?['complex_id']?.toString() ?? '';
+            vehicleName = vehicleRow?['model_name']?.toString().trim().isNotEmpty ==
+                    true
+                ? vehicleRow!['model_name'].toString()
+                : vehicleName;
+          }
+          if (complexId.isEmpty) continue;
+
+          final renterName = await _fetchRenterDisplayName(userId);
+          await PushNotificationService.instance.staffNoShowAutoCompleted(
+            complexId: complexId,
+            reservationId: reservationId,
+            vehicleName: vehicleName,
+            renterName: renterName,
+          );
+        } catch (e) {
+          debugPrint('[rental] no-show staff push skipped: $e');
+        }
+      }
+    }
   }
 
   /// 서버 환불 견적 (취소 확인 화면 — authoritative).
@@ -1354,6 +1512,8 @@ contract_content,second_driver_name,second_driver_license
     required FuelLevel fuelLevelEnd,
     required bool isAccident,
     String? accidentNote,
+    bool isEarlyReturn = false,
+    bool earlyReturnAcknowledged = false,
   }) async {
     final user = supabase.auth.currentUser;
     if (user == null) {
@@ -1379,6 +1539,8 @@ contract_content,second_driver_name,second_driver_license
         'p_fuel_level_end': fuelLevelEnd.value,
         'p_is_accident': isAccident,
         'p_accident_note': accidentNote,
+        'p_is_early_return': isEarlyReturn,
+        'p_early_return_acknowledged': earlyReturnAcknowledged,
       });
       await _assertReservationReturnCompleted(reservationId);
       await _insertRidePhotos(
@@ -1407,6 +1569,7 @@ contract_content,second_driver_name,second_driver_license
           fuelLevelEnd: fuelLevelEnd.value,
           isAccident: isAccident,
           accidentNote: accidentNote,
+          isEarlyReturn: isEarlyReturn,
         );
         await _insertRidePhotos(
           reservationId: reservationId,
@@ -1448,6 +1611,7 @@ contract_content,second_driver_name,second_driver_license
     required String fuelLevelEnd,
     required bool isAccident,
     String? accidentNote,
+    bool isEarlyReturn = false,
   }) async {
     final idFilter = _reservationIdFilter(reservationId);
     final note = isAccident ? accidentNote?.trim() : null;
@@ -1457,6 +1621,7 @@ contract_content,second_driver_name,second_driver_license
         'returned_at': nowIso,
         'actual_end_at': nowIso,
         'return_type': 'manual',
+        if (isEarlyReturn) 'early_return_confirmed_at': nowIso,
         'return_photos': photoUrls,
         'mileage_end': mileageEnd,
         'fuel_level_end': fuelLevelEnd,
@@ -1610,6 +1775,12 @@ String friendlyRentalError(PostgrestException error) {
   }
   if (msg.contains('invalid_end_time')) {
     return '예약 종료 시간 정보가 없습니다.';
+  }
+  if (msg.contains('early_return_not_acknowledged')) {
+    return '조기반납 환불 불가 안내에 동의해 주세요.';
+  }
+  if (msg.contains('not_early_return')) {
+    return '예정 종료 시각 이후 반납은 조기반납이 아닙니다. 다시 시도해주세요.';
   }
   if (msg.contains('invalid_extension_hours')) {
     return '연장 시간을 올바르게 입력해주세요.';
