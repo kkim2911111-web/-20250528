@@ -401,7 +401,7 @@ contract_content,second_driver_name,second_driver_license
 
     for (final r in all) {
       if (historyOnly) {
-        if (r.isInUsageHistory) {
+        if (r.appearsInUsageHistoryScreen) {
           finished.add(r);
         }
         continue;

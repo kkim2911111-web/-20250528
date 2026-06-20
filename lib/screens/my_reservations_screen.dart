@@ -597,8 +597,32 @@ class _MyReservationsScreenState extends State<MyReservationsScreen> {
             style: const TextStyle(color: DanjiColors.textSecondary),
           ),
         ] else ...[
+          if (_historyTab == _HistoryTab.all &&
+              grouped.finished.any((r) => r.isReturnOverdue)) ...[
+            const _SectionHeader(
+              title: '반납 지연 중',
+              icon: Icons.warning_amber_rounded,
+              color: DanjiColors.accentRed,
+            ),
+            const SizedBox(height: 10),
+            ...grouped.finished.where((r) => r.isReturnOverdue).map(
+              (item) => Padding(
+                padding: const EdgeInsets.only(bottom: 12),
+                child: _ReservationCard(
+                  reservation: item,
+                  pricing: _pricingFor(groupedRaw, item),
+                  dateFormat: _dateFormat,
+                  won: _won,
+                  variant: _CardVariant.operating,
+                  showReservationId: true,
+                ),
+              ),
+            ),
+            const SizedBox(height: 8),
+          ],
           if (_historyTab != _HistoryTab.cancelled &&
-              grouped.finished.any((r) => !r.isCancelled)) ...[
+              grouped.finished
+                  .any((r) => !r.isCancelled && !r.isReturnOverdue)) ...[
             if (_historyTab == _HistoryTab.all)
               const _SectionHeader(
                 title: '이용 완료',
@@ -606,7 +630,9 @@ class _MyReservationsScreenState extends State<MyReservationsScreen> {
                 color: DanjiColors.sectionFinished,
               ),
             if (_historyTab == _HistoryTab.all) const SizedBox(height: 10),
-            ...grouped.finished.where((r) => !r.isCancelled).map(
+            ...grouped.finished
+                .where((r) => !r.isCancelled && !r.isReturnOverdue)
+                .map(
               (item) => Padding(
                 padding: const EdgeInsets.only(bottom: 12),
                 child: _ReservationCard(
@@ -925,26 +951,26 @@ class _ReservationCard extends StatelessWidget {
                   style: DanjiTypography.subtitle,
                 ),
               ),
-              if (reservation.isReturnOverdue) ...[
-                const ReturnOverdueBadge(),
-                const SizedBox(width: 6),
-              ],
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                decoration: BoxDecoration(
-                  color: _accentColor.withValues(alpha: 0.15),
-                  borderRadius: BorderRadius.circular(999),
-                ),
-                child: Text(
-                  _statusBadgeLabel,
-                  style: DanjiTypography.caption.copyWith(
-                    color: variant == _CardVariant.cancelled
-                        ? DanjiColors.accentRed
-                        : _accentColor,
-                    fontWeight: FontWeight.w600,
+              if (reservation.isReturnOverdue)
+                const ReturnOverdueBadge()
+              else
+                Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: _accentColor.withValues(alpha: 0.15),
+                    borderRadius: BorderRadius.circular(999),
+                  ),
+                  child: Text(
+                    _statusBadgeLabel,
+                    style: DanjiTypography.caption.copyWith(
+                      color: variant == _CardVariant.cancelled
+                          ? DanjiColors.accentRed
+                          : _accentColor,
+                      fontWeight: FontWeight.w600,
+                    ),
                   ),
                 ),
-              ),
             ],
           ),
           if (showReservationId) ...[

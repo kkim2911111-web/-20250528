@@ -297,17 +297,25 @@ class Reservation {
   bool get isActiveStatus =>
       status == 'confirmed' || status == 'in_use' || status == 'pending';
 
-  /// DB completed/returned 또는 이용 종료 시각 경과
+  /// DB completed/returned/cancelled 또는 미운행 예약의 종료 시각 경과
+  /// (in_use는 status·is_overdue로 별도 처리 — end_at만으로 종료 처리하지 않음)
   bool get isEffectivelyFinished =>
       isFinished ||
       isCancelled ||
-      (isActiveStatus && isUsageTimeExpired);
+      ((status == 'confirmed' || status == 'pending') && isUsageTimeExpired);
 
-  /// 마이페이지 이용내역 — 취소·완료·시간 경과(미운행 확정 예약)
+  /// 마이페이지 이용내역 — 취소·완료·미운행 시간 경과
   bool get isInUsageHistory => isEffectivelyFinished;
 
-  /// 이용내역 — 이용완료 탭 (취소 제외)
-  bool get isUsageHistoryCompleted => isInUsageHistory && !isCancelled;
+  /// 이용내역 화면 전용 — 반납 지연(in_use + is_overdue) 포함
+  bool get appearsInUsageHistoryScreen =>
+      isInUsageHistory || isReturnOverdue;
+
+  /// 이용내역 — 이용완료 탭 (취소·반납 지연 제외, DB 완료만)
+  bool get isUsageHistoryCompleted =>
+      !isCancelled &&
+      !isReturnOverdue &&
+      (status == 'completed' || status == 'returned');
 
   /// 운행 중 — in_use 또는 이용 시간대 내
   bool get isOperating =>
@@ -391,7 +399,13 @@ class Reservation {
   String get displayStatusLabel {
     if (isNoShow) return '노쇼완료';
     if (isCancelled) return '예약 취소';
-    if (isEffectivelyFinished && !isFinished) return '이용 종료';
+    if (isReturnOverdue) return '반납지연중';
+    if (!isFinished &&
+        !isInUse &&
+        (status == 'confirmed' || status == 'pending') &&
+        isUsageTimeExpired) {
+      return '이용 종료';
+    }
     if (isOperating) return '대여 중';
     if (isWaiting) return '이용 대기';
     if (status == 'returned') return '반납 처리됨';
