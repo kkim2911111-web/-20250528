@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import 'refund_status_display.dart';
+import 'cancel_reason.dart';
 
 /// 예약 status + is_no_show → 한글 배지 (전체 예약·대여 관리 공통)
 class ReservationStatusStyle {
@@ -18,8 +19,17 @@ class ReservationStatusStyle {
 ReservationStatusStyle resolveReservationStatusStyle({
   required String status,
   bool isNoShow = false,
+  bool isVehicleNotReturned = false,
 }) {
   final normalized = status.trim().toLowerCase();
+
+  if (isVehicleNotReturned) {
+    return const ReservationStatusStyle(
+      label: vehicleNotReturnedStatusBadgeLabel,
+      background: Color(0xFFECEFF1),
+      foreground: Color(0xFF455A64),
+    );
+  }
 
   if (isNoShow) {
     return const ReservationStatusStyle(
@@ -73,11 +83,13 @@ ReservationStatusStyle resolveReservationStatusStyle({
 class ReservationStatusBadge extends StatelessWidget {
   final String status;
   final bool isNoShow;
+  final bool isVehicleNotReturned;
 
   const ReservationStatusBadge({
     super.key,
     required this.status,
     this.isNoShow = false,
+    this.isVehicleNotReturned = false,
   });
 
   @override
@@ -85,6 +97,7 @@ class ReservationStatusBadge extends StatelessWidget {
     final style = resolveReservationStatusStyle(
       status: status,
       isNoShow: isNoShow,
+      isVehicleNotReturned: isVehicleNotReturned,
     );
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
@@ -93,7 +106,11 @@ class ReservationStatusBadge extends StatelessWidget {
         borderRadius: BorderRadius.circular(8),
         border: isNoShow
             ? Border.all(color: const Color(0xFFFF6D00).withValues(alpha: 0.45))
-            : null,
+            : isVehicleNotReturned
+                ? Border.all(
+                    color: const Color(0xFF78909C).withValues(alpha: 0.45),
+                  )
+                : null,
       ),
       child: Text(
         style.label,
@@ -111,6 +128,7 @@ class ReservationStatusBadge extends StatelessWidget {
 class ReservationDisplayBadgeRow extends StatelessWidget {
   final String status;
   final bool isNoShow;
+  final bool isVehicleNotReturned;
   final int paidAmount;
   final int refundAmount;
 
@@ -118,6 +136,7 @@ class ReservationDisplayBadgeRow extends StatelessWidget {
     super.key,
     required this.status,
     this.isNoShow = false,
+    this.isVehicleNotReturned = false,
     this.paidAmount = 0,
     this.refundAmount = 0,
   });
@@ -138,6 +157,7 @@ class ReservationDisplayBadgeRow extends StatelessWidget {
         ReservationStatusBadge(
           status: status,
           isNoShow: isNoShow,
+          isVehicleNotReturned: isVehicleNotReturned,
         ),
       ],
     );

@@ -1,6 +1,7 @@
 import { handleCors, jsonResponse } from '../_shared/http.ts';
 import { getAdminClient } from '../_shared/payment.ts';
 import { dispatchPushScenario } from '../_shared/push_scenarios.ts';
+import { processVehicleNotReturnedRefund } from '../_shared/vehicle_not_returned_refund.ts';
 
 type ProcessedRow = {
   reservationId: string;
@@ -119,6 +120,42 @@ async function notifyNoShows(
   return notified;
 }
 
+async function refundVehicleNotReturned(
+  admin: ReturnType<typeof getAdminClient>,
+  rows: ProcessedRow[],
+): Promise<{ refunded: number; failed: number }> {
+  let refunded = 0;
+  let failed = 0;
+
+  for (const row of rows) {
+    const reservationId = row.reservationId?.toString()?.trim();
+    if (!reservationId) continue;
+
+    try {
+      const result = await processVehicleNotReturnedRefund(
+        admin,
+        reservationId,
+        { sendPush: true },
+      );
+      if (result.ok) {
+        refunded++;
+      } else {
+        failed++;
+        console.error(
+          '[scheduled-auto-return] vehicle-not-returned refund',
+          reservationId,
+          result.error,
+        );
+      }
+    } catch (e) {
+      failed++;
+      console.error('[scheduled-auto-return] vehicle-not-returned refund', reservationId, e);
+    }
+  }
+
+  return { refunded, failed };
+}
+
 async function notifyOverdues(
   admin: ReturnType<typeof getAdminClient>,
   rows: ProcessedRow[],
@@ -214,15 +251,19 @@ Deno.serve(async (req) => {
     const payload = (result ?? {}) as Record<string, unknown>;
     const noShows = (payload.noShows ?? []) as ProcessedRow[];
     const overdues = (payload.overdues ?? []) as ProcessedRow[];
+    const vehicleNotReturned = (payload.vehicleNotReturned ?? []) as ProcessedRow[];
 
     const noShowNotified = await notifyNoShows(admin, noShows);
     const overdueNotified = await notifyOverdues(admin, overdues);
+    const refundStats = await refundVehicleNotReturned(admin, vehicleNotReturned);
 
     return jsonResponse({
       ok: true,
       result: payload,
       noShowNotified,
       overdueNotified,
+      vehicleNotReturnedRefunded: refundStats.refunded,
+      vehicleNotReturnedRefundFailed: refundStats.failed,
     });
   } catch (e) {
     const err = e as Error;

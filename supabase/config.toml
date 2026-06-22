@@ -22,6 +22,9 @@ verify_jwt = true
 [functions.billing-extension-charge]
 verify_jwt = true
 
+[functions.billing-overdue-overage-charge]
+verify_jwt = false
+
 [functions.dispatch-push-scenario]
 verify_jwt = true
 
@@ -35,6 +38,9 @@ verify_jwt = false
 verify_jwt = true
 
 [functions.scheduled-vehicle-insurance]
+verify_jwt = false
+
+[functions.reservation-vehicle-not-returned-refund]
 verify_jwt = false
 
 [functions.scheduled-auto-return]

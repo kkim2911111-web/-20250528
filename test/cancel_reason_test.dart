@@ -9,6 +9,7 @@ void main() {
       expect(cancelReasonDisplayLabel('admin_force'), '관리자취소');
       expect(cancelReasonDisplayLabel('blacklist_auto'), '블랙리스트');
       expect(cancelReasonDisplayLabel('payment_failed'), '결제실패');
+      expect(cancelReasonDisplayLabel('vehicle_not_returned'), '차량미회수');
     });
 
     test('NULL or empty → 취소 only', () {

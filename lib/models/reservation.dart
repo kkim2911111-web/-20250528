@@ -1,5 +1,6 @@
 import 'package:intl/intl.dart';
 
+import '../utils/cancel_reason.dart';
 import '../utils/rental_pricing.dart';
 import '../utils/reservation_display.dart';
 import 'vehicle.dart';
@@ -43,6 +44,7 @@ class Reservation {
   final String? reservationNumber;
   final RentalType? rentalType;
   final int refundAmount;
+  final String? cancelReason;
 
   const Reservation({
     required this.id,
@@ -82,6 +84,7 @@ class Reservation {
     this.reservationNumber,
     this.rentalType,
     this.refundAmount = 0,
+    this.cancelReason,
   });
 
   Reservation copyWith({Vehicle? vehicle}) {
@@ -123,6 +126,7 @@ class Reservation {
       reservationNumber: reservationNumber,
       rentalType: rentalType,
       refundAmount: refundAmount,
+      cancelReason: cancelReason,
     );
   }
 
@@ -176,6 +180,7 @@ class Reservation {
       reservationNumber: map['reservation_number']?.toString(),
       rentalType: RentalType.fromDb(map['rental_type']?.toString()),
       refundAmount: (map['refund_amount'] as num?)?.toInt() ?? 0,
+      cancelReason: map['cancel_reason']?.toString(),
     );
   }
 
@@ -266,6 +271,9 @@ class Reservation {
   bool get isFinished => status == 'returned' || status == 'completed';
 
   bool get isCancelled => status == 'cancelled';
+
+  bool get isVehicleNotReturned =>
+      isVehicleNotReturnedCancelReason(cancelReason);
 
   bool get isPaid =>
       paymentStatus == 'paid' ||
@@ -442,6 +450,7 @@ class Reservation {
   }
 
   String get displayStatusLabel {
+    if (isVehicleNotReturned) return vehicleNotReturnedStatusBadgeLabel;
     if (isNoShow) return '노쇼완료';
     if (isCancelled) return '예약 취소';
     if (isReturnOverdue) return '반납지연중';

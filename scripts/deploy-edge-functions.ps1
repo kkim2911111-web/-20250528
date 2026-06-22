@@ -42,6 +42,8 @@ try {
     & $sb functions deploy scheduled-push-reminders --project-ref $ProjectRef
     & $sb functions deploy billing-deductible-charge --project-ref $ProjectRef
     & $sb functions deploy billing-extension-charge --project-ref $ProjectRef
+    & $sb functions deploy billing-overdue-overage-charge --project-ref $ProjectRef
+    & $sb functions deploy reservation-vehicle-not-returned-refund --project-ref $ProjectRef
     & $sb functions deploy process-billing-retries --project-ref $ProjectRef
     & $sb functions deploy enforce-user-blacklist --project-ref $ProjectRef
     & $sb functions deploy scheduled-vehicle-insurance --project-ref $ProjectRef

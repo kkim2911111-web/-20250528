@@ -24,6 +24,7 @@ export type PushScenario =
   | 'customer_billing_payment_failed'
   | 'customer_blacklist_registered'
   | 'customer_no_show_auto_completed'
+  | 'customer_vehicle_not_returned_refund'
   // 관리자(단지 staff 전원)
   | 'staff_new_signup'
   | 'staff_license_review_request'
@@ -39,7 +40,8 @@ export type PushScenario =
   | 'staff_extension_payment_exhausted'
   | 'staff_insurance_expiring_soon'
   | 'staff_insurance_expired'
-  | 'staff_no_show_auto_completed';
+  | 'staff_no_show_auto_completed'
+  | 'staff_vehicle_not_returned_auto';
 
 export type PushMessage = {
   title: string;
@@ -216,6 +218,12 @@ export function buildPushMessage(
         body: '예약 시간이 종료되어 노쇼 처리되었습니다.',
         data: { ...data, type: 'reservation' },
       };
+    case 'customer_vehicle_not_returned_refund':
+      return {
+        title: '이용 불가 안내',
+        body: '앞 이용자 미반납으로 이용되지 못해 전액 환불되었습니다.',
+        data: { ...data, type: 'reservation' },
+      };
     case 'staff_new_signup':
       return {
         title: '새 입주민이 가입했습니다',
@@ -315,6 +323,13 @@ export function buildPushMessage(
       return {
         title: '노쇼 처리됐습니다',
         body: `[${vehicle}] 예약이 노쇼로 처리됐습니다. (임차인: ${renter})`,
+        data: { ...data, type: 'admin_reservation' },
+      };
+    }
+    case 'staff_vehicle_not_returned_auto': {
+      return {
+        title: '차량미회수 자동 처리',
+        body: `[${vehicle}] 앞 예약 미반납으로 이용 불가 처리·전액 환불됐습니다. (임차인: ${renter})`,
         data: { ...data, type: 'admin_reservation' },
       };
     }
@@ -436,6 +451,7 @@ const STAFF_SCENARIOS: Set<PushScenario> = new Set([
   'staff_insurance_expiring_soon',
   'staff_insurance_expired',
   'staff_no_show_auto_completed',
+  'staff_vehicle_not_returned_auto',
 ]);
 
 export async function dispatchPushScenario(params: {

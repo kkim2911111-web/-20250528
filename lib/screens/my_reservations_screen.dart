@@ -15,6 +15,8 @@ import 'support_pages.dart';
 import '../widgets/reservation_price_display.dart';
 import '../utils/rental_navigation.dart';
 import '../utils/reservation_display.dart';
+import '../utils/cancel_reason.dart';
+import '../utils/refund_status_display.dart';
 import '../utils/reservation_status_badge.dart';
 import 'rental_contract_screen.dart';
 import '../models/reservation_payment_pricing.dart';
@@ -856,7 +858,12 @@ class _ReservationCard extends StatelessWidget {
   }
 
   String get _statusBadgeLabel {
-    if (variant == _CardVariant.cancelled) return '예약취소';
+    if (variant == _CardVariant.cancelled) {
+      if (reservation.isVehicleNotReturned) {
+        return vehicleNotReturnedStatusBadgeLabel;
+      }
+      return '예약취소';
+    }
     return reservation.displayStatusLabel;
   }
 
@@ -954,22 +961,39 @@ class _ReservationCard extends StatelessWidget {
               if (reservation.isReturnOverdue)
                 const ReturnOverdueBadge()
               else
-                Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                  decoration: BoxDecoration(
-                    color: _accentColor.withValues(alpha: 0.15),
-                    borderRadius: BorderRadius.circular(999),
-                  ),
-                  child: Text(
-                    _statusBadgeLabel,
-                    style: DanjiTypography.caption.copyWith(
-                      color: variant == _CardVariant.cancelled
-                          ? DanjiColors.accentRed
-                          : _accentColor,
-                      fontWeight: FontWeight.w600,
+                Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    if (reservation.isVehicleNotReturned &&
+                        _refundAmount > 0) ...[
+                      RefundStatusBadge.forAmounts(
+                        paidAmount: reservation.paidAmount,
+                        refundAmount: _refundAmount,
+                      ),
+                      const SizedBox(width: 6),
+                    ],
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 10,
+                        vertical: 4,
+                      ),
+                      decoration: BoxDecoration(
+                        color: _accentColor.withValues(alpha: 0.15),
+                        borderRadius: BorderRadius.circular(999),
+                      ),
+                      child: Text(
+                        _statusBadgeLabel,
+                        style: DanjiTypography.caption.copyWith(
+                          color: variant == _CardVariant.cancelled
+                              ? (reservation.isVehicleNotReturned
+                                  ? const Color(0xFF455A64)
+                                  : DanjiColors.accentRed)
+                              : _accentColor,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
                     ),
-                  ),
+                  ],
                 ),
             ],
           ),
