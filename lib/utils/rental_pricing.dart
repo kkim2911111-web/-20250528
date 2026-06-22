@@ -240,12 +240,14 @@ class RentalPricing {
     Vehicle vehicle,
     RentalType type, {
     required int hours,
+    int minutes = 0,
     required int days,
     required int months,
   }) {
     switch (type) {
       case RentalType.hourly:
-        return hours.clamp(0, maxHourlyHours) * vehicle.pricePerHour;
+        final totalMinutes = minutes > 0 ? minutes : hours * 60;
+        return hourlyAmountFromMinutes(totalMinutes, vehicle.pricePerHour);
       case RentalType.daily:
         return days.clamp(0, maxDailyDays) * effectiveDailyPrice(vehicle);
       case RentalType.monthly:
@@ -404,8 +406,8 @@ class RentalPricing {
     final type = inferRentalTypeFromInterval(start: start, end: end);
     switch (type) {
       case RentalType.hourly:
-        final hours = inferHoursBetween(start, end);
-        return hours != null ? '${hours}시간' : '';
+        final minutes = inferMinutesBetween(start, end);
+        return minutes != null ? formatHourlyDurationLabel(minutes) : '';
       case RentalType.daily:
         final split = DailyRentalDurationSplit.fromInterval(start: start, end: end);
         if (split.hasOverage) return split.formatLabel();
@@ -451,12 +453,16 @@ class RentalPricing {
   static bool isValidDuration(
     RentalType type, {
     required int hours,
+    int minutes = 0,
     required int days,
     required int months,
   }) {
     switch (type) {
       case RentalType.hourly:
-        return hours >= 1 && hours <= maxHourlyHours;
+        final totalMinutes =
+            minutes > 0 ? minutes : hours * 60;
+        return totalMinutes >= minHourlyMinutes &&
+            totalMinutes <= maxHourlyMinutes;
       case RentalType.daily:
         return days >= 1 && days <= maxDailyDays;
       case RentalType.monthly:
@@ -475,10 +481,34 @@ class RentalPricing {
     return RentalType.monthly;
   }
 
+  /// 예약 시각 선택 단위 (분)
+  static const bookingSlotMinutes = 10;
+  static const minHourlyMinutes = 60;
+  static const maxHourlyMinutes = maxHourlyHours * 60;
+
+  static int? inferMinutesBetween(DateTime start, DateTime end) {
+    final minutes = end.difference(start).inMinutes;
+    if (minutes < minHourlyMinutes || minutes > maxHourlyMinutes) return null;
+    if (minutes % bookingSlotMinutes != 0) return null;
+    return minutes;
+  }
+
+  /// 시간권 요금 — 1시간 단위 올림 (10분 단위 선택과 서버 동일)
+  static int hourlyAmountFromMinutes(int minutes, int pricePerHour) =>
+      (minutes / 60).ceil() * pricePerHour;
+
+  static String formatHourlyDurationLabel(int minutes) {
+    final h = minutes ~/ 60;
+    final m = minutes % 60;
+    if (h == 0) return '${m}분';
+    if (m == 0) return '${h}시간';
+    return '${h}시간 ${m}분';
+  }
+
   static int? inferHoursBetween(DateTime start, DateTime end) {
-    final hours = end.difference(start).inHours;
-    if (hours < 1 || hours > maxHourlyHours) return null;
-    return hours;
+    final minutes = inferMinutesBetween(start, end);
+    if (minutes == null) return null;
+    return minutes ~/ 60;
   }
 
   static int? inferDaysBetween(DateTime start, DateTime end) {
