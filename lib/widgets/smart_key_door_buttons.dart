@@ -81,7 +81,7 @@ class SmartKeyDoorActions {
   }
 }
 
-/// 문열림/문닫힘 버튼 (가로 배치)
+/// 문열림/문닫힘 버튼 (가로 배치 — 단일 카드)
 class SmartKeyDoorButtons extends StatefulWidget {
   final Reservation reservation;
   final VoidCallback? onChanged;
@@ -151,29 +151,22 @@ class _SmartKeyDoorButtonsState extends State<SmartKeyDoorButtons> {
           ),
           const SizedBox(height: 10),
         ],
-        Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
+        _SmartKeyDoorControlCard(
           children: [
-            Expanded(
-              child: SmartKeyDoorButton(
-                label: '문 열기',
-                icon: Icons.lock_open_rounded,
-                variant: SmartKeyDoorButtonVariant.unlock,
-                enabled: _canUnlock && !_loading,
-                loading: _loading,
-                onPressed: _onUnlock,
-              ),
+            _SmartKeyDoorSegment(
+              label: '문 열기',
+              icon: Icons.lock_open_rounded,
+              enabled: _canUnlock && !_loading,
+              loading: _loading,
+              onPressed: _onUnlock,
+              showRightDivider: true,
             ),
-            const SizedBox(width: 8),
-            Expanded(
-              child: SmartKeyDoorButton(
-                label: '문 잠그기',
-                icon: Icons.lock_rounded,
-                variant: SmartKeyDoorButtonVariant.lock,
-                enabled: !_loading,
-                loading: _loading,
-                onPressed: _onLock,
-              ),
+            _SmartKeyDoorSegment(
+              label: '문 잠그기',
+              icon: Icons.lock_rounded,
+              enabled: !_loading,
+              loading: _loading,
+              onPressed: _onLock,
             ),
           ],
         ),
@@ -184,6 +177,7 @@ class _SmartKeyDoorButtonsState extends State<SmartKeyDoorButtons> {
 
 enum SmartKeyDoorButtonVariant { unlock, lock }
 
+/// 단일 문 제어 버튼 (반납 화면 등)
 class SmartKeyDoorButton extends StatelessWidget {
   final String label;
   final IconData icon;
@@ -204,54 +198,131 @@ class SmartKeyDoorButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    return _SmartKeyDoorControlCard(
+      children: [
+        _SmartKeyDoorSegment(
+          label: label,
+          icon: icon,
+          enabled: enabled,
+          loading: loading,
+          onPressed: onPressed,
+        ),
+      ],
+    );
+  }
+}
+
+class _SmartKeyDoorControlCard extends StatelessWidget {
+  static const _cardHeight = 62.0;
+  static const _radius = 12.0;
+
+  final List<Widget> children;
+
+  const _SmartKeyDoorControlCard({required this.children});
+
+  @override
+  Widget build(BuildContext context) {
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: DanjiColors.surface,
+        borderRadius: BorderRadius.circular(_radius),
+        border: Border.all(color: DanjiColors.border, width: 0.5),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.04),
+            blurRadius: 8,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(_radius),
+        child: SizedBox(
+          height: _cardHeight,
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: children,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _SmartKeyDoorSegment extends StatelessWidget {
+  static const _iconSize = 21.0;
+  static const _labelSize = 12.0;
+
+  final String label;
+  final IconData icon;
+  final bool enabled;
+  final bool loading;
+  final VoidCallback onPressed;
+  final bool showRightDivider;
+
+  const _SmartKeyDoorSegment({
+    required this.label,
+    required this.icon,
+    required this.enabled,
+    required this.loading,
+    required this.onPressed,
+    this.showRightDivider = false,
+  });
+
+  @override
+  Widget build(BuildContext context) {
     final active = enabled && !loading;
     final fg = active ? DanjiColors.textPrimary : DanjiColors.textMuted;
 
-    return Material(
-      color: Colors.transparent,
-      borderRadius: BorderRadius.circular(12),
-      child: InkWell(
-        onTap: active ? onPressed : null,
-        borderRadius: BorderRadius.circular(12),
-        splashColor: Colors.black.withValues(alpha: 0.06),
-        highlightColor: Colors.black.withValues(alpha: 0.04),
-        child: Ink(
-          height: 88,
-          decoration: BoxDecoration(
-            color: DanjiColors.surface,
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(
-              color: active ? DanjiColors.border : DanjiColors.border.withValues(alpha: 0.7),
-              width: 0.5,
+    return Expanded(
+      child: Stack(
+        fit: StackFit.expand,
+        children: [
+          Material(
+            color: Colors.transparent,
+            child: InkWell(
+              onTap: active ? onPressed : null,
+              splashColor: Colors.black.withValues(alpha: 0.06),
+              highlightColor: Colors.black.withValues(alpha: 0.04),
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  if (loading)
+                    SizedBox(
+                      width: _iconSize,
+                      height: _iconSize,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: fg,
+                      ),
+                    )
+                  else
+                    Icon(icon, size: _iconSize, color: fg),
+                  const SizedBox(height: 4),
+                  Text(
+                    label,
+                    style: TextStyle(
+                      color: fg,
+                      fontWeight: FontWeight.w500,
+                      fontSize: _labelSize,
+                      height: 1.2,
+                    ),
+                  ),
+                ],
+              ),
             ),
           ),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              if (loading)
-                SizedBox(
-                  width: 24,
-                  height: 24,
-                  child: CircularProgressIndicator(
-                    strokeWidth: 2,
-                    color: fg,
-                  ),
-                )
-              else
-                Icon(icon, size: 28, color: fg),
-              const SizedBox(height: 8),
-              Text(
-                label,
-                style: TextStyle(
-                  color: fg,
-                  fontWeight: FontWeight.w600,
-                  fontSize: 14,
-                  height: 1.2,
-                ),
+          if (showRightDivider)
+            Positioned(
+              top: 12,
+              bottom: 12,
+              right: 0,
+              child: Container(
+                width: 0.5,
+                color: DanjiColors.border,
               ),
-            ],
-          ),
-        ),
+            ),
+        ],
       ),
     );
   }
