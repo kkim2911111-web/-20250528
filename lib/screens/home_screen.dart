@@ -22,7 +22,6 @@ import '../utils/reservation_status_badge.dart';
 import '../utils/network_retry.dart';
 import 'booking_screen.dart';
 import 'my_reservations_screen.dart';
-import 'notice_list_screen.dart';
 import 'notification_list_screen.dart';
 import '../utils/accident_emergency_flow.dart';
 import '../utils/rental_extension_flow.dart';
@@ -38,7 +37,7 @@ import '../widgets/danji_logo.dart';
 import '../utils/danji_snackbar.dart';
 import '../widgets/home_local_restaurants_section.dart';
 import '../widgets/home_promo_banners.dart';
-import '../widgets/rental_inquiry_button.dart';
+import '../utils/rental_inquiry_flow.dart';
 import '../widgets/smart_key_door_buttons.dart';
 
 class HomeScreen extends StatefulWidget {
@@ -294,12 +293,10 @@ class HomeScreenState extends State<HomeScreen> {
                     modeFor: _homeMode,
                   ),
                 const SizedBox(height: 12),
-                const RentalInquiryButton(),
+                _HomeNoticeAndInquiryCard(future: _noticesFuture),
                 const SizedBox(height: 12),
                 _HomeEventBannerSection(future: _bannerFuture),
                 const SizedBox(height: 12),
-                _HomeNoticesSection(future: _noticesFuture),
-                const SizedBox(height: 16),
                 const HomeLocalRestaurantsSection(),
                 const SizedBox(height: 12),
                 const _NaverClipBanner(),
@@ -828,187 +825,211 @@ class _PageDots extends StatelessWidget {
   }
 }
 
-class _HomeNoticesSection extends StatelessWidget {
+class _HomeNoticeAndInquiryCard extends StatefulWidget {
   final Future<List<Notice>>? future;
 
-  const _HomeNoticesSection({required this.future});
+  const _HomeNoticeAndInquiryCard({required this.future});
 
-  static final _dateFormat = DateFormat('yyyy.MM.dd');
+  @override
+  State<_HomeNoticeAndInquiryCard> createState() =>
+      _HomeNoticeAndInquiryCardState();
+}
+
+class _HomeNoticeAndInquiryCardState extends State<_HomeNoticeAndInquiryCard> {
+  bool _noticeExpanded = false;
+
+  static const Color _primaryBlue = Color(0xFF3182F6);
 
   @override
   Widget build(BuildContext context) {
     return FutureBuilder<List<Notice>>(
-      future: future,
+      future: widget.future,
       builder: (context, snap) {
-        if (snap.connectionState == ConnectionState.waiting) {
-          return const SizedBox.shrink();
-        }
         final notices = snap.data ?? [];
-        if (notices.isEmpty) return const SizedBox.shrink();
+        final notice = notices.isNotEmpty ? notices.first : null;
+        final showNotice = snap.connectionState != ConnectionState.waiting &&
+            notice != null;
 
-        final preview = notices.take(3).toList();
-        final hasMore = notices.length > 3;
-
-        return Container(
-          width: double.infinity,
-          padding: const EdgeInsets.all(16),
+        return DecoratedBox(
           decoration: BoxDecoration(
-            color: DanjiColors.surface,
-            borderRadius: BorderRadius.circular(16),
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(
+              color: DanjiColors.border.withValues(alpha: 0.85),
+            ),
           ),
           child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              Row(
-                children: [
-                  Icon(
-                    Icons.campaign_outlined,
-                    size: 18,
-                    color: DanjiColors.primaryBlue,
-                  ),
-                  const SizedBox(width: 6),
-                  Text(
-                    '공지사항',
-                    style: DanjiTypography.subtitle.copyWith(fontSize: 15),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 10),
-              ...preview.map((notice) {
-                final dateLabel = notice.createdAt != null
-                    ? _dateFormat.format(notice.createdAt!)
-                    : null;
-                return Padding(
-                  padding: const EdgeInsets.only(bottom: 8),
-                  child: _NoticeRow(notice: notice, dateLabel: dateLabel),
-                );
-              }),
-              if (hasMore)
-                Align(
-                  alignment: Alignment.centerRight,
-                  child: TextButton(
-                    onPressed: () {
-                      Navigator.of(context).push(
-                        MaterialPageRoute(
-                          builder: (_) => const NoticeListScreen(),
-                        ),
-                      );
-                    },
-                    style: TextButton.styleFrom(
-                      foregroundColor: DanjiColors.buttonBlue,
-                      padding: const EdgeInsets.symmetric(horizontal: 8),
+              if (showNotice) ...[
+                Material(
+                  color: Colors.transparent,
+                  child: InkWell(
+                    onTap: () =>
+                        setState(() => _noticeExpanded = !_noticeExpanded),
+                    borderRadius: const BorderRadius.vertical(
+                      top: Radius.circular(14),
                     ),
-                    child: const Text(
-                      '더보기',
-                      style: TextStyle(fontWeight: FontWeight.w700),
+                    child: Padding(
+                      padding: const EdgeInsets.fromLTRB(16, 14, 12, 14),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: [
+                              if (notice.isGlobal) ...[
+                                Container(
+                                  margin: const EdgeInsets.only(right: 6),
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 6,
+                                    vertical: 2,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    color: DanjiColors.primaryBlue
+                                        .withValues(alpha: 0.12),
+                                    borderRadius: BorderRadius.circular(4),
+                                  ),
+                                  child: const Text(
+                                    '전체',
+                                    style: TextStyle(
+                                      fontSize: 10,
+                                      fontWeight: FontWeight.w700,
+                                      color: DanjiColors.primaryBlue,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                              Expanded(
+                                child: Text(
+                                  notice.title,
+                                  maxLines: _noticeExpanded ? null : 1,
+                                  overflow: _noticeExpanded
+                                      ? TextOverflow.visible
+                                      : TextOverflow.ellipsis,
+                                  style: const TextStyle(
+                                    fontSize: 14,
+                                    fontWeight: FontWeight.w600,
+                                    color: DanjiColors.textPrimary,
+                                    height: 1.3,
+                                  ),
+                                ),
+                              ),
+                              Icon(
+                                _noticeExpanded
+                                    ? Icons.keyboard_arrow_up
+                                    : Icons.keyboard_arrow_right,
+                                size: 20,
+                                color: DanjiColors.textMuted,
+                              ),
+                            ],
+                          ),
+                          if (_noticeExpanded &&
+                              notice.content.isNotEmpty) ...[
+                            const SizedBox(height: 8),
+                            Text(
+                              notice.content,
+                              style: DanjiTypography.bodyRegular.copyWith(
+                                color: DanjiColors.textSecondary,
+                                height: 1.45,
+                              ),
+                            ),
+                          ],
+                        ],
+                      ),
                     ),
                   ),
                 ),
+                Divider(
+                  height: 1,
+                  thickness: 0.5,
+                  color: DanjiColors.border.withValues(alpha: 0.9),
+                ),
+              ],
+              Material(
+                color: Colors.transparent,
+                child: InkWell(
+                  onTap: () => showRentalInquiryDialog(context),
+                  borderRadius: BorderRadius.vertical(
+                    bottom: const Radius.circular(14),
+                    top: showNotice ? Radius.zero : const Radius.circular(14),
+                  ),
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(
+                      vertical: 14,
+                      horizontal: 16,
+                    ),
+                    child: Row(
+                      children: [
+                        Container(
+                          width: 36,
+                          height: 36,
+                          alignment: Alignment.center,
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFE6F1FB),
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                          child: const Icon(
+                            Icons.shield_outlined,
+                            size: 18,
+                            color: _primaryBlue,
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        const Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Text(
+                                '자동차사고 보험대차 문의',
+                                style: TextStyle(
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.w500,
+                                  color: Color(0xFF111111),
+                                  height: 1.25,
+                                ),
+                              ),
+                              SizedBox(height: 2),
+                              Text(
+                                '사고 시 보험사 대차, 단지에서 바로 이용',
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  color: Color(0xFF888888),
+                                  height: 1.25,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 9,
+                            vertical: 3,
+                          ),
+                          decoration: BoxDecoration(
+                            color: _primaryBlue,
+                            borderRadius: BorderRadius.circular(20),
+                          ),
+                          child: const Text(
+                            '전화 연결',
+                            style: TextStyle(
+                              fontSize: 10,
+                              fontWeight: FontWeight.w500,
+                              color: Color(0xFFFFFFFF),
+                              height: 1.2,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
             ],
           ),
         );
       },
-    );
-  }
-}
-
-class _NoticeRow extends StatefulWidget {
-  final Notice notice;
-  final String? dateLabel;
-
-  const _NoticeRow({required this.notice, this.dateLabel});
-
-  @override
-  State<_NoticeRow> createState() => _NoticeRowState();
-}
-
-class _NoticeRowState extends State<_NoticeRow> {
-  bool _expanded = false;
-
-  @override
-  Widget build(BuildContext context) {
-    final notice = widget.notice;
-    return Material(
-      color: DanjiColors.skyLight,
-      borderRadius: BorderRadius.circular(10),
-      child: InkWell(
-        onTap: () => setState(() => _expanded = !_expanded),
-        borderRadius: BorderRadius.circular(10),
-        child: Padding(
-          padding: const EdgeInsets.all(12),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  if (notice.isGlobal)
-                    Container(
-                      margin: const EdgeInsets.only(right: 6),
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 6,
-                        vertical: 2,
-                      ),
-                      decoration: BoxDecoration(
-                        color: DanjiColors.primaryBlue.withValues(alpha: 0.12),
-                        borderRadius: BorderRadius.circular(4),
-                      ),
-                      child: const Text(
-                        '전체',
-                        style: TextStyle(
-                          fontSize: 10,
-                          fontWeight: FontWeight.w700,
-                          color: DanjiColors.primaryBlue,
-                        ),
-                      ),
-                    ),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          notice.title,
-                          style: const TextStyle(
-                            fontWeight: FontWeight.w700,
-                            fontSize: 14,
-                            color: DanjiColors.textPrimary,
-                          ),
-                        ),
-                        if (widget.dateLabel != null) ...[
-                          const SizedBox(height: 3),
-                          Text(
-                            widget.dateLabel!,
-                            style: const TextStyle(
-                              fontSize: 11,
-                              color: DanjiColors.textMuted,
-                            ),
-                          ),
-                        ],
-                      ],
-                    ),
-                  ),
-                  Icon(
-                    _expanded
-                        ? Icons.keyboard_arrow_up
-                        : Icons.keyboard_arrow_down,
-                    size: 20,
-                    color: DanjiColors.textMuted,
-                  ),
-                ],
-              ),
-              if (_expanded && notice.content.isNotEmpty) ...[
-                const SizedBox(height: 8),
-                Text(
-                  notice.content,
-                  style: DanjiTypography.bodyRegular.copyWith(
-                    color: DanjiColors.textSecondary,
-                    height: 1.45,
-                  ),
-                ),
-              ],
-            ],
-          ),
-        ),
-      ),
     );
   }
 }
