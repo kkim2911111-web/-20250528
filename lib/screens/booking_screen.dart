@@ -17,11 +17,13 @@ import '../supabase_client.dart';
 import '../theme/danji_colors.dart';
 import '../theme/danji_typography.dart';
 import '../utils/booking_period_resolver.dart';
+import '../utils/booking_time_slots.dart';
 import '../utils/feature_kill_switch_guard.dart';
 import '../utils/booking_vehicle_price_display.dart';
 import '../utils/rental_inquiry_flow.dart';
 import '../utils/rental_interval_billing.dart' as interval_billing;
 import '../utils/rental_pricing.dart';
+import '../widgets/booking_time_drum_picker.dart';
 import '../widgets/danji_app_bar.dart';
 import '../widgets/payment_method_sheet.dart';
 
@@ -50,9 +52,6 @@ class BookingScreen extends StatefulWidget {
 }
 
 class _BookingScreenState extends State<BookingScreen> {
-  static const _minHour = 0;
-  static const _maxHour = 23;
-
   static final List<DateTime> _holidays = [
     // 2026년 공휴일
     DateTime(2026, 1, 1), // 신정
@@ -91,9 +90,12 @@ class _BookingScreenState extends State<BookingScreen> {
   DateTime? _startDay;
   DateTime? _returnDay;
   int _startHour = 9;
+  int _startMinute = 0;
   int _endHour = 10;
+  int _endMinute = 0;
   bool _endHourManuallySet = false;
   int _returnHour = 9;
+  int _returnMinute = 0;
   bool _returnHourManuallySet = false;
   RentalType _rentalType = RentalType.hourly;
   int _durationDays = 1;
@@ -119,32 +121,39 @@ class _BookingScreenState extends State<BookingScreen> {
     AppFeatureConfigService.instance.fetch(force: true);
   }
 
-  /// 23:00 이전 — 오늘·현재시+1h / 23:00 이후 — 내일 00:00 시작
+  /// 23:50 이후 — 내일 00:00 시작 / 그 외 — 다음 10분 슬롯
   void _applyInitialDateTime() {
     final now = DateTime.now();
-    if (now.hour >= 23) {
+    if (now.hour >= 23 && now.minute >= 50) {
       final tomorrow = _todayCalendarDate.add(const Duration(days: 1));
       _startDay = tomorrow;
       _returnDay = tomorrow;
       _focusedDay = tomorrow;
       _returnFocusedDay = tomorrow;
       _startHour = 0;
-      _endHour = 1;
+      _startMinute = 0;
+      _endHour = 0;
+      _endMinute = 10;
     } else {
       final today = _todayCalendarDate;
       _startDay = today;
       _returnDay = today;
       _focusedDay = today;
       _returnFocusedDay = today;
-      _startHour = (now.hour + 1).clamp(_minHour, _maxHour);
-      _endHour = _startHour + 1;
+      final next = BookingTimeSlots.ceilToNextSlot(now);
+      _startHour = next.hour;
+      _startMinute = next.minute;
+      final end = next.add(const Duration(hours: 1));
+      _endHour = end.hour;
+      _endMinute = end.minute;
     }
     _endHourManuallySet = false;
     _returnHour = _startHour;
+    _returnMinute = _startMinute;
     _returnHourManuallySet = false;
-    _normalizeHoursForSelectedDay();
+    _normalizeTimesForSelectedDay();
     if (!_endHourManuallySet) {
-      _syncEndHourFromStart(force: true);
+      _syncEndTimeFromStart(force: true);
     }
   }
 
@@ -154,7 +163,9 @@ class _BookingScreenState extends State<BookingScreen> {
   bool get _isTomorrowMidnightSlot {
     final day = _startDay;
     if (day == null) return false;
-    return isSameDay(day, _tomorrowCalendarDate) && _startHour == 0;
+    return isSameDay(day, _tomorrowCalendarDate) &&
+        _startHour == 0 &&
+        _startMinute == 0;
   }
 
   void _applyTomorrowMidnightSlot() {
@@ -163,13 +174,16 @@ class _BookingScreenState extends State<BookingScreen> {
     _focusedDay = _tomorrowCalendarDate;
     _returnFocusedDay = _tomorrowCalendarDate;
     _startHour = 0;
-    _endHour = 1;
+    _startMinute = 0;
+    _endHour = 0;
+    _endMinute = 10;
     _endHourManuallySet = false;
     _returnHour = _startHour;
+    _returnMinute = _startMinute;
     _returnHourManuallySet = false;
-    _normalizeHoursForSelectedDay();
+    _normalizeTimesForSelectedDay();
     if (!_endHourManuallySet) {
-      _syncEndHourFromStart(force: true);
+      _syncEndTimeFromStart(force: true);
     }
   }
 
@@ -257,8 +271,11 @@ class _BookingScreenState extends State<BookingScreen> {
       startDay: startDay,
       returnDay: returnDay,
       startHour: _startHour,
+      startMinute: _startMinute,
       endHour: _isSameDayBooking ? _endHour : null,
+      endMinute: _isSameDayBooking ? _endMinute : null,
       returnHour: _allowsDailyReturnTimePick ? _returnHour : null,
+      returnMinute: _allowsDailyReturnTimePick ? _returnMinute : null,
     );
   }
 
@@ -291,7 +308,7 @@ class _BookingScreenState extends State<BookingScreen> {
     }
     return RentalPricing.durationSummary(
       _rentalType,
-      hours: _durationHours,
+      hours: _resolvedPeriod?.hours ?? 0,
       days: _durationDays,
       months: _durationMonths,
     );
@@ -321,15 +338,25 @@ class _BookingScreenState extends State<BookingScreen> {
   bool get _showCheckoutDiscounts =>
       _selected != null && _hasValidDuration && _originalPrice != null;
 
-  int get _durationHours {
+  String get _durationLabel {
     final period = _resolvedPeriod;
     if (period != null && period.valid && period.rentalType == RentalType.hourly) {
-      return period.hours;
+      return RentalPricing.formatHourlyDurationLabel(period.minutes);
     }
-    final start = _buildStartDateTime(_startDay, _startHour);
-    final end = _buildEndDateTime(_startDay, _endHour);
-    if (start == null || end == null) return 0;
-    return end.difference(start).inHours;
+    final start = _buildStartDateTime(_startDay, _startHour, _startMinute);
+    final end = _buildEndDateTime(_startDay, _endHour, _endMinute);
+    if (start == null || end == null) return '';
+    final minutes = RentalPricing.inferMinutesBetween(start, end);
+    if (minutes == null) return '';
+    return RentalPricing.formatHourlyDurationLabel(minutes);
+  }
+
+  bool get _hasValidHourlyDuration {
+    final period = _resolvedPeriod;
+    if (period != null && period.valid && period.rentalType == RentalType.hourly) {
+      return period.minutes >= RentalPricing.minHourlyMinutes;
+    }
+    return false;
   }
 
   DateTime? get _rangeStartDay => _startDay;
@@ -364,45 +391,44 @@ class _BookingScreenState extends State<BookingScreen> {
   bool _isStartTimeInFuture(DateTime startTime) =>
       startTime.isAfter(DateTime.now());
 
-  bool _isStartHourSelectable(DateTime day, int hour) {
-    final slot = _buildStartDateTime(day, hour);
+  bool _isStartSlotSelectable(DateTime day, int hour, int minute) {
+    final slot = _buildStartDateTime(day, hour, minute);
     if (slot == null) return false;
     if (!_isToday(day)) return true;
     return _isStartTimeInFuture(slot);
   }
 
-  List<int> get _startHourOptions {
-    final options = <int>[
-      for (var h = _minHour; h <= _maxHour; h++) h,
-    ];
+  List<({int hour, int minute})> get _startTimeOptions {
     final day = _startDay;
     if (day == null) return const [];
-    if (!_isToday(day)) return options;
-
-    return options.where((h) => _isStartHourSelectable(day, h)).toList();
+    return [
+      for (final slot in BookingTimeSlots.allSlots())
+        if (_isStartSlotSelectable(day, slot.hour, slot.minute)) slot,
+    ];
   }
 
-  List<int> get _endHourOptions {
+  List<({int hour, int minute})> get _endTimeOptions {
     final day = _startDay;
     if (day == null) return const [];
 
-    final ordered = <int>[
-      for (var i = 1; i <= RentalPricing.maxHourlyHours; i++) (_startHour + i) % 24,
-    ];
+    final start = _buildStartDateTime(day, _startHour, _startMinute);
+    if (start == null) return const [];
+
+    return BookingTimeSlots.slotsAfter(
+      start,
+      minMinutes: RentalPricing.minHourlyMinutes,
+      maxMinutes: RentalPricing.maxHourlyMinutes,
+    ).where((slot) => _isValidEndSlot(day, slot.hour, slot.minute)).toList();
+  }
+
+  List<({int hour, int minute})> get _returnTimeOptions {
     return [
-      for (final h in ordered)
-        if (_isValidEndHour(day, h)) h,
+      for (final slot in BookingTimeSlots.allSlots())
+        if (_isValidReturnSlot(slot.hour, slot.minute)) slot,
     ];
   }
 
-  List<int> get _returnHourOptions {
-    return [
-      for (var h = _minHour; h <= _maxHour; h++)
-        if (_isValidReturnHour(h)) h,
-    ];
-  }
-
-  bool _isValidReturnHour(int hour) {
+  bool _isValidReturnSlot(int hour, int minute) {
     final startDay = _startDay;
     final returnDay = _returnDay;
     if (startDay == null || returnDay == null) return false;
@@ -410,48 +436,43 @@ class _BookingScreenState extends State<BookingScreen> {
       startDay: startDay,
       returnDay: returnDay,
       startHour: _startHour,
+      startMinute: _startMinute,
       returnHour: hour,
+      returnMinute: minute,
     );
     return period.valid && period.inquiry == null;
   }
 
-  void _syncReturnHourFromStart({bool force = false}) {
-    if (!force && _returnHourManuallySet) return;
-    final options = _returnHourOptions;
-    if (options.isEmpty) return;
-    if (options.contains(_startHour)) {
-      _returnHour = _startHour;
-      return;
-    }
-    _returnHour = options.first;
-  }
-
-  void _normalizeReturnHourForSelectedPeriod() {
+  void _normalizeReturnTimeForSelectedPeriod() {
     if (!_allowsDailyReturnTimePick) {
       _returnHour = _startHour;
+      _returnMinute = _startMinute;
       _returnHourManuallySet = false;
       return;
     }
-    final options = _returnHourOptions;
+    final options = _returnTimeOptions;
     if (options.isEmpty) return;
-    if (!options.contains(_returnHour)) {
-      _returnHour = options.first;
+    final current = options.where(
+      (slot) => slot.hour == _returnHour && slot.minute == _returnMinute,
+    );
+    if (current.isEmpty) {
+      _returnHour = options.first.hour;
+      _returnMinute = options.first.minute;
       _returnHourManuallySet = false;
     }
   }
 
-  bool _isValidEndHour(DateTime day, int endHour) {
-    final start = _buildStartDateTime(day, _startHour);
-    final end = _buildEndDateTime(day, endHour);
+  bool _isValidEndSlot(DateTime day, int endHour, int endMinute) {
+    final start = _buildStartDateTime(day, _startHour, _startMinute);
+    final end = _buildEndDateTime(day, endHour, endMinute);
     if (start == null || end == null) return false;
-    final hours = end.difference(start).inHours;
-    return hours >= 1 && hours <= RentalPricing.maxHourlyHours;
+    return RentalPricing.inferMinutesBetween(start, end) != null;
   }
 
   DateTime? get _rentalStartTime {
     final period = _resolvedPeriod;
     if (period != null && period.valid) return period.start;
-    return _buildStartDateTime(_startDay, _startHour);
+    return _buildStartDateTime(_startDay, _startHour, _startMinute);
   }
 
   DateTime? get _rentalEndTime {
@@ -469,85 +490,301 @@ class _BookingScreenState extends State<BookingScreen> {
   }
 
   /// 종료 시각 = 시작 + 1시간 (유효한 종료 시각 목록 기준)
-  void _syncEndHourFromStart({bool force = false}) {
+  void _syncEndTimeFromStart({bool force = false}) {
     if (!force && _endHourManuallySet) return;
 
     final day = _startDay;
     if (day == null) return;
 
-    final start = _buildStartDateTime(day, _startHour);
+    final start = _buildStartDateTime(day, _startHour, _startMinute);
     if (start == null) return;
 
-    final targetEnd = start.add(const Duration(hours: 1));
-    var candidate = targetEnd.hour;
-
-    final ends = _endHourOptions;
+    final ends = _endTimeOptions;
     if (ends.isEmpty) return;
 
-    if (ends.contains(candidate)) {
-      _endHour = candidate;
-      return;
-    }
-
-    for (final h in ends) {
-      final end = _buildEndDateTime(day, h);
-      if (end != null && end.difference(start).inHours == 1) {
-        _endHour = h;
+    for (final slot in ends) {
+      final end = _buildEndDateTime(day, slot.hour, slot.minute);
+      if (end != null && end.difference(start).inMinutes == 60) {
+        _endHour = slot.hour;
+        _endMinute = slot.minute;
         return;
       }
     }
 
-    _endHour = ends.first;
+    final first = ends.first;
+    _endHour = first.hour;
+    _endMinute = first.minute;
   }
 
-  void _normalizeHoursForSelectedDay() {
-    final starts = _startHourOptions;
+  void _normalizeTimesForSelectedDay() {
+    final starts = _startTimeOptions;
     if (starts.isEmpty) return;
 
-    if (!starts.contains(_startHour)) {
-      _startHour = starts.first;
+    final currentStart = starts.where(
+      (slot) => slot.hour == _startHour && slot.minute == _startMinute,
+    );
+    if (currentStart.isEmpty) {
+      final first = starts.first;
+      _startHour = first.hour;
+      _startMinute = first.minute;
     }
 
-    _syncEndHourFromStart();
+    _syncEndTimeFromStart();
 
-    final ends = _endHourOptions;
+    final ends = _endTimeOptions;
     if (ends.isEmpty) return;
-    if (!ends.contains(_endHour)) {
-      _endHour = ends.first;
+    final currentEnd = ends.where(
+      (slot) => slot.hour == _endHour && slot.minute == _endMinute,
+    );
+    if (currentEnd.isEmpty) {
+      final first = ends.first;
+      _endHour = first.hour;
+      _endMinute = first.minute;
       _endHourManuallySet = false;
     }
   }
 
-  DateTime? _buildStartDateTime(DateTime? day, int hour) {
+  DateTime? _buildStartDateTime(DateTime? day, int hour, int minute) {
     if (day == null) return null;
-    return DateTime(day.year, day.month, day.day, hour);
+    return BookingTimeSlots.buildLocal(day, hour, minute);
   }
 
-  DateTime? _buildEndDateTime(DateTime? day, int hour) {
+  DateTime? _buildEndDateTime(DateTime? day, int hour, int minute) {
     if (day == null) return null;
-    var end = DateTime(day.year, day.month, day.day, hour);
-    final start = _buildStartDateTime(day, _startHour);
+    var end = BookingTimeSlots.buildLocal(day, hour, minute);
+    final start = _buildStartDateTime(day, _startHour, _startMinute);
     if (start != null && !end.isAfter(start)) {
       end = end.add(const Duration(days: 1));
     }
     return end;
   }
 
-  String _formatHourLabel(int hour) =>
-      '${hour.toString().padLeft(2, '0')}:00';
+  String _formatTimeLabel(int hour, int minute) =>
+      BookingTimeSlots.format(hour, minute);
 
-  String _formatEndHourLabel(int hour) {
+  String _formatEndTimeLabel(int hour, int minute) {
     final day = _startDay;
-    if (day == null) return _formatHourLabel(hour);
+    if (day == null) return _formatTimeLabel(hour, minute);
 
-    final start = _buildStartDateTime(day, _startHour);
-    final end = _buildEndDateTime(day, hour);
+    final start = _buildStartDateTime(day, _startHour, _startMinute);
+    final end = _buildEndDateTime(day, hour, minute);
     if (start != null &&
         end != null &&
         _dateOnly(end).isAfter(_dateOnly(start))) {
-      return '${_formatHourLabel(hour)} (익일)';
+      return '${_formatTimeLabel(hour, minute)} (익일)';
     }
-    return _formatHourLabel(hour);
+    return _formatTimeLabel(hour, minute);
+  }
+
+  List<({int hour, int minute})> _endTimeOptionsFor(int startHour, int startMinute) {
+    final day = _startDay;
+    if (day == null) return const [];
+
+    final start = _buildStartDateTime(day, startHour, startMinute);
+    if (start == null) return const [];
+
+    return BookingTimeSlots.slotsAfter(
+      start,
+      minMinutes: RentalPricing.minHourlyMinutes,
+      maxMinutes: RentalPricing.maxHourlyMinutes,
+    ).where(
+      (slot) => _isValidEndSlotFor(day, startHour, startMinute, slot.hour, slot.minute),
+    ).toList();
+  }
+
+  List<({int hour, int minute})> _returnTimeOptionsFor(int startHour, int startMinute) {
+    return [
+      for (final slot in BookingTimeSlots.allSlots())
+        if (_isValidReturnSlotAt(startHour, startMinute, slot.hour, slot.minute))
+          slot,
+    ];
+  }
+
+  bool _isValidReturnSlotAt(
+    int startHour,
+    int startMinute,
+    int hour,
+    int minute,
+  ) {
+    final startDay = _startDay;
+    final returnDay = _returnDay;
+    if (startDay == null || returnDay == null) return false;
+    final period = BookingPeriodResolver.resolve(
+      startDay: startDay,
+      returnDay: returnDay,
+      startHour: startHour,
+      startMinute: startMinute,
+      returnHour: hour,
+      returnMinute: minute,
+    );
+    return period.valid && period.inquiry == null;
+  }
+
+  bool _isValidEndSlotFor(
+    DateTime day,
+    int startHour,
+    int startMinute,
+    int endHour,
+    int endMinute,
+  ) {
+    final start = BookingTimeSlots.buildLocal(day, startHour, startMinute);
+    var end = BookingTimeSlots.buildLocal(day, endHour, endMinute);
+    if (!end.isAfter(start)) {
+      end = end.add(const Duration(days: 1));
+    }
+    return RentalPricing.inferMinutesBetween(start, end) != null;
+  }
+
+  bool _isSlotNextDayAfterStart(
+    DateTime day,
+    int startHour,
+    int startMinute,
+    int endHour,
+    int endMinute,
+  ) {
+    final start = BookingTimeSlots.buildLocal(day, startHour, startMinute);
+    var end = BookingTimeSlots.buildLocal(day, endHour, endMinute);
+    if (!end.isAfter(start)) {
+      end = end.add(const Duration(days: 1));
+    }
+    return _dateOnly(end).isAfter(_dateOnly(start));
+  }
+
+  bool get _currentEndIsNextDay {
+    final day = _startDay;
+    if (day == null || !_isSameDayBooking) return false;
+    return _isSlotNextDayAfterStart(
+      day,
+      _startHour,
+      _startMinute,
+      _endHour,
+      _endMinute,
+    );
+  }
+
+  BookingDrumTimeCatalog get _startDrumCatalog =>
+      BookingDrumTimeCatalog.fromSlots(_startTimeOptions);
+
+  BookingDrumTimeCatalog _endDrumCatalogFor(int startHour, int startMinute) {
+    final day = _startDay;
+    if (day == null) {
+      return const BookingDrumTimeCatalog(hourOptions: [], minutesPerHour: []);
+    }
+    return BookingDrumTimeCatalog.fromSlots(
+      _endTimeOptionsFor(startHour, startMinute),
+      isNextDayFor: (h, m) =>
+          _isSlotNextDayAfterStart(day, startHour, startMinute, h, m),
+    );
+  }
+
+  BookingDrumTimeCatalog _returnDrumCatalogFor(int startHour, int startMinute) {
+    return BookingDrumTimeCatalog.fromSlots(
+      _returnTimeOptionsFor(startHour, startMinute),
+    );
+  }
+
+  String get _combinedTimeRangeLabel {
+    final start = _formatTimeLabel(_startHour, _startMinute);
+    if (_isSameDayBooking) {
+      return '$start ~ ${_formatEndTimeLabel(_endHour, _endMinute)}';
+    }
+    if (_allowsDailyReturnTimePick) {
+      return '$start ~ ${_formatTimeLabel(_returnHour, _returnMinute)}';
+    }
+    return start;
+  }
+
+  Future<void> _openBookingTimeDrumPicker() async {
+    final startCatalog = _startDrumCatalog;
+    if (startCatalog.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('선택 가능한 시간이 없습니다.')),
+      );
+      return;
+    }
+
+    if (_isSameDayBooking) {
+      final endCatalog = _endDrumCatalogFor(_startHour, _startMinute);
+      if (endCatalog.isEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('선택 가능한 종료 시각이 없습니다.')),
+        );
+        return;
+      }
+
+      final result = await showBookingTimeRangeDrumPicker(
+        context: context,
+        leftTitle: '출고',
+        rightTitle: '반납',
+        startCatalog: startCatalog,
+        endCatalogBuilder: _endDrumCatalogFor,
+        startHour: _startHour,
+        startMinute: _startMinute,
+        endHour: _endHour,
+        endMinute: _endMinute,
+        endIsNextDay: _currentEndIsNextDay,
+      );
+      if (result == null || !mounted) return;
+
+      setState(() {
+        _startHour = result.startHour;
+        _startMinute = result.startMinute;
+        _endHour = result.endHour;
+        _endMinute = result.endMinute;
+        _endHourManuallySet = true;
+      });
+      _onDateTimeChanged();
+      return;
+    }
+
+    if (_allowsDailyReturnTimePick) {
+      final returnCatalog = _returnDrumCatalogFor(_startHour, _startMinute);
+      if (returnCatalog.isEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('선택 가능한 반납 시각이 없습니다.')),
+        );
+        return;
+      }
+
+      final result = await showBookingTimeRangeDrumPicker(
+        context: context,
+        leftTitle: '출고',
+        rightTitle: '반납',
+        startCatalog: startCatalog,
+        endCatalogBuilder: _returnDrumCatalogFor,
+        startHour: _startHour,
+        startMinute: _startMinute,
+        endHour: _returnHour,
+        endMinute: _returnMinute,
+      );
+      if (result == null || !mounted) return;
+
+      setState(() {
+        _startHour = result.startHour;
+        _startMinute = result.startMinute;
+        _returnHour = result.endHour;
+        _returnMinute = result.endMinute;
+        _returnHourManuallySet = true;
+      });
+      _onDateTimeChanged();
+      return;
+    }
+
+    final picked = await showBookingStartDrumPicker(
+      context: context,
+      startCatalog: startCatalog,
+      startHour: _startHour,
+      startMinute: _startMinute,
+    );
+    if (picked == null || !mounted) return;
+
+    setState(() {
+      _startHour = picked.hour;
+      _startMinute = picked.minute;
+      _returnHour = picked.hour;
+      _returnMinute = picked.minute;
+    });
+    _onDateTimeChanged();
   }
 
   interval_billing.RentalPriceBreakdown? get _priceBreakdown {
@@ -593,7 +830,7 @@ class _BookingScreenState extends State<BookingScreen> {
     return RentalPricing.comparisonStrikethroughPrice(
       vehicle,
       period.rentalType,
-      hours: _durationHours,
+      hours: _resolvedPeriod?.hours ?? 0,
       days: _durationDays,
       months: _durationMonths,
       start: period.start,
@@ -868,8 +1105,8 @@ class _BookingScreenState extends State<BookingScreen> {
 
   void _onDateTimeChanged() {
     setState(() {
-      _normalizeHoursForSelectedDay();
-      _normalizeReturnHourForSelectedPeriod();
+      _normalizeTimesForSelectedDay();
+      _normalizeReturnTimeForSelectedPeriod();
       _applyResolvedPeriod(_resolvedPeriod);
       _error = null;
       _validateCouponForCurrentPrice();
@@ -903,8 +1140,12 @@ class _BookingScreenState extends State<BookingScreen> {
     if (dayOnly.isAfter(maxReturn)) return false;
 
     if (!_fleetAllowsPartialMonthlyReturn) {
-      final previewEnd = DateTime(day.year, day.month, day.day, _startHour);
-      final startTime = _buildStartDateTime(start, _startHour);
+      final previewEnd = BookingTimeSlots.buildLocal(
+        day,
+        _startHour,
+        _startMinute,
+      );
+      final startTime = _buildStartDateTime(start, _startHour, _startMinute);
       if (startTime == null || !previewEnd.isAfter(startTime)) return false;
       final days = previewEnd.difference(startTime).inDays;
       if (days >= 30 && days % 30 != 0) return false;
@@ -1104,77 +1345,6 @@ class _BookingScreenState extends State<BookingScreen> {
               ),
             );
           },
-        );
-      },
-    );
-  }
-
-  Future<void> _openHourPicker({
-    required String title,
-    required List<int> hours,
-    required int current,
-    required String Function(int) labelBuilder,
-    required ValueChanged<int> onSelected,
-  }) async {
-    if (hours.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('선택 가능한 시간이 없습니다.')),
-      );
-      return;
-    }
-
-    await showModalBottomSheet<void>(
-      context: context,
-      backgroundColor: DanjiColors.surface,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      builder: (sheetContext) {
-        return SafeArea(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const SizedBox(height: 12),
-              Text(title, style: DanjiTypography.subtitleLarge),
-              const SizedBox(height: 8),
-              ConstrainedBox(
-                constraints: BoxConstraints(
-                  maxHeight: MediaQuery.sizeOf(sheetContext).height * 0.45,
-                ),
-                child: ListView.builder(
-                  shrinkWrap: true,
-                  itemCount: hours.length,
-                  itemBuilder: (context, index) {
-                    final hour = hours[index];
-                    final selected = hour == current;
-                    return ListTile(
-                      title: Text(
-                        labelBuilder(hour),
-                        style: TextStyle(
-                          fontWeight:
-                              selected ? FontWeight.w700 : FontWeight.w500,
-                          color: selected
-                              ? DanjiColors.buttonBlue
-                              : DanjiColors.textPrimary,
-                        ),
-                      ),
-                      trailing: selected
-                          ? const Icon(
-                              Icons.check,
-                              color: DanjiColors.buttonBlue,
-                            )
-                          : null,
-                      onTap: () {
-                        Navigator.pop(sheetContext);
-                        onSelected(hour);
-                      },
-                    );
-                  },
-                ),
-              ),
-              const SizedBox(height: 8),
-            ],
-          ),
         );
       },
     );
@@ -1389,74 +1559,17 @@ class _BookingScreenState extends State<BookingScreen> {
                       ),
                       const SizedBox(height: 12),
                       _TimeSelectCard(
-                        title: '출고 시각',
-                        time: _formatHourLabel(_startHour),
-                        subtitle: _isSameDayBooking
-                            ? '당일 대여 시작 시각'
-                            : _allowsDailyReturnTimePick
-                                ? '반납 시각은 아래에서 별도 선택'
-                                : '반납 시각도 동일하게 적용',
-                        onTap: () => _openHourPicker(
-                          title: '출고 시각',
-                          hours: _startHourOptions,
-                          current: _startHour,
-                          labelBuilder: _formatHourLabel,
-                          onSelected: (hour) {
-                            setState(() => _startHour = hour);
-                            if (_isSameDayBooking) {
-                              _syncEndHourFromStart();
-                            } else if (!_returnHourManuallySet) {
-                              _returnHour = hour;
-                            }
-                            _onDateTimeChanged();
-                          },
-                        ),
+                        title: _isSameDayBooking
+                            ? '대여 시각'
+                            : '출고 · 반납 시각',
+                        time: _combinedTimeRangeLabel,
+                        subtitle: _hasValidHourlyDuration && _isSameDayBooking
+                            ? '${_durationLabel} · 10분 단위'
+                            : '10분 단위 · 탭하여 선택',
+                        subtitleHighlight:
+                            _hasValidHourlyDuration && _isSameDayBooking,
+                        onTap: _openBookingTimeDrumPicker,
                       ),
-                      if (_allowsDailyReturnTimePick) ...[
-                        const SizedBox(height: 12),
-                        _TimeSelectCard(
-                          title: '반납 시각',
-                          time: _formatHourLabel(_returnHour),
-                          subtitle: '출고 시각과 별도로 선택 가능',
-                          onTap: () => _openHourPicker(
-                            title: '반납 시각',
-                            hours: _returnHourOptions,
-                            current: _returnHour,
-                            labelBuilder: _formatHourLabel,
-                            onSelected: (hour) {
-                              setState(() {
-                                _returnHour = hour;
-                                _returnHourManuallySet = true;
-                              });
-                              _onDateTimeChanged();
-                            },
-                          ),
-                        ),
-                      ],
-                      if (_isSameDayBooking) ...[
-                        const SizedBox(height: 12),
-                        _TimeSelectCard(
-                          title: '종료 시간',
-                          time: _formatEndHourLabel(_endHour),
-                          subtitle: _durationHours >= 1
-                              ? '${_durationHours}시간 선택됨'
-                              : '1시간 이상 선택',
-                          subtitleHighlight: _durationHours >= 1,
-                          onTap: () => _openHourPicker(
-                            title: '종료 시간',
-                            hours: _endHourOptions,
-                            current: _endHour,
-                            labelBuilder: _formatEndHourLabel,
-                            onSelected: (hour) {
-                              setState(() {
-                                _endHour = hour;
-                                _endHourManuallySet = true;
-                              });
-                              _onDateTimeChanged();
-                            },
-                          ),
-                        ),
-                      ],
                       if (_periodSummaryLine != null) ...[
                         const SizedBox(height: 12),
                         _BookingPeriodSummaryBanner(text: _periodSummaryLine!),
@@ -1535,7 +1648,7 @@ class _BookingScreenState extends State<BookingScreen> {
                                     selected: !entry.isBlocked &&
                                         _selected?.id == entry.vehicle.id,
                                     rentalType: _rentalType,
-                                    durationHours: _durationHours,
+                                    durationHours: _resolvedPeriod?.hours ?? 0,
                                     durationDays: _durationDays,
                                     durationMonths: _durationMonths,
                                     periodStart: _rentalStartTime,
