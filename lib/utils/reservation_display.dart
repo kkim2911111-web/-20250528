@@ -150,7 +150,7 @@ String formatScheduledPeriod({
   return formatRentalPeriod(formatter: formatter, start: startAt, end: endAt);
 }
 
-/// 이용내역 카드 — 예약/실제 시각 (KST, 동일일은 HH:mm)
+/// 이용내역 카드 — 예약/대여 시각 (KST, 동일일은 HH:mm)
 String? formatHistoryTimeRangeLabel({
   required String prefix,
   DateTime? start,

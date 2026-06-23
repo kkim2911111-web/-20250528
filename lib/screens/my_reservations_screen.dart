@@ -1045,7 +1045,7 @@ class _ReservationCard extends StatelessWidget {
               const SizedBox(height: 4),
               Text(
                 formatHistoryTimeRangeLabel(
-                  prefix: '실제',
+                  prefix: '대여',
                   start: reservation.rentalStartedAt,
                   end: reservation.returnedAt,
                   fullFormatter: dateFormat,
