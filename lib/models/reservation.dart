@@ -39,6 +39,7 @@ class Reservation {
   final bool isNoShow;
   final bool isOverdue;
   final int? overdueOverageAmount;
+  final int? overdueOverageHours;
   final bool overdueOverageCharged;
   final int extensionPriceTotal;
   final String? reservationNumber;
@@ -79,6 +80,7 @@ class Reservation {
     this.isNoShow = false,
     this.isOverdue = false,
     this.overdueOverageAmount,
+    this.overdueOverageHours,
     this.overdueOverageCharged = false,
     this.extensionPriceTotal = 0,
     this.reservationNumber,
@@ -121,6 +123,7 @@ class Reservation {
       isNoShow: isNoShow,
       isOverdue: isOverdue,
       overdueOverageAmount: overdueOverageAmount,
+      overdueOverageHours: overdueOverageHours,
       overdueOverageCharged: overdueOverageCharged,
       extensionPriceTotal: extensionPriceTotal,
       reservationNumber: reservationNumber,
@@ -175,6 +178,7 @@ class Reservation {
       isNoShow: map['is_no_show'] == true,
       isOverdue: map['is_overdue'] == true,
       overdueOverageAmount: (map['overdue_overage_amount'] as num?)?.toInt(),
+      overdueOverageHours: (map['overdue_overage_hours'] as num?)?.toInt(),
       overdueOverageCharged: map['overdue_overage_charged'] == true,
       extensionPriceTotal: (map['extension_price_total'] as num?)?.toInt() ?? 0,
       reservationNumber: map['reservation_number']?.toString(),
@@ -240,17 +244,17 @@ class Reservation {
   bool get isRentalPhotosReady =>
       photosUploaded && hasPickupPhotosComplete;
 
-  /// 운행시작 버튼 활성화 — 예약 시작 30분 전부터
-  static const rentalStartLeadTime = Duration(minutes: 30);
+  /// 운행시작 버튼 활성화 — 예약 시작 10분 전부터
+  static const rentalStartLeadTime = Duration(minutes: 10);
 
-  /// 예약 시작 30분 전 이전 (버튼 비활성)
+  /// 예약 시작 10분 전 이전 (버튼 비활성)
   bool get isTooEarlyForRentalStart {
     final start = _start;
     if (start == null) return false;
     return DateTime.now().isBefore(start.subtract(rentalStartLeadTime));
   }
 
-  /// 운행시작 가능 시간대 — 시작 30분 전 ~ 종료 시각
+  /// 운행시작 가능 시간대 — 시작 10분 전 ~ 종료 시각
   bool get isRentalStartWindowOpen {
     if (isUsageTimeExpired) return false;
     return !isTooEarlyForRentalStart;
@@ -388,7 +392,7 @@ class Reservation {
   /// 예약 종료 시각이 지나지 않았는지
   bool get isNotExpired => !isUsageTimeExpired;
 
-  /// 스마트키 문열림 — 예약 시작 30분 전부터
+  /// 스마트키 문열림 — 예약 시작 10분 전부터
   bool get canUnlockDoor => !isTooEarlyForRentalStart;
 
   /// 스마트키 — 대여 중(in_use)만
@@ -491,18 +495,43 @@ class Reservation {
   bool get showHistoryPriceBreakdown =>
       chargedOverdueOverage > 0 || extensionPriceTotal > 0;
 
+  /// 예약 기간 기본요금 청구 시간 (end_at − start_at, 1시간 올림)
+  int? get scheduledBaseBillingHours {
+    final start = startAt;
+    final end = endAt;
+    if (start == null || end == null || !end.isAfter(start)) return null;
+    final minutes = end.difference(start).inMinutes;
+    if (minutes <= 0) return null;
+    return (minutes / 60).ceil();
+  }
+
   /// 이용내역 금액 분해 라벨
-  List<({String label, int amount})> get historyPriceParts {
-    final parts = <({String label, int amount})>[];
+  List<({String label, int amount, int? hours})> get historyPriceParts {
+    final parts = <({String label, int amount, int? hours})>[];
     final base = baseRentalPrice;
     if (base > 0) {
-      parts.add((label: '기본요금', amount: base));
+      parts.add((
+        label: '기본요금',
+        amount: base,
+        hours: scheduledBaseBillingHours,
+      ));
     }
     if (extensionPriceTotal > 0) {
-      parts.add((label: '연장요금', amount: extensionPriceTotal));
+      parts.add((
+        label: '연장요금',
+        amount: extensionPriceTotal,
+        hours: null,
+      ));
     }
-    if (chargedOverdueOverage > 0) {
-      parts.add((label: '초과요금', amount: chargedOverdueOverage));
+    final overageHours = overdueOverageHours;
+    if (chargedOverdueOverage > 0 &&
+        overageHours != null &&
+        overageHours > 0) {
+      parts.add((
+        label: '초과요금',
+        amount: chargedOverdueOverage,
+        hours: overageHours,
+      ));
     }
     return parts;
   }
@@ -559,10 +588,10 @@ abstract final class RentalPhotoMessages {
 
 /// 운행시작 안내
 abstract final class RentalStartMessages {
-  static const tooEarly = '대여 시작 가능 시간이 아닙니다. (예약 시작 30분 전부터 가능)';
-  static const subtitleWhenTooEarly = '예약 시작 30분 전부터 이용 가능';
+  static const tooEarly = '대여 시작 가능 시간이 아닙니다. (예약 시작 10분 전부터 가능)';
+  static const subtitleWhenTooEarly = '예약 시작 10분 전부터 이용 가능';
   static const subtitleReady = '사진 등록 후 출발하세요';
-  static const startButtonActivationHint = '(30분전 활성화됩니다)';
+  static const startButtonActivationHint = '(10분전 활성화됩니다)';
 }
 
 /// 예약 취소 안내 문구

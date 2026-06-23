@@ -150,6 +150,34 @@ String formatScheduledPeriod({
   return formatRentalPeriod(formatter: formatter, start: startAt, end: endAt);
 }
 
+/// 이용내역 카드 — 예약/실제 시각 (KST, 동일일은 HH:mm)
+String? formatHistoryTimeRangeLabel({
+  required String prefix,
+  DateTime? start,
+  DateTime? end,
+  DateFormat? fullFormatter,
+}) {
+  if (end == null) return null;
+  final endLocal = end.toLocal();
+  if (start == null) {
+    final formatter = fullFormatter ?? DateFormat('yyyy-MM-dd HH:mm');
+    return '$prefix - ~ ${formatter.format(endLocal)}';
+  }
+  final startLocal = start.toLocal();
+  final startDay = DateTime(
+    startLocal.year,
+    startLocal.month,
+    startLocal.day,
+  );
+  final endDay = DateTime(endLocal.year, endLocal.month, endLocal.day);
+  if (startDay == endDay) {
+    final time = DateFormat('HH:mm');
+    return '$prefix ${time.format(startLocal)} ~ ${time.format(endLocal)}';
+  }
+  final formatter = fullFormatter ?? DateFormat('yyyy-MM-dd HH:mm');
+  return '$prefix ${formatter.format(startLocal)} ~ ${formatter.format(endLocal)}';
+}
+
 /// 예약·결제 완료 — 차량명 · 기간 (예: 카니발9 · 1개월 5일)
 String? formatBookingSummaryLine({
   String? vehicleName,

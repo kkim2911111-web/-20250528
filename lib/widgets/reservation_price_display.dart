@@ -94,9 +94,11 @@ class ReservationHistoryPriceDisplay extends StatelessWidget {
         DanjiTypography.body.copyWith(fontWeight: FontWeight.w600);
 
     final parts = reservation.historyPriceParts;
-    final breakdown = parts
-        .map((p) => '${p.label} ₩${won.format(p.amount)}')
-        .join(' · ');
+    final breakdown = parts.map((p) {
+      final hours =
+          p.hours != null && p.hours! > 0 ? ' (${p.hours}시간)' : '';
+      return '${p.label} ₩${won.format(p.amount)}$hours';
+    }).join(' · ');
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,

@@ -1028,7 +1028,32 @@ class _ReservationCard extends StatelessWidget {
               ),
             ),
           ],
-          if (start != null && end != null) ...[
+          if (showReservationId &&
+              reservation.startAt != null &&
+              reservation.endAt != null) ...[
+            const SizedBox(height: 8),
+            Text(
+              formatHistoryTimeRangeLabel(
+                prefix: '예약',
+                start: reservation.startAt,
+                end: reservation.endAt,
+                fullFormatter: dateFormat,
+              )!,
+              style: DanjiTypography.secondary.copyWith(height: 1.4),
+            ),
+            if (reservation.returnedAt != null) ...[
+              const SizedBox(height: 4),
+              Text(
+                formatHistoryTimeRangeLabel(
+                  prefix: '실제',
+                  start: reservation.rentalStartedAt,
+                  end: reservation.returnedAt,
+                  fullFormatter: dateFormat,
+                )!,
+                style: DanjiTypography.secondary.copyWith(height: 1.4),
+              ),
+            ],
+          ] else if (start != null && end != null) ...[
             const SizedBox(height: 8),
             Text(
               '${dateFormat.format(start)} ~ ${dateFormat.format(end)}',
