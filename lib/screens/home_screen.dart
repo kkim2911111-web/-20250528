@@ -7,6 +7,7 @@ import '../models/grouped_reservations.dart';
 import '../models/home_banner.dart';
 import '../models/notice.dart';
 import '../models/reservation.dart';
+import '../models/vehicle.dart';
 import '../supabase_client.dart';
 import '../theme/danji_colors.dart';
 import '../theme/danji_typography.dart';
@@ -17,7 +18,7 @@ import '../services/notice_service.dart';
 import '../services/notification_inbox_service.dart';
 import '../services/rental_service.dart';
 import '../services/reservation_refresh_bus.dart';
-import '../theme/danji_theme.dart';
+import '../services/vehicle_service.dart';
 import '../utils/reservation_status_badge.dart';
 import '../utils/network_retry.dart';
 import 'booking_screen.dart';
@@ -29,6 +30,7 @@ import '../utils/rental_navigation.dart';
 import '../utils/time_remaining_format.dart';
 import '../utils/booking_eligibility.dart';
 import '../utils/cancel_refund_policy.dart';
+import '../utils/rental_pricing.dart';
 import '../widgets/reservation_cancel_dialog.dart';
 import '../services/app_maintenance_service.dart';
 import '../widgets/maintenance_mode_screen.dart';
@@ -37,6 +39,7 @@ import '../widgets/danji_logo.dart';
 import '../utils/danji_snackbar.dart';
 import '../widgets/home_local_restaurants_section.dart';
 import '../widgets/home_promo_banners.dart';
+import '../services/next_reservation_service.dart';
 import '../utils/rental_inquiry_flow.dart';
 import '../widgets/smart_key_door_buttons.dart';
 
@@ -55,6 +58,8 @@ class HomeScreenState extends State<HomeScreen> {
   final _bannerService = BannerService();
   final _noticeService = NoticeService();
   final _inboxService = NotificationInboxService();
+  final _nextReservationService = NextReservationService();
+  final _vehicleService = VehicleService();
   final _timeFormat = DateFormat('HH:mm');
 
   Future<_HomeData>? _future;
@@ -115,6 +120,7 @@ class HomeScreenState extends State<HomeScreen> {
     var location = '우리 단지의 두 번째 차, 단지카';
     var residentApproved = false;
     var hasResidentRegistration = false;
+    var availableVehicles = <Vehicle>[];
 
     try {
       final profile = await _myPageService.fetchProfile();
@@ -154,15 +160,24 @@ class HomeScreenState extends State<HomeScreen> {
     }
 
     try {
+      availableVehicles = await _loadAvailableVehicles();
+    } catch (_) {}
+
+    try {
       final grouped = await withNetworkRetry(
         () => _rentalService.fetchGroupedReservations(forceRefresh: true),
       );
+      final carousel = _homeCarouselReservations(grouped);
+      final nextReservationById =
+          await _nextReservationService.checkForReservations(carousel);
       return _HomeData(
         grouped: grouped,
         userName: name,
         locationLabel: location,
         residentApproved: residentApproved,
         hasResidentRegistration: hasResidentRegistration,
+        nextReservationById: nextReservationById,
+        availableVehicles: availableVehicles,
       );
     } catch (e) {
       return _HomeData(
@@ -171,8 +186,34 @@ class HomeScreenState extends State<HomeScreen> {
         residentApproved: residentApproved,
         hasResidentRegistration: hasResidentRegistration,
         error: e,
+        nextReservationById: const {},
+        availableVehicles: availableVehicles,
       );
     }
+  }
+
+  Future<List<Vehicle>> _loadAvailableVehicles() async {
+    final vehicleResult = await _vehicleService.fetchVehiclesForMyComplex();
+    final vehicles = vehicleResult.vehicles;
+    if (vehicles.isEmpty) return [];
+
+    final ids = vehicles.map((v) => v.id).toList();
+    final rows = await supabase
+        .from('reservations')
+        .select('vehicle_id')
+        .inFilter('vehicle_id', ids)
+        .eq('status', 'in_use');
+
+    final inUseIds = (rows as List)
+        .map((row) => row['vehicle_id']?.toString())
+        .whereType<String>()
+        .toSet();
+
+    final available = vehicles
+        .where((vehicle) => !inUseIds.contains(vehicle.id))
+        .toList()
+      ..sort((a, b) => a.name.compareTo(b.name));
+    return available;
   }
 
   List<Reservation> _homeCarouselReservations(GroupedReservations? grouped) {
@@ -276,11 +317,12 @@ class HomeScreenState extends State<HomeScreen> {
                 if (reservations.isEmpty)
                   _EmptyHomeBody(
                     onBook: () => _openBooking(context),
-                    onReservations: () => _openMyReservations(context),
+                    availableVehicles: data.availableVehicles,
                   )
                 else
                   _HomeReservationSection(
                     reservations: reservations,
+                    nextReservationById: data.nextReservationById,
                     timeFormat: _timeFormat,
                     onBook: () => _openBooking(context),
                     onReservations: () => _openMyReservations(context),
@@ -571,6 +613,7 @@ bool _canShowCancelButton(Reservation reservation) =>
 
 class _HomeReservationSection extends StatefulWidget {
   final List<Reservation> reservations;
+  final Map<String, bool> nextReservationById;
   final DateFormat timeFormat;
   final VoidCallback onBook;
   final VoidCallback onReservations;
@@ -584,6 +627,7 @@ class _HomeReservationSection extends StatefulWidget {
 
   const _HomeReservationSection({
     required this.reservations,
+    required this.nextReservationById,
     required this.timeFormat,
     required this.onBook,
     required this.onReservations,
@@ -631,6 +675,7 @@ class _HomeReservationSectionState extends State<_HomeReservationSection> {
   }
 
   Reservation get _current => widget.reservations[_currentPage];
+
 
   @override
   Widget build(BuildContext context) {
@@ -1040,6 +1085,8 @@ class _HomeData {
   final String locationLabel;
   final bool residentApproved;
   final bool hasResidentRegistration;
+  final Map<String, bool> nextReservationById;
+  final List<Vehicle> availableVehicles;
   final Object? error;
 
   const _HomeData({
@@ -1048,6 +1095,8 @@ class _HomeData {
     required this.locationLabel,
     this.residentApproved = false,
     this.hasResidentRegistration = false,
+    this.nextReservationById = const {},
+    this.availableVehicles = const [],
     this.error,
   });
 }
@@ -1522,11 +1571,11 @@ class _ErrorBanner extends StatelessWidget {
 
 class _EmptyHomeBody extends StatelessWidget {
   final VoidCallback onBook;
-  final VoidCallback onReservations;
+  final List<Vehicle> availableVehicles;
 
   const _EmptyHomeBody({
     required this.onBook,
-    required this.onReservations,
+    required this.availableVehicles,
   });
 
   @override
@@ -1540,16 +1589,248 @@ class _EmptyHomeBody extends StatelessWidget {
           onTap: onBook,
         ),
         const SizedBox(height: 12),
-        _QuickGrid2x2(
-          tiles: [
-            _QuickTileData(
-              icon: Icons.receipt_long_outlined,
-              label: '내 예약',
-              onTap: onReservations,
-            ),
-          ],
+        _HomeAvailableVehicleCarousel(
+          vehicles: availableVehicles,
+          onVehicleTap: onBook,
         ),
       ],
+    );
+  }
+}
+
+class _HomeAvailableVehicleCarousel extends StatefulWidget {
+  final List<Vehicle> vehicles;
+  final VoidCallback onVehicleTap;
+
+  const _HomeAvailableVehicleCarousel({
+    required this.vehicles,
+    required this.onVehicleTap,
+  });
+
+  @override
+  State<_HomeAvailableVehicleCarousel> createState() =>
+      _HomeAvailableVehicleCarouselState();
+}
+
+class _HomeAvailableVehicleCarouselState
+    extends State<_HomeAvailableVehicleCarousel> {
+  late final PageController _pageController;
+  int _currentPage = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    _pageController = PageController();
+  }
+
+  @override
+  void dispose() {
+    _pageController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (widget.vehicles.isEmpty) {
+      return const Padding(
+        padding: EdgeInsets.symmetric(vertical: 20),
+        child: Text(
+          '현재 이용 가능한 차량이 없습니다',
+          textAlign: TextAlign.center,
+          style: TextStyle(
+            fontSize: 14,
+            color: DanjiColors.textSecondary,
+            height: 1.4,
+          ),
+        ),
+      );
+    }
+
+    final multi = widget.vehicles.length > 1;
+
+    return Column(
+      children: [
+        SizedBox(
+          height: 132,
+          child: PageView.builder(
+            controller: _pageController,
+            itemCount: widget.vehicles.length,
+            onPageChanged: (index) => setState(() => _currentPage = index),
+            itemBuilder: (context, index) {
+              return _HomeAvailableVehicleCard(
+                vehicle: widget.vehicles[index],
+                onTap: widget.onVehicleTap,
+              );
+            },
+          ),
+        ),
+        if (multi) ...[
+          const SizedBox(height: 12),
+          _PageDots(
+            count: widget.vehicles.length,
+            index: _currentPage,
+          ),
+        ],
+      ],
+    );
+  }
+}
+
+class _HomeAvailableVehicleCard extends StatelessWidget {
+  static const _priceBlue = Color(0xFF3182F6);
+  static const _imageBackground = Color(0xFFF0F4FA);
+
+  final Vehicle vehicle;
+  final VoidCallback onTap;
+
+  const _HomeAvailableVehicleCard({
+    required this.vehicle,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final plate = vehicle.carNumber?.trim();
+    final vehicleType = vehicle.vehicleType.trim();
+    final hourlyPrice = RentalPricing.displayUnitPriceLabel(
+      vehicle,
+      RentalType.hourly,
+    );
+    final metaParts = <String>[
+      if (vehicleType.isNotEmpty) vehicleType,
+      if (plate != null && plate.isNotEmpty) plate else '번호 미등록',
+    ];
+
+    return Material(
+      color: Colors.transparent,
+      borderRadius: BorderRadius.circular(14),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(14),
+        child: Ink(
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(
+              color: DanjiColors.border,
+              width: 0.5,
+            ),
+          ),
+          child: Padding(
+            padding: const EdgeInsets.all(14),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: [
+                _HomeAvailableVehicleThumbnail(url: vehicle.carImageUrl),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Text(
+                        vehicle.name,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          fontSize: 15,
+                          fontWeight: FontWeight.w600,
+                          color: DanjiColors.textPrimary,
+                          height: 1.25,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        metaParts.join(' · '),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          fontSize: 12,
+                          color: DanjiColors.textSecondary,
+                          height: 1.3,
+                        ),
+                      ),
+                      const SizedBox(height: 6),
+                      Text(
+                        hourlyPrice,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w600,
+                          color: _priceBlue,
+                          height: 1.3,
+                        ),
+                      ),
+                      const SizedBox(height: 6),
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 8,
+                          vertical: 2,
+                        ),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFE8F4FF),
+                          borderRadius: BorderRadius.circular(20),
+                        ),
+                        child: const Text(
+                          '이용 가능',
+                          style: TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w600,
+                            color: _priceBlue,
+                            height: 1.2,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _HomeAvailableVehicleThumbnail extends StatelessWidget {
+  final String? url;
+
+  const _HomeAvailableVehicleThumbnail({this.url});
+
+  bool get _hasUrl {
+    final value = url?.trim();
+    return value != null && value.isNotEmpty;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(8),
+      child: Container(
+        width: 80,
+        height: 52,
+        color: _HomeAvailableVehicleCard._imageBackground,
+        alignment: Alignment.center,
+        child: _hasUrl
+            ? Image.network(
+                url!.trim(),
+                width: 80,
+                height: 52,
+                fit: BoxFit.cover,
+                errorBuilder: (_, __, ___) => const Icon(
+                  Icons.directions_car,
+                  color: _HomeAvailableVehicleCard._priceBlue,
+                  size: 28,
+                ),
+              )
+            : const Icon(
+                Icons.directions_car,
+                color: _HomeAvailableVehicleCard._priceBlue,
+                size: 28,
+              ),
+      ),
     );
   }
 }
