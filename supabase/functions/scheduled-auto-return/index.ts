@@ -1,5 +1,9 @@
 import { handleCors, jsonResponse } from '../_shared/http.ts';
 import { getAdminClient } from '../_shared/payment.ts';
+import {
+  hasOverdueNextReservationConflict,
+  processOverdueNextReservationConflicts,
+} from '../_shared/overdue_next_reservation_conflict.ts';
 import { dispatchPushScenario } from '../_shared/push_scenarios.ts';
 import { processVehicleNotReturnedRefund } from '../_shared/vehicle_not_returned_refund.ts';
 
@@ -176,6 +180,10 @@ async function notifyOverdues(
 
     if (resRow?.overdue_notified_at) continue;
 
+    if (await hasOverdueNextReservationConflict(admin, reservationId)) {
+      continue;
+    }
+
     const { complexId, vehicleName } = await fetchVehicleContext(admin, vehicleId);
     const renterName = await fetchRenterName(admin, userId);
     const endAt = await admin
@@ -254,6 +262,7 @@ Deno.serve(async (req) => {
     const vehicleNotReturned = (payload.vehicleNotReturned ?? []) as ProcessedRow[];
 
     const noShowNotified = await notifyNoShows(admin, noShows);
+    const overdueConflictStats = await processOverdueNextReservationConflicts(admin);
     const overdueNotified = await notifyOverdues(admin, overdues);
     const refundStats = await refundVehicleNotReturned(admin, vehicleNotReturned);
 
@@ -261,6 +270,10 @@ Deno.serve(async (req) => {
       ok: true,
       result: payload,
       noShowNotified,
+      overdueConflictFirstWarned: overdueConflictStats.firstWarned,
+      overdueConflictSecondWarned: overdueConflictStats.secondWarned,
+      overdueConflictCancelled: overdueConflictStats.cancelled,
+      overdueConflictRefundFailed: overdueConflictStats.refundFailed,
       overdueNotified,
       vehicleNotReturnedRefunded: refundStats.refunded,
       vehicleNotReturnedRefundFailed: refundStats.failed,

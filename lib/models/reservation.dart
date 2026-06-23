@@ -279,6 +279,12 @@ class Reservation {
   bool get isVehicleNotReturned =>
       isVehicleNotReturnedCancelReason(cancelReason);
 
+  bool get isOverdueConflict =>
+      isOverdueConflictCancelReason(cancelReason);
+
+  bool get isConflictFullRefund =>
+      isConflictFullRefundCancelReason(cancelReason);
+
   bool get isPaid =>
       paymentStatus == 'paid' ||
       (paymentKey != null && paymentKey!.trim().isNotEmpty);
@@ -454,7 +460,7 @@ class Reservation {
   }
 
   String get displayStatusLabel {
-    if (isVehicleNotReturned) return vehicleNotReturnedStatusBadgeLabel;
+    if (isConflictFullRefund) return vehicleNotReturnedStatusBadgeLabel;
     if (isNoShow) return '노쇼완료';
     if (isCancelled) return '예약 취소';
     if (isReturnOverdue) return '반납지연중';
