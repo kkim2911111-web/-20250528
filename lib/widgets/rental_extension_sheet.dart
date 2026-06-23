@@ -79,6 +79,11 @@ class _RentalExtensionSheetState extends State<RentalExtensionSheet> {
 
   bool _isPresetDisabled(int value) => _presetConflictCache[value] == true;
 
+  bool get _hasDisabledPreset {
+    final presets = RentalExtensionPricing.presetValuesFor(_rentalType);
+    return presets.any(_isPresetDisabled);
+  }
+
   Future<void> _selectPreset(int value) async {
     if (_isPresetDisabled(value)) return;
     final newEnd = RentalExtensionPricing.newEndForPreset(
@@ -293,6 +298,18 @@ class _RentalExtensionSheetState extends State<RentalExtensionSheet> {
                 _CustomSelectChip(onTap: _openCustomPicker),
               ],
             ),
+            if (_hasDisabledPreset) ...[
+              const SizedBox(height: 12),
+              Text(
+                '다음 이용자가 기다리고 있어요. 반납이 어려운 상황이시면 고객센터로 연락 주세요.',
+                textAlign: TextAlign.center,
+                style: DanjiTypography.body.copyWith(
+                  fontSize: 12,
+                  color: DanjiColors.textSecondary,
+                  height: 1.5,
+                ),
+              ),
+            ],
             const SizedBox(height: 20),
             if (_selectedNewEnd != null) ...[
               Text(
