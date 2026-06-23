@@ -79,7 +79,7 @@ Future<bool> openRentalExtension(
         .from('vehicles')
         .select(
           'id, model_name, price_per_hour, daily_overage_hourly_rate, '
-          'monthly_excess_daily_price, rental_types, service_type',
+          'monthly_excess_daily_price, rental_types, vehicle_type',
         )
         .eq('id', current.vehicleId)
         .maybeSingle();
