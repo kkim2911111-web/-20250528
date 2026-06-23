@@ -11,8 +11,20 @@ import {
   makeOrderId,
 } from '../_shared/payment.ts';
 import { cancelTossPayment, chargeTossBilling } from '../_shared/toss.ts';
+import { dispatchPushScenario } from '../_shared/push_scenarios.ts';
 
 const MAX_BILLING_RETRIES = 3;
+
+function extensionOrderName(
+  rentalType: string | undefined,
+  newEndAt: string | undefined,
+): string {
+  const type = rentalType?.toLowerCase() ?? 'hourly';
+  if (type === 'daily' || type === 'monthly') {
+    return '대여 연장';
+  }
+  return newEndAt ? '대여 연장' : '대여 연장';
+}
 
 Deno.serve(async (req) => {
   const cors = handleCors(req);
@@ -32,13 +44,17 @@ Deno.serve(async (req) => {
 
     const body = await req.json();
     const reservationId = body?.reservationId?.toString()?.trim();
-    const extensionHours = Number(body?.extensionHours ?? 1);
+    const newEndAtRaw = body?.newEndAt?.toString()?.trim();
+    const extensionHoursRaw = body?.extensionHours;
 
     if (!reservationId) {
       return jsonResponse({ error: 'reservationId 가 필요합니다.' }, 400);
     }
-    if (!Number.isInteger(extensionHours) || extensionHours < 1) {
-      return jsonResponse({ error: 'extensionHours 는 1 이상이어야 합니다.' }, 400);
+    if (!newEndAtRaw && extensionHoursRaw == null) {
+      return jsonResponse(
+        { error: 'newEndAt 또는 extensionHours 가 필요합니다.' },
+        400,
+      );
     }
 
     const userClient = getUserClient(authHeader);
@@ -63,12 +79,23 @@ Deno.serve(async (req) => {
       throw e;
     }
 
+    const checkParams: Record<string, unknown> = {
+      p_reservation_id: reservationId,
+    };
+    if (newEndAtRaw) {
+      checkParams.p_new_end_at = newEndAtRaw;
+    }
+    if (extensionHoursRaw != null) {
+      const extensionHours = Number(extensionHoursRaw);
+      if (!Number.isInteger(extensionHours) || extensionHours < 1) {
+        return jsonResponse({ error: 'extensionHours 는 1 이상이어야 합니다.' }, 400);
+      }
+      checkParams.p_extension_hours = extensionHours;
+    }
+
     const { data: checkRaw, error: checkErr } = await userClient.rpc(
       'check_rental_extension_for_me',
-      {
-        p_reservation_id: reservationId,
-        p_extension_hours: extensionHours,
-      },
+      checkParams,
     );
 
     if (checkErr) {
@@ -88,6 +115,10 @@ Deno.serve(async (req) => {
     }
 
     const addedPrice = Number(check.addedPrice ?? 0);
+    const newEndAt = (check.newEndAt as string) ?? newEndAtRaw;
+    const extensionHours = Number(check.extensionHours ?? extensionHoursRaw ?? 1);
+    const rentalType = check.rentalType as string | undefined;
+
     if (!Number.isInteger(addedPrice) || addedPrice < 0) {
       return jsonResponse({ error: '추가 요금 계산 오류' }, 500);
     }
@@ -113,24 +144,47 @@ Deno.serve(async (req) => {
       );
     }
 
+    const applyParams: Record<string, unknown> = {
+      p_reservation_id: reservationId,
+      p_payment_key: null,
+      p_payment_order_id: null,
+    };
+    if (newEndAt) {
+      applyParams.p_new_end_at = newEndAt;
+    } else {
+      applyParams.p_extension_hours = extensionHours;
+    }
+
+    const notifyExtensionComplete = async (applied: Record<string, unknown>) => {
+      try {
+        await dispatchPushScenario({
+          admin,
+          scenario: 'customer_rental_extension_complete',
+          payload: {
+            userId: user.id,
+            reservationId,
+            endAt: String(applied.newEndAt ?? newEndAt ?? ''),
+          },
+        });
+      } catch (pushErr) {
+        console.error('[billing-extension-charge] push', pushErr);
+      }
+    };
+
     if (addedPrice === 0) {
       const { data: applied, error: applyErr } = await userClient.rpc(
         'apply_rental_extension_for_me',
-        {
-          p_reservation_id: reservationId,
-          p_extension_hours: extensionHours,
-          p_payment_key: null,
-          p_payment_order_id: null,
-        },
+        applyParams,
       );
       if (applyErr) {
         return jsonResponse({ error: applyErr.message }, 400);
       }
+      await notifyExtensionComplete((applied ?? {}) as Record<string, unknown>);
       return jsonResponse({ ok: true, addedPrice: 0, result: applied });
     }
 
     const orderId = `ext_${reservationId}_${makeOrderId()}`;
-    const orderName = `대여 연장 ${extensionHours}시간`;
+    const orderName = extensionOrderName(rentalType, newEndAt);
 
     let paymentKey: string | null = null;
     try {
@@ -149,8 +203,7 @@ Deno.serve(async (req) => {
       const { data: applied, error: applyErr } = await userClient.rpc(
         'apply_rental_extension_for_me',
         {
-          p_reservation_id: reservationId,
-          p_extension_hours: extensionHours,
+          ...applyParams,
           p_payment_key: paymentKey,
           p_payment_order_id: orderId,
         },
@@ -175,6 +228,8 @@ Deno.serve(async (req) => {
           400,
         );
       }
+
+      await notifyExtensionComplete((applied ?? {}) as Record<string, unknown>);
 
       return jsonResponse({
         ok: true,
@@ -215,6 +270,7 @@ Deno.serve(async (req) => {
           amount: addedPrice,
           complexId,
           extensionHours,
+          extensionNewEndAt: newEndAt ?? null,
           lastError: err.message || '결제 실패',
         });
         await notifyBillingPaymentFailed(admin, {

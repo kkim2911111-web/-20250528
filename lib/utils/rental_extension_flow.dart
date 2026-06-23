@@ -1,29 +1,30 @@
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
 import '../models/app_feature_config.dart';
 import '../models/rental_extension_result.dart';
 import '../models/reservation.dart';
+import '../models/vehicle.dart';
+import '../services/next_reservation_service.dart';
 import '../services/rental_service.dart';
-import '../utils/feature_kill_switch_guard.dart';
-import '../services/support_contacts_service.dart';
 import '../supabase_client.dart';
 import '../theme/danji_colors.dart';
-import 'phone_launcher.dart';
+import '../utils/feature_kill_switch_guard.dart';
+import '../widgets/rental_extension_sheet.dart';
 
-/// 연장 버튼 → 서버 최신 예약 조회 → 가능 여부 확인 → 연장 적용 또는 안내
+/// 연장 버튼 → 바텀시트 → 결제·적용
 Future<bool> openRentalExtension(
   BuildContext context,
-  Reservation reservation, {
-  int extensionHours = 1,
-}) async {
+  Reservation reservation,
+) async {
   if (!await ensureFeatureEnabled(context, AppFeatureKeys.extension)) {
     return false;
   }
 
   final service = RentalService();
+  final nextService = NextReservationService();
   final navigator = Navigator.of(context, rootNavigator: true);
+
   showDialog<void>(
     context: context,
     barrierDismissible: false,
@@ -38,7 +39,7 @@ Future<bool> openRentalExtension(
               children: [
                 CircularProgressIndicator(),
                 SizedBox(height: 16),
-                Text(RentalExtensionMessages.checking),
+                Text(RentalExtensionMessages.loading),
               ],
             ),
           ),
@@ -48,7 +49,9 @@ Future<bool> openRentalExtension(
   );
 
   Reservation current;
-  RentalExtensionCheckResult check;
+  Vehicle vehicle;
+  NextBlockingReservation? nextReservation;
+
   try {
     current = await service.fetchReservation(reservation.id);
     if (!current.isInUse) {
@@ -61,9 +64,41 @@ Future<bool> openRentalExtension(
       return false;
     }
 
-    check = await service.checkRentalExtension(
-      reservationId: current.id,
-      extensionHours: extensionHours,
+    final endAt = current.endAt;
+    if (endAt == null) {
+      if (navigator.canPop()) navigator.pop();
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('종료 시각을 확인할 수 없습니다.')),
+        );
+      }
+      return false;
+    }
+
+    final vehicleRow = await supabase
+        .from('vehicles')
+        .select(
+          'id, name, price_per_hour, daily_overage_hourly_rate, '
+          'monthly_excess_daily_price, rental_types, service_type',
+        )
+        .eq('id', current.vehicleId)
+        .maybeSingle();
+
+    if (vehicleRow == null) {
+      if (navigator.canPop()) navigator.pop();
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('차량 정보를 불러올 수 없습니다.')),
+        );
+      }
+      return false;
+    }
+
+    vehicle = Vehicle.fromMap(Map<String, dynamic>.from(vehicleRow));
+    nextReservation = await nextService.fetchNextBlockingReservation(
+      vehicleId: current.vehicleId,
+      afterEndAt: endAt,
+      excludeReservationId: current.id,
     );
   } catch (e) {
     if (navigator.canPop()) navigator.pop();
@@ -78,156 +113,36 @@ Future<bool> openRentalExtension(
   if (navigator.canPop()) navigator.pop();
   if (!context.mounted) return false;
 
-  if (check.eligible) {
-    return _confirmAndApply(
-      context,
+  final selectedNewEnd = await showModalBottomSheet<DateTime>(
+    context: context,
+    backgroundColor: DanjiColors.surface,
+    isScrollControlled: true,
+    shape: const RoundedRectangleBorder(
+      borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+    ),
+    builder: (_) => RentalExtensionSheet(
       reservation: current,
-      check: check,
-      service: service,
-      extensionHours: extensionHours,
-    );
-  }
-
-  if (check.showEmergencyConsultation) {
-    await _showEmergencyDialog(context, current, check, service);
-    return false;
-  }
-
-  if (check.reason == 'next_reservation_exists') {
-    await _showNextReservationBlockedDialog(context, check);
-    return false;
-  }
-
-  ScaffoldMessenger.of(context).showSnackBar(
-    SnackBar(
-      content: Text(_messageForExtensionCheck(check)),
+      vehicle: vehicle,
+      nextReservation: nextReservation,
     ),
   );
-  return false;
-}
 
-Future<void> _showNextReservationBlockedDialog(
-  BuildContext context,
-  RentalExtensionCheckResult check,
-) async {
-  final dateFormat = DateFormat('yyyy-MM-dd HH:mm');
-  final startLabel = check.blockingStartAt != null
-      ? dateFormat.format(check.blockingStartAt!.toLocal())
-      : '확인 불가';
+  if (selectedNewEnd == null || !context.mounted) return false;
 
-  await showDialog<void>(
-    context: context,
-    builder: (ctx) => AlertDialog(
-      backgroundColor: DanjiColors.surface,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-      title: const Text(
-        '연장 불가',
-        style: TextStyle(
-          color: DanjiColors.textPrimary,
-          fontWeight: FontWeight.w800,
-        ),
-      ),
-      content: Text(
-        '해당 차량에 뒷 예약이 있어 연장할 수 없습니다.\n\n'
-        '뒷 예약 시작: $startLabel',
-        style: const TextStyle(
-          color: DanjiColors.textSecondary,
-          height: 1.5,
-        ),
-      ),
-      actions: [
-        FilledButton(
-          onPressed: () => Navigator.of(ctx).pop(),
-          child: const Text('확인'),
-        ),
-      ],
-    ),
+  return _payAndApply(
+    context,
+    service: service,
+    reservation: current,
+    newEndAt: selectedNewEnd,
   );
 }
 
-String _messageForExtensionCheck(RentalExtensionCheckResult check) {
-  switch (check.reason) {
-    case 'invalid_status':
-      return RentalExtensionMessages.needInUse;
-    case 'too_early':
-      return RentalExtensionMessages.tooEarly;
-    case 'too_late':
-      return RentalExtensionMessages.tooLate;
-    case 'next_reservation_exists':
-      return RentalExtensionMessages.nextReservationExists;
-    default:
-      break;
-  }
-
-  final message = check.message?.trim();
-  if (message != null && message.isNotEmpty) {
-    if (message.contains('종료 1시간 전부터')) {
-      return RentalExtensionMessages.tooEarly;
-    }
-    if (message.contains('종료 시각이 지나')) {
-      return RentalExtensionMessages.tooLate;
-    }
-    if (message.contains('in_use')) {
-      return RentalExtensionMessages.needInUse;
-    }
-    return message;
-  }
-  return '지금은 연장할 수 없습니다.';
-}
-
-Future<bool> _confirmAndApply(
+Future<bool> _payAndApply(
   BuildContext context, {
-  required Reservation reservation,
-  required RentalExtensionCheckResult check,
   required RentalService service,
-  required int extensionHours,
+  required Reservation reservation,
+  required DateTime newEndAt,
 }) async {
-  final dateFormat = DateFormat('yyyy-MM-dd HH:mm');
-  final won = NumberFormat('#,###');
-  final newEnd = check.newEndAt;
-  final added = check.addedPrice ?? 0;
-
-  final confirmed = await showDialog<bool>(
-    context: context,
-    builder: (ctx) => AlertDialog(
-      backgroundColor: DanjiColors.surface,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-      title: const Text(
-        RentalExtensionMessages.confirmTitle,
-        style: TextStyle(
-          color: DanjiColors.textPrimary,
-          fontWeight: FontWeight.w800,
-        ),
-      ),
-      content: Text(
-        [
-          '${extensionHours}시간 연장합니다.',
-          if (newEnd != null) '새 종료 시각: ${dateFormat.format(newEnd)}',
-          '추가 요금: ₩${won.format(added)}',
-          if (check.newTotalPrice != null)
-            '결제 합계: ₩${won.format(check.newTotalPrice)}',
-          if (added > 0) '등록된 결제카드로 자동 결제됩니다.',
-        ].join('\n'),
-        style: const TextStyle(
-          color: DanjiColors.textSecondary,
-          height: 1.5,
-        ),
-      ),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.of(ctx).pop(false),
-          child: const Text('취소'),
-        ),
-        FilledButton(
-          onPressed: () => Navigator.of(ctx).pop(true),
-          child: const Text('연장하기'),
-        ),
-      ],
-    ),
-  );
-
-  if (confirmed != true || !context.mounted) return false;
-
   final navigator = Navigator.of(context, rootNavigator: true);
   showDialog<void>(
     context: context,
@@ -252,13 +167,10 @@ Future<bool> _confirmAndApply(
     ),
   );
 
-  final reservationId = reservation.id;
-  final addedPrice = added;
-
   try {
     await service.payAndApplyRentalExtension(
-      reservationId: reservationId,
-      extensionHours: extensionHours,
+      reservationId: reservation.id,
+      newEndAt: newEndAt,
     );
   } catch (e) {
     if (navigator.canPop()) navigator.pop();
@@ -270,93 +182,18 @@ Future<bool> _confirmAndApply(
     return false;
   }
 
-  debugPrint(
-    '[extension] payment ok — reservationId=$reservationId, addedPrice=$addedPrice',
-  );
-
   if (navigator.canPop()) navigator.pop();
   if (!context.mounted) return false;
 
+  final fmt = DateFormat('HH:mm');
   ScaffoldMessenger.of(context).showSnackBar(
-    const SnackBar(content: Text(RentalExtensionMessages.success)),
-  );
-  return true;
-}
-
-Future<void> _showEmergencyDialog(
-  BuildContext context,
-  Reservation reservation,
-  RentalExtensionCheckResult check,
-  RentalService service,
-) async {
-  var phone = SupportContactsService.normalizePhone(check.emergencyPhone);
-  phone ??= await SupportContactsService().fetchEmergencyPhone();
-  if (!context.mounted) return;
-
-  if (phone == null) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('긴급 상담 번호가 등록되지 않았습니다. 관리자에게 문의해주세요.'),
-      ),
-    );
-    return;
-  }
-  final phoneNumber = phone;
-
-  await showDialog<void>(
-    context: context,
-    builder: (ctx) => AlertDialog(
-      backgroundColor: DanjiColors.surface,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-      title: const Text(
-        RentalExtensionMessages.emergencyTitle,
-        style: TextStyle(
-          color: DanjiColors.textPrimary,
-          fontWeight: FontWeight.w800,
-        ),
-      ),
+    SnackBar(
       content: Text(
-        () {
-          final msg = _messageForExtensionCheck(check);
-          if (msg.isNotEmpty && msg != '지금은 연장할 수 없습니다.') return msg;
-          return RentalExtensionMessages.nextReservationExists;
-        }(),
-        style: const TextStyle(
-          color: DanjiColors.textSecondary,
-          height: 1.5,
-        ),
+        '${RentalExtensionMessages.success} (종료 ${fmt.format(newEndAt)})',
       ),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.of(ctx).pop(),
-          child: const Text('닫기'),
-        ),
-        FilledButton.icon(
-          onPressed: () async {
-            try {
-              await service.logEmergencyConsultation(
-                reservationId: reservation.id,
-                requestType: 'extension_blocked',
-                reasonCode: check.reason,
-                context: check.toLogContext(),
-              );
-            } catch (_) {}
-
-            final launched = await launchPhoneCall(phoneNumber);
-            if (!ctx.mounted) return;
-            if (!launched) {
-              ScaffoldMessenger.of(ctx).showSnackBar(
-                SnackBar(content: Text('전화 연결: $phoneNumber')),
-              );
-            }
-            Navigator.of(ctx).pop();
-          },
-          icon: const Icon(Icons.phone),
-          label: Text('긴급 상담 ($phoneNumber)'),
-        ),
-      ],
     ),
   );
+  return true;
 }
 
 String _friendlyError(Object error) {
