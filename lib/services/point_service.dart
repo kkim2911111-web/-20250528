@@ -96,7 +96,7 @@ class PointService {
       final raw = await supabase
           .from('point_history')
           .select(
-            'id, amount, description, type, balance_after, created_at, reservation_id',
+            'id, amount, description, type, balance_after, created_at, reservation_id, reservation_number',
           )
           .eq('user_id', userId)
           .order('created_at', ascending: false);
@@ -123,7 +123,7 @@ class PointService {
       final raw = await supabase
           .from('reservations')
           .select(
-            'id, start_time, start_at, end_time, end_at, vehicles(model_name)',
+            'id, reservation_number, start_time, start_at, end_time, end_at, vehicles(model_name)',
           )
           .eq('user_id', userId)
           .inFilter('id', ids.toList());
@@ -163,6 +163,7 @@ class PointService {
       meta[id] = PointReservationSummary(
         vehicleName: vehicleName,
         durationHours: hours,
+        reservationNumber: map['reservation_number']?.toString(),
       );
     }
     return meta;
