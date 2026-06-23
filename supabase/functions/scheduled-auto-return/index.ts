@@ -274,6 +274,7 @@ Deno.serve(async (req) => {
       overdueConflictSecondWarned: overdueConflictStats.secondWarned,
       overdueConflictCancelled: overdueConflictStats.cancelled,
       overdueConflictRefundFailed: overdueConflictStats.refundFailed,
+      overdueSameUserAutoReturned: overdueConflictStats.sameUserAutoReturned,
       overdueNotified,
       vehicleNotReturnedRefunded: refundStats.refunded,
       vehicleNotReturnedRefundFailed: refundStats.failed,
