@@ -78,7 +78,7 @@ Future<bool> openRentalExtension(
     final vehicleRow = await supabase
         .from('vehicles')
         .select(
-          'id, name, price_per_hour, daily_overage_hourly_rate, '
+          'id, model_name, price_per_hour, daily_overage_hourly_rate, '
           'monthly_excess_daily_price, rental_types, service_type',
         )
         .eq('id', current.vehicleId)
