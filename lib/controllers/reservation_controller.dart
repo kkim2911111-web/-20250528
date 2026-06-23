@@ -5,9 +5,9 @@ import 'package:flutter/material.dart';
 import '../models/my_page_profile.dart';
 import '../models/rental_flow_status.dart';
 import '../models/reservation.dart';
-import '../services/license_service.dart';
 import '../services/my_page_service.dart';
 import '../services/rental_service.dart';
+import '../services/rental_start_service.dart';
 import '../services/smart_key_door_service.dart';
 import '../utils/rental_navigation.dart';
 import '../widgets/rental_start_photo_section.dart';
@@ -30,17 +30,17 @@ enum HomeReservationMode {
 class ReservationController extends ChangeNotifier {
   ReservationController({
     RentalService? rentalService,
+    RentalStartService? rentalStartService,
     MyPageService? myPageService,
-    LicenseService? licenseService,
     SmartKeyDoorService? doorService,
   })  : _rentalService = rentalService ?? RentalService(),
+        _rentalStartService = rentalStartService ?? RentalStartService(),
         _myPageService = myPageService ?? MyPageService(),
-        _licenseService = licenseService ?? LicenseService(),
         _doorService = doorService ?? SmartKeyDoorService();
 
   final RentalService _rentalService;
+  final RentalStartService _rentalStartService;
   final MyPageService _myPageService;
-  final LicenseService _licenseService;
   final SmartKeyDoorService _doorService;
 
   Reservation? reservation;
@@ -167,7 +167,7 @@ class ReservationController extends ChangeNotifier {
     notifyListeners();
 
     try {
-      await _rentalService.savePickupPhotos(
+      await _rentalStartService.uploadPickupPhotos(
         reservationId: reservationId,
         photos: photos,
         onProgress: (completed, total) {
@@ -210,10 +210,11 @@ class ReservationController extends ChangeNotifier {
     notifyListeners();
 
     try {
-      final approved =
-          await _licenseService.confirmRentalLicenseForMe(reservationId);
+      await _rentalStartService.confirmLicense(reservationId);
+      final updated = await _rentalStartService.fetchReservation(reservationId);
+      reservation = updated;
 
-      if (!approved) {
+      if (!updated.licenseVerified) {
         error = '면허 확인에 실패했습니다. 면허 정보를 다시 확인해주세요.';
         verifyingLicense = false;
         notifyListeners();
@@ -244,9 +245,14 @@ class ReservationController extends ChangeNotifier {
     notifyListeners();
 
     try {
-      // 1) DB status → in_use (RPC start_rental_for_me 또는 direct fallback)
-      final r = await _rentalService.startRentalAndFetchInUse(
+      final pickupUrls = reservation?.pickupPhotos ?? const <String>[];
+      if (pickupUrls.length < RentalStartService.minPhotos) {
+        throw const RentalException('대여 시작에 필요한 사진이 없습니다.');
+      }
+
+      final r = await _rentalStartService.startRental(
         reservationId: reservationId,
+        pickupPhotoUrls: pickupUrls,
       );
       reservation = r;
 
@@ -333,14 +339,14 @@ class ReservationController extends ChangeNotifier {
       return SmartKeyDoorActions.unlock(
         context,
         reservation: r,
-        service: _doorService,
+        service: _rentalService,
         onSuccess: onChanged,
       );
     }
     return SmartKeyDoorActions.lock(
       context,
       reservation: r,
-      service: _doorService,
+      service: _rentalService,
       onSuccess: onChanged,
     );
   }
