@@ -4,33 +4,47 @@ import 'package:danjicar_app/utils/reservation_overlap.dart';
 
 void main() {
   group('in_use 미반납 겹침', () {
-    test('end_at 지났어도 in_use면 이후 시간대 예약 불가', () {
-      final scheduledEnd = DateTime.utc(2026, 6, 20, 11, 0); // 20:00 KST
-      final otherStart = DateTime.utc(2026, 6, 20, 10, 0); // 19:00 KST
-      final requestStart = DateTime.utc(2026, 6, 20, 14, 0); // 23:00 KST
-      final requestEnd = DateTime.utc(2026, 6, 20, 15, 0); // 00:00 KST
+    test('in_use — end_at+30분 이전은 겹침, 이후는 예약 가능', () {
+      final scheduledEnd = DateTime.utc(2026, 6, 20, 5, 0); // 14:00 KST
+      final otherStart = DateTime.utc(2026, 6, 20, 4, 0); // 13:00 KST
+      final bufferedEnd = scheduledEnd.add(
+        ReservationOverlapLogic.postReturnBookingBuffer,
+      );
 
       expect(
         ReservationOverlapLogic.effectiveEnd(
           status: 'in_use',
           scheduledEnd: scheduledEnd,
         ),
-        ReservationOverlapLogic.inUseOpenEnd,
+        bufferedEnd,
       );
 
+      // 14:00 시작 — 버퍼 안이라 불가
       expect(
         ReservationOverlapLogic.overlaps(
           otherStart: otherStart,
           otherStatus: 'in_use',
           otherScheduledEnd: scheduledEnd,
-          requestStart: requestStart,
-          requestEnd: requestEnd,
+          requestStart: scheduledEnd,
+          requestEnd: scheduledEnd.add(const Duration(hours: 1)),
         ),
         isTrue,
       );
+
+      // 14:30 시작 — 버퍼 이후라 가능
+      expect(
+        ReservationOverlapLogic.overlaps(
+          otherStart: otherStart,
+          otherStatus: 'in_use',
+          otherScheduledEnd: scheduledEnd,
+          requestStart: bufferedEnd,
+          requestEnd: bufferedEnd.add(const Duration(hours: 1)),
+        ),
+        isFalse,
+      );
     });
 
-    test('confirmed는 end_at 이후면 겹치지 않음', () {
+    test('confirmed는 end_at+30분 버퍼 이후면 겹치지 않음', () {
       final scheduledEnd = DateTime.utc(2026, 6, 20, 11, 0);
       final otherStart = DateTime.utc(2026, 6, 20, 10, 0);
       final requestStart = DateTime.utc(2026, 6, 20, 14, 0);
@@ -66,7 +80,7 @@ void main() {
       );
     });
 
-    test('순차 confirmed 예약은 시간 겹치지 않음 (18:00~19:00 / 19:00~20:00)', () {
+    test('순차 confirmed — 30분 버퍼로 19:00 시작은 겹침', () {
       final firstStart = DateTime.utc(2026, 6, 20, 9, 0); // 18:00 KST
       final firstEnd = DateTime.utc(2026, 6, 20, 10, 0); // 19:00 KST
       final secondStart = DateTime.utc(2026, 6, 20, 10, 0); // 19:00 KST
@@ -80,18 +94,17 @@ void main() {
           requestStart: secondStart,
           requestEnd: secondEnd,
         ),
-        isFalse,
+        isTrue,
       );
 
-      // 18:00 예약이 in_use여도, 이미 잡힌 19:00 구간과는 RPC/앱 겹침 검사 대상이 아님
-      // (신규 19:00 예약 시도만 in_use와 충돌 — 별도 케이스)
+      final bufferedStart = DateTime.utc(2026, 6, 20, 10, 30); // 19:30 KST
       expect(
         ReservationOverlapLogic.overlaps(
-          otherStart: secondStart,
+          otherStart: firstStart,
           otherStatus: 'confirmed',
-          otherScheduledEnd: secondEnd,
-          requestStart: firstStart,
-          requestEnd: firstEnd,
+          otherScheduledEnd: firstEnd,
+          requestStart: bufferedStart,
+          requestEnd: secondEnd,
         ),
         isFalse,
       );

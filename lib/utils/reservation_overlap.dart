@@ -1,6 +1,10 @@
 /// 예약 겹침 — DB `reservation_effective_end` / `reservations_overlap_exists`와 동일
 class ReservationOverlapLogic {
+  static const postReturnBookingBuffer = Duration(minutes: 30);
   static final DateTime inUseOpenEnd = DateTime.utc(9999, 12, 31, 23, 59, 59);
+
+  static DateTime _withBookingBuffer(DateTime end) =>
+      end.add(postReturnBookingBuffer);
 
   static DateTime effectiveEnd({
     required String status,
@@ -10,14 +14,18 @@ class ReservationOverlapLogic {
   }) {
     final normalized = status.trim().toLowerCase();
     if (normalized == 'in_use') {
-      return inUseOpenEnd;
+      final end = scheduledEnd ?? actualEndAt ?? returnedAt;
+      if (end == null) return inUseOpenEnd;
+      return _withBookingBuffer(end);
     }
     if (normalized == 'returned' ||
         normalized == 'completed' ||
         normalized == 'cancelled') {
-      return actualEndAt ?? returnedAt ?? scheduledEnd ?? DateTime.utc(1970);
+      final raw = actualEndAt ?? returnedAt ?? scheduledEnd ?? DateTime.utc(1970);
+      return _withBookingBuffer(raw);
     }
-    return scheduledEnd ?? DateTime.utc(1970);
+    if (scheduledEnd == null) return DateTime.utc(1970);
+    return _withBookingBuffer(scheduledEnd);
   }
 
   static bool overlaps({
