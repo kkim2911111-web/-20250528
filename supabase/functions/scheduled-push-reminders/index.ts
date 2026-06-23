@@ -1,5 +1,6 @@
 import { handleCors, jsonResponse } from '../_shared/http.ts';
 import { getAdminClient } from '../_shared/payment.ts';
+import { hasNextConfirmedReservationWithinBuffer } from '../_shared/next_confirmed_reservation.ts';
 import { dispatchPushScenario } from '../_shared/push_scenarios.ts';
 
 type ReservationRow = {
@@ -75,31 +76,14 @@ async function dispatchIfSent(
 async function hasNextReservation(
   admin: ReturnType<typeof getAdminClient>,
   vehicleId: string,
-  afterIso: string,
+  endIso: string,
+  excludeReservationId?: string,
 ): Promise<{ exists: boolean; nextStartAt?: string }> {
-  const afterMs = parseMs(afterIso);
-  if (afterMs == null) return { exists: false };
-
-  const { data } = await admin
-    .from('reservations')
-    .select('id, start_at, start_time, status')
-    .eq('vehicle_id', vehicleId)
-    .in('status', ['confirmed', 'pending']);
-
-  const rows = (data ?? []) as ReservationRow[];
-  let best: { id: string; start: string; ms: number } | null = null;
-
-  for (const row of rows) {
-    const start = startAt(row);
-    const ms = parseMs(start);
-    if (ms == null || ms <= afterMs) continue;
-    if (!best || ms < best.ms) {
-      best = { id: row.id, start: start!, ms };
-    }
-  }
-
-  if (!best) return { exists: false };
-  return { exists: true, nextStartAt: best.start };
+  return hasNextConfirmedReservationWithinBuffer(admin, {
+    vehicleId,
+    endAtIso: endIso,
+    excludeReservationId,
+  });
 }
 
 const RESERVATION_SELECT =
@@ -167,10 +151,15 @@ Deno.serve(async (req) => {
       if (endMs == null) continue;
 
       if (endMs >= windowStart && endMs <= windowEnd) {
-        const next = await hasNextReservation(admin, row.vehicle_id, end);
+        const next = await hasNextReservation(
+          admin,
+          row.vehicle_id,
+          end,
+          row.id,
+        );
         const scenario = next.exists
-          ? 'customer_return_10min_next_booking'
-          : 'customer_return_10min';
+          ? 'customer_return_imminent_with_next'
+          : 'customer_return_imminent_no_next';
         if (await hasSent(admin, row.id, scenario)) continue;
 
         const sent = await dispatchIfSent(admin, scenario, {
@@ -186,7 +175,12 @@ Deno.serve(async (req) => {
       }
 
       if (endMs >= overdueCutoff && endMs <= conflictEnd) {
-        const next = await hasNextReservation(admin, row.vehicle_id, end);
+        const next = await hasNextReservation(
+          admin,
+          row.vehicle_id,
+          end,
+          row.id,
+        );
         if (!next.exists) continue;
         const scenario = 'staff_conflict_risk';
         if (await hasSent(admin, row.id, scenario)) continue;

@@ -16,15 +16,23 @@ export type PushScenario =
   | 'customer_reservation_cancelled'
   | 'customer_payment_completed'
   | 'customer_rental_started'
+  | 'customer_rental_extension_complete'
   | 'customer_rental_start_10min'
   | 'customer_return_10min'
   | 'customer_return_10min_next_booking'
+  | 'customer_return_imminent_no_next'
+  | 'customer_return_imminent_with_next'
   | 'customer_return_overdue'
+  | 'customer_return_overdue_no_next'
+  | 'customer_return_overdue_with_next'
   | 'customer_return_inspection_complete'
   | 'customer_billing_payment_failed'
   | 'customer_blacklist_registered'
   | 'customer_no_show_auto_completed'
   | 'customer_vehicle_not_returned_refund'
+  | 'customer_overdue_next_reservation_warn'
+  | 'customer_overdue_next_reservation_second_warn'
+  | 'customer_overdue_conflict_cancelled'
   // 관리자(단지 staff 전원)
   | 'staff_new_signup'
   | 'staff_license_review_request'
@@ -41,7 +49,10 @@ export type PushScenario =
   | 'staff_insurance_expiring_soon'
   | 'staff_insurance_expired'
   | 'staff_no_show_auto_completed'
-  | 'staff_vehicle_not_returned_auto';
+  | 'staff_vehicle_not_returned_auto'
+  | 'staff_overdue_next_reservation_warn'
+  | 'staff_overdue_conflict_cancelled'
+  | 'staff_overdue_conflict_refund_failed';
 
 export type PushMessage = {
   title: string;
@@ -169,6 +180,16 @@ export function buildPushMessage(
         data: { ...data, type: 'reservation' },
       };
     }
+    case 'customer_rental_extension_complete': {
+      const returnWhen = fmtDateTime(payload.endAt);
+      return {
+        title: '연장이 완료되었습니다',
+        body: returnWhen
+          ? `새 반납 시각: ${returnWhen}`
+          : '대여 연장이 완료되었습니다.',
+        data: { ...data, type: 'reservation' },
+      };
+    }
     case 'customer_rental_start_10min':
       return {
         title: '곧 대여가 시작됩니다',
@@ -176,22 +197,34 @@ export function buildPushMessage(
         data: { ...data, type: 'reservation' },
       };
     case 'customer_return_10min':
+    case 'customer_return_imminent_no_next':
       return {
-        title: '반납 시간이 다가옵니다',
-        body: '제때 반납 부탁드립니다.',
+        title: '반납 임박',
+        body:
+          '반납 시간이 얼마 남지 않았어요. 연장이 필요하시면 연장하기를 눌러주세요.',
         data: { ...data, type: 'reservation' },
       };
     case 'customer_return_10min_next_booking':
+    case 'customer_return_imminent_with_next':
       return {
-        title: '반납 시간이 다가옵니다',
+        title: '반납 임박',
         body:
-          '다음 예약이 있습니다. 반납이 불가할 시 고객센터로 연락주세요.',
+          '반납 시간이 얼마 남지 않았어요. 다음 예약자가 기다리고 있어요.',
         data: { ...data, type: 'reservation' },
       };
     case 'customer_return_overdue':
+    case 'customer_return_overdue_no_next':
       return {
-        title: '반납이 지연되고 있습니다',
-        body: '즉시 반납 또는 고객센터 연락 요청',
+        title: '반납 지연',
+        body:
+          '반납 시간이 지났어요. 연장하기로 추가 이용하시거나 반납해 주세요.',
+        data: { ...data, type: 'reservation' },
+      };
+    case 'customer_return_overdue_with_next':
+      return {
+        title: '반납 지연',
+        body:
+          '반납 시간이 지났어요. 다음 예약자가 기다리고 있으니 반납 부탁드려요.',
         data: { ...data, type: 'reservation' },
       };
     case 'customer_return_inspection_complete':
@@ -222,6 +255,27 @@ export function buildPushMessage(
       return {
         title: '이용 불가 안내',
         body: '앞 이용자 미반납으로 이용되지 못해 전액 환불되었습니다.',
+        data: { ...data, type: 'reservation' },
+      };
+    case 'customer_overdue_next_reservation_warn':
+      return {
+        title: '반납 시간이 지났어요',
+        body:
+          '반납 시간이 지났어요. 혹시 이용에 어려움이 있으신가요? 같은 차량을 기다리는 다음 예약자가 있으니 가능한 빨리 반납 부탁드려요.',
+        data: { ...data, type: 'reservation' },
+      };
+    case 'customer_overdue_next_reservation_second_warn':
+      return {
+        title: '아직 차량이 반납되지 않았어요',
+        body:
+          '아직 차량이 반납되지 않았어요. 15분 후에도 반납이 어려우시면 다음 예약자의 예약이 자동으로 취소될 수 있어요. 불편하신 점이 있으시면 관리자에게 연락주세요.',
+        data: { ...data, type: 'reservation' },
+      };
+    case 'customer_overdue_conflict_cancelled':
+      return {
+        title: '예약이 취소되었습니다',
+        body:
+          '이용자 사정으로 차량 반납이 지연되어 예약이 취소되었습니다. 불편을 드려 정말 죄송합니다. 결제 금액은 전액 환불 처리됩니다.',
         data: { ...data, type: 'reservation' },
       };
     case 'staff_new_signup':
@@ -331,6 +385,28 @@ export function buildPushMessage(
         title: '차량미회수 자동 처리',
         body: `[${vehicle}] 앞 예약 미반납으로 이용 불가 처리·전액 환불됐습니다. (임차인: ${renter})`,
         data: { ...data, type: 'admin_reservation' },
+      };
+    }
+    case 'staff_overdue_next_reservation_warn':
+      return {
+        title: '반납 지연 — 다음 예약자 있음',
+        body: `[${vehicle}] 반납 지연 발생 — 다음 예약자 있음. 확인 필요`,
+        data: { ...data, type: 'admin_reservation' },
+      };
+    case 'staff_overdue_conflict_cancelled': {
+      const phone = payload.renterPhone?.trim() || '미등록';
+      return {
+        title: '반납지연 예약 자동취소',
+        body: `[${renter}] 예약 자동취소됨 — 직접 연락 필요. 연락처: ${phone}`,
+        data: { ...data, type: 'admin_reservation' },
+      };
+    }
+    case 'staff_overdue_conflict_refund_failed': {
+      const phone = payload.renterPhone?.trim() || '미등록';
+      return {
+        title: '반납지연 환불 실패 — 수동 처리',
+        body: `[${renter}] 반납지연 충돌 환불 실패 — 수동 환불 필요. 연락처: ${phone}. ${reason}`,
+        data: { ...data, type: 'admin_billing' },
       };
     }
     default:

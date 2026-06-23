@@ -1,7 +1,7 @@
 import { handleCors, jsonResponse } from '../_shared/http.ts';
+import { hasNextConfirmedReservationWithinBuffer } from '../_shared/next_confirmed_reservation.ts';
 import { getAdminClient } from '../_shared/payment.ts';
 import {
-  hasOverdueNextReservationConflict,
   processOverdueNextReservationConflicts,
 } from '../_shared/overdue_next_reservation_conflict.ts';
 import { dispatchPushScenario } from '../_shared/push_scenarios.ts';
@@ -180,24 +180,32 @@ async function notifyOverdues(
 
     if (resRow?.overdue_notified_at) continue;
 
-    if (await hasOverdueNextReservationConflict(admin, reservationId)) {
-      continue;
-    }
-
     const { complexId, vehicleName } = await fetchVehicleContext(admin, vehicleId);
     const renterName = await fetchRenterName(admin, userId);
-    const endAt = await admin
+    const endRow = await admin
       .from('reservations')
       .select('end_at, end_time')
       .eq('id', reservationId)
       .maybeSingle();
     const scheduledEnd =
-      endAt.data?.end_at?.toString() ?? endAt.data?.end_time?.toString() ?? '';
+      endRow.data?.end_at?.toString() ?? endRow.data?.end_time?.toString() ?? '';
+
+    const next = vehicleId
+      ? await hasNextConfirmedReservationWithinBuffer(admin, {
+          vehicleId,
+          endAtIso: scheduledEnd,
+          excludeReservationId: reservationId,
+        })
+      : { exists: false as const };
+
+    const scenario = next.exists
+      ? 'customer_return_overdue_with_next'
+      : 'customer_return_overdue_no_next';
 
     try {
       await dispatchPushScenario({
         admin,
-        scenario: 'customer_return_overdue',
+        scenario,
         payload: {
           userId,
           reservationId,
@@ -262,8 +270,8 @@ Deno.serve(async (req) => {
     const vehicleNotReturned = (payload.vehicleNotReturned ?? []) as ProcessedRow[];
 
     const noShowNotified = await notifyNoShows(admin, noShows);
-    const overdueConflictStats = await processOverdueNextReservationConflicts(admin);
     const overdueNotified = await notifyOverdues(admin, overdues);
+    const overdueConflictStats = await processOverdueNextReservationConflicts(admin);
     const refundStats = await refundVehicleNotReturned(admin, vehicleNotReturned);
 
     return jsonResponse({
