@@ -1651,7 +1651,7 @@ class _HomeAvailableVehicleCarouselState
     return Column(
       children: [
         SizedBox(
-          height: 132,
+          height: 200,
           child: PageView.builder(
             controller: _pageController,
             itemCount: widget.vehicles.length,
@@ -1677,8 +1677,11 @@ class _HomeAvailableVehicleCarouselState
 }
 
 class _HomeAvailableVehicleCard extends StatelessWidget {
-  static const _priceBlue = Color(0xFF3182F6);
-  static const _imageBackground = Color(0xFFF0F4FA);
+  static const _availableBadge = _HomeCardBadgeStyle(
+    label: '이용 가능',
+    background: DanjiColors.tagConfirmedBg,
+    textColor: DanjiColors.tagConfirmedText,
+  );
 
   final Vehicle vehicle;
   final VoidCallback onTap;
@@ -1691,145 +1694,84 @@ class _HomeAvailableVehicleCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final plate = vehicle.carNumber?.trim();
-    final vehicleType = vehicle.vehicleType.trim();
     final hourlyPrice = RentalPricing.displayUnitPriceLabel(
       vehicle,
       RentalType.hourly,
     );
-    final metaParts = <String>[
-      if (vehicleType.isNotEmpty) vehicleType,
-      if (plate != null && plate.isNotEmpty) plate else '번호 미등록',
-    ];
+    final carImageUrl = vehicle.carImageUrl?.trim();
 
     return Material(
       color: Colors.transparent,
-      borderRadius: BorderRadius.circular(14),
+      borderRadius: BorderRadius.circular(16),
       child: InkWell(
         onTap: onTap,
-        borderRadius: BorderRadius.circular(14),
-        child: Ink(
+        borderRadius: BorderRadius.circular(16),
+        child: Container(
+          width: double.infinity,
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
           decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(14),
-            border: Border.all(
-              color: DanjiColors.border,
-              width: 0.5,
-            ),
+            color: DanjiColors.surface,
+            borderRadius: BorderRadius.circular(16),
           ),
-          child: Padding(
-            padding: const EdgeInsets.all(14),
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.center,
-              children: [
-                _HomeAvailableVehicleThumbnail(url: vehicle.carImageUrl),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Text(
-                        vehicle.name,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
-                          fontSize: 15,
-                          fontWeight: FontWeight.w600,
-                          color: DanjiColors.textPrimary,
-                          height: 1.25,
+          child: LayoutBuilder(
+            builder: (context, constraints) {
+              final halfWidth = constraints.maxWidth / 2;
+              return Row(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  SizedBox(
+                    width: halfWidth,
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        _HomeCardFittedLine(
+                          text: vehicle.name,
+                          style: _HomeCardTypography.carName,
                         ),
-                      ),
-                      const SizedBox(height: 4),
-                      Text(
-                        metaParts.join(' · '),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
-                          fontSize: 12,
-                          color: DanjiColors.textSecondary,
-                          height: 1.3,
+                        const SizedBox(height: 5),
+                        _HomeCardFittedLine(
+                          text: plate != null && plate.isNotEmpty
+                              ? plate
+                              : '차량번호 미등록',
+                          style: _HomeCardTypography.carNumber,
                         ),
-                      ),
-                      const SizedBox(height: 6),
-                      Text(
-                        hourlyPrice,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
-                          fontSize: 13,
-                          fontWeight: FontWeight.w600,
-                          color: _priceBlue,
-                          height: 1.3,
+                        const SizedBox(height: 7),
+                        _HomeCardFittedLine(
+                          text: hourlyPrice,
+                          style: _HomeCardTypography.schedule,
                         ),
-                      ),
-                      const SizedBox(height: 6),
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 8,
-                          vertical: 2,
+                        const SizedBox(height: 3),
+                        SizedBox(
+                          height: _HomeCardTypography.schedule.fontSize! *
+                              _HomeCardTypography.schedule.height!,
                         ),
-                        decoration: BoxDecoration(
-                          color: const Color(0xFFE8F4FF),
-                          borderRadius: BorderRadius.circular(20),
+                        const SizedBox(height: 7),
+                        Wrap(
+                          spacing: 6,
+                          runSpacing: 4,
+                          children: [
+                            _HomeStatusBadge(
+                              label: _availableBadge.label,
+                              background: _availableBadge.background,
+                              textColor: _availableBadge.textColor,
+                            ),
+                          ],
                         ),
-                        child: const Text(
-                          '이용 가능',
-                          style: TextStyle(
-                            fontSize: 11,
-                            fontWeight: FontWeight.w600,
-                            color: _priceBlue,
-                            height: 1.2,
-                          ),
-                        ),
-                      ),
-                    ],
+                      ],
+                    ),
                   ),
-                ),
-              ],
-            ),
+                  SizedBox(
+                    width: halfWidth,
+                    child: Center(
+                      child: _HomeCarImage(url: carImageUrl),
+                    ),
+                  ),
+                ],
+              );
+            },
           ),
         ),
-      ),
-    );
-  }
-}
-
-class _HomeAvailableVehicleThumbnail extends StatelessWidget {
-  final String? url;
-
-  const _HomeAvailableVehicleThumbnail({this.url});
-
-  bool get _hasUrl {
-    final value = url?.trim();
-    return value != null && value.isNotEmpty;
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(8),
-      child: Container(
-        width: 80,
-        height: 52,
-        color: _HomeAvailableVehicleCard._imageBackground,
-        alignment: Alignment.center,
-        child: _hasUrl
-            ? Image.network(
-                url!.trim(),
-                width: 80,
-                height: 52,
-                fit: BoxFit.cover,
-                errorBuilder: (_, __, ___) => const Icon(
-                  Icons.directions_car,
-                  color: _HomeAvailableVehicleCard._priceBlue,
-                  size: 28,
-                ),
-              )
-            : const Icon(
-                Icons.directions_car,
-                color: _HomeAvailableVehicleCard._priceBlue,
-                size: 28,
-              ),
       ),
     );
   }
